@@ -1715,7 +1715,7 @@ localAddrIPv4=$(ip -4 a | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | c
 if [[ -n $localAddrIPv4 ]]; then
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^wireguard-tools$') ]] && aptPKG+=(wireguard-tools)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt update && apt install -y -q $(echo ${aptPKG[@]})
 
 ghREPO="ViRb3/wgcf"
 ghPackage="linux_$architecture"
