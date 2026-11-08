@@ -26,7 +26,7 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.7"
-branch="main"
+branch="${BRANCH:-dev}"
 
 
 installCMD=`cat << EOF
