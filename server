@@ -50,6 +50,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^screen$') ]] && aptPKG+=(screen)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^ethtool$') ]] && aptPKG+=(ethtool)
@@ -1100,7 +1101,7 @@ find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
 curl https://get.acme.sh | sh -s email=$CFemail
 "/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d $topDomain -d *.$topDomain -k ec-256 --dnssleep 180
+"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d $topDomain -d *.$topDomain -k ec-256
 "/root/.acme.sh"/acme.sh --installcert -d $topDomain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
@@ -2189,7 +2190,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
-read -p "Select:" num
+read -p "Select:" num || exit
     case "$num" in
     1)
     installGWD
@@ -2264,7 +2265,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
-read -p "Select:" num
+read -p "Select:" num || exit
     case "$num" in
     1)
     installGWD

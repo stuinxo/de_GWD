@@ -7,7 +7,7 @@
     }
     else
     {
-        $GWDpwhash = "";
+        $GWDpwhash = "f69ad6fd10ecc116889c9985d4b45ffaf51875af3198d4e6b6eceb1080ca1e99";
     }
 
 

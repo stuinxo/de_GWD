@@ -30,7 +30,7 @@ table ip de_GWD {
                 type ipv4_addr
                 flags interval
                 auto-merge
-                elements = { $(cat /opt/de_GWD/nftables/IP_V2NODE) }
+                $([[ -s /opt/de_GWD/nftables/IP_V2NODE ]] && echo "elements = { $(cat /opt/de_GWD/nftables/IP_V2NODE) }")
         }
 }
 EOF

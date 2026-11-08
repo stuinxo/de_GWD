@@ -13,6 +13,8 @@ cRES='\E[0m'
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}SmartDNS action${cRES}\r\c"
 doh1=$(jq -r '.dns.doh[0]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 doh2=$(jq -r '.dns.doh[1]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+doh1=${doh1#*//}
+doh2=${doh2#*//}
 DoG=$(jq -r '.dns.dog' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 touch /opt/de_GWD/coredns/corefile

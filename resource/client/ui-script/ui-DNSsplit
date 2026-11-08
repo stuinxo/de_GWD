@@ -16,7 +16,10 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}DNS Split${cRES}\r\c"
 
 doh1=$(jq -r '.dns.doh[0]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 doh2=$(jq -r '.dns.doh[1]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+doh1=${doh1#*//}
+doh2=${doh2#*//}
 dog=$(jq -r '.dns.dog' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+touch /opt/de_GWD/.repo/Domains.chn.txt /opt/de_GWD/.repo/IPchnroute
 
 cat << EOF >/opt/de_GWD/mosdns/forwarders.yaml
 plugins:

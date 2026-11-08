@@ -14,16 +14,16 @@ cRES='\E[0m'
 
 serverConnect1=$(curl -Is -m 5 google.com | grep 'HTTP')
 serverConnect2=$(curl -Is -m 5 youtube.com | grep 'HTTP')
-[[ -z $serverConnect1 ]] && [[ -z $serverConnect2 ]] && exit
+[[ -s "/opt/de_GWD/.repo/Domains.chn.txt" ]] && [[ -z $serverConnect1 ]] && [[ -z $serverConnect2 ]] && exit
 
 [[ $1 = "u" ]] && service cron stop
 
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Update CHN Domain & IP rules${cRES}\r\c"
 checkSum(){
 sha256sumL=$(sha256sum $1 2>/dev/null | awk '{print$1}')
-if [[ $sha256sumL = $2 ]]; then 
+if [[ -n $sha256sumL ]] && [[ $sha256sumL = $2 ]]; then 
   echo "true"
-elif [[ $sha256sumL != $2 ]]; then
+else
   echo "false"
 fi
 }
