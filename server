@@ -88,59 +88,130 @@ fi
 
 
 
+gh_text(){
+  local url="$1"
+  local jsd_url=""
+  if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
+    jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+  fi
+  local urls=("$url")
+  [[ -n "$jsd_url" ]] && urls+=("$jsd_url")
+  urls+=("https://ghproxy.net/${url}")
+
+  for u in "${urls[@]}"; do
+    local content
+    content=$(curl -4 -fsSL -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 5 --max-time 10 "$u" 2>/dev/null | tr -d '\r\n ')
+    if [[ -n "$content" ]]; then
+      echo "$content"
+      return 0
+    fi
+  done
+  return 1
+}
+
+gh_download(){
+  local target="$1"
+  local url="$2"
+  local min_kb="${3:-10}"
+  local jsd_url=""
+  if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
+    jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+  fi
+  local urls=("$url")
+  [[ -n "$jsd_url" ]] && urls+=("$jsd_url")
+  urls+=("https://ghproxy.net/${url}" "https://mirror.ghproxy.com/${url}")
+
+  for u in "${urls[@]}"; do
+    rm -f "$target"
+    wget -4 --no-check-certificate --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --timeout=25 --tries=2 -qO "$target" "$u" 2>/dev/null
+    if [[ -s "$target" ]]; then
+      local sz=$(du -sk "$target" 2>/dev/null | awk '{print $1}')
+      if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repository${cRES}\r\c"
-sha256sum_de_GWD=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_"$architecture".zip.sha256sum 2>/dev/null)
-sha256sum_don_server=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_"$architecture".sha256sum 2>/dev/null)
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum 2>/dev/null)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum 2>/dev/null)
-sha256sum_sample=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip.sha256sum 2>/dev/null)
+sha256sum_de_GWD=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip.sha256sum")
+sha256sum_don_server=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_${architecture}.sha256sum")
+sha256sum_nginx=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_${architecture}.sha256sum")
+sha256sum_nginxConf=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum")
+sha256sum_sample=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip.sha256sum")
 
 if [[ -f "./resource/doh/doh_s_$architecture" ]]; then
     cp -f ./resource/doh/doh_s_$architecture /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
-elif [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
-rm -rf /tmp/doh-server
-wget --show-progress -cqO /tmp/doh-server https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_$architecture
-[[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/doh-server $sha256sum_don_server) = "true" ]] && mv -f /tmp/doh-server /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
+elif [[ -z "$sha256sum_don_server" ]] || [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
+    rm -rf /tmp/doh-server
+    if gh_download /tmp/doh-server "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_$architecture" 1000; then
+        if [[ -n "$sha256sum_don_server" && $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]]; then
+            echo -e "${RED}doh-server Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/doh-server /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
+    else
+        echo -e "${RED}Download Failed${cRES}" && exit 1
+    fi
 fi
 
 if [[ -f "./resource/nginx/nginx_$architecture" ]]; then
     cp -f ./resource/nginx/nginx_$architecture /usr/sbin/nginx && chmod +x /usr/sbin/nginx
-elif [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
-rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_"$architecture"
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+elif [[ -z "$sha256sum_nginx" ]] || [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
+    rm -rf /tmp/nginx
+    if gh_download /tmp/nginx "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_$architecture" 10000; then
+        if [[ -n "$sha256sum_nginx" && $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]]; then
+            echo -e "${RED}NGINX Core Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+    else
+        echo -e "${RED}Download Failed${cRES}" && exit 1
+    fi
 fi
 
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
     cp -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 elif [[ -f "./resource/de_GWD_$architecture.zip" ]]; then
     cp -f ./resource/de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
-elif [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
-rm -rf /tmp/de_GWD.zip
-wget --show-progress -cqO /tmp/de_GWD.zip https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_"$architecture".zip
-[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+elif [[ -z "$sha256sum_de_GWD" ]] || [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
+    rm -rf /tmp/de_GWD.zip
+    if gh_download /tmp/de_GWD.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip" 10000; then
+        if [[ -n "$sha256sum_de_GWD" && $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
+            echo -e "${RED}de_GWD Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+    else
+        echo -e "${RED}Download Failed${cRES}" && exit 1
+    fi
 fi
 
 if [[ -f "./resource/nginx/nginxConf.zip" ]]; then
     cp -f ./resource/nginx/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
-elif [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
-rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
+elif [[ -z "$sha256sum_nginxConf" ]] || [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
+    rm -rf /tmp/nginxConf.zip
+    if gh_download /tmp/nginxConf.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip" 5; then
+        if [[ -n "$sha256sum_nginxConf" && $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
+            echo -e "${RED}nginxConf Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
+    else
+        echo -e "${RED}Download Failed${cRES}" && exit 1
+    fi
 fi
 
 if [[ -f "./resource/server/sample.zip" ]]; then
     cp -f ./resource/server/sample.zip /opt/de_GWD/.repo/sample.zip
-elif [[ $(checkSum /opt/de_GWD/.repo/sample.zip $sha256sum_sample) = "false" ]]; then
-rm -rf /tmp/sample.zip
-wget --show-progress -cqO /tmp/sample.zip https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip
-[[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/sample.zip $sha256sum_sample) = "true" ]] && mv -f /tmp/sample.zip /opt/de_GWD/.repo/sample.zip
+elif [[ -z "$sha256sum_sample" ]] || [[ $(checkSum /opt/de_GWD/.repo/sample.zip $sha256sum_sample) = "false" ]]; then
+    rm -rf /tmp/sample.zip
+    if gh_download /tmp/sample.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip" 100; then
+        if [[ -n "$sha256sum_sample" && $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]]; then
+            echo -e "${RED}sample Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/sample.zip /opt/de_GWD/.repo/sample.zip
+    else
+        echo -e "${RED}Download Failed${cRES}" && exit 1
+    fi
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php 2>/dev/null)
