@@ -70,7 +70,7 @@ unset aptPKG
 }
 
 pkgDEP2(){
-curl -fsSL https://download.docker.com/linux/debian/gpg | install -m 0644 -D /dev/stdin /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
 
 
@@ -2216,6 +2216,7 @@ fi
 mkdir -p /opt/de_GWD/pihole
 docker run -d \
 --name=pihole \
+--shm-size=256m \
 --cap-add NET_RAW \
 --cap-add NET_ADMIN \
 --cap-add SYS_TIME \
@@ -2226,6 +2227,11 @@ docker run -d \
 -v /opt/de_GWD/pihole:/etc/pihole \
 -v /etc/dnsmasq.d:/etc/dnsmasq.d \
 pihole/pihole:latest
+
+for i in {1..30}; do
+  [[ -s "/opt/de_GWD/pihole/pihole.toml" ]] && break
+  sleep 1
+done
 
 python3 <<EOF
 import toml
@@ -2580,8 +2586,8 @@ jq --arg port "$port" '.update.v2node.port=$port' |\
 jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
 jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-[[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.DoG=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+[[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.dog=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+[[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1,$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 chmod 666 /opt/de_GWD/0conf
 
 de_GWDconnect
@@ -2763,7 +2769,7 @@ else
   echo -e "${WHITE} GeoSite        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -ge 8000 ]]; then
+if [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -ge 5000 ]]; then
   echo -e "${WHITE} GeoIP          \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
 else
   echo -e "${WHITE} GeoIP          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
