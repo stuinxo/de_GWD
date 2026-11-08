@@ -75,11 +75,20 @@ fetch_rule(){
 
 geosite_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" | awk '{print$1}')
 geoip_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum" | awk '{print$1}')
-IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum" | awk '{print$1}')
-DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
-DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
-DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
-bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
+IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute.sha256sum" | awk '{print$1}')
+[[ -z "$IPchnroute_sha256sum" ]] && IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum" | awk '{print$1}')
+
+DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
+[[ -z "$DomainsChn_sha256sum" ]] && DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
+
+DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
+[[ -z "$DomainsApple_sha256sum" ]] && DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
+
+DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
+[[ -z "$DomainsGames_sha256sum" ]] && DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
+
+bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
+[[ -z "$bogusNxdomain_sha256sum" ]] && bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
 
 if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat "$geosite_sha256sum") = "false" ]]; then
   if ! fetch_rule "/opt/de_GWD/.repo/geosite.dat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" "$geosite_sha256sum" 3000; then
@@ -102,7 +111,8 @@ if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat "$geoip_sha256sum") = "false" ]]; t
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute "$IPchnroute_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" "$IPchnroute_sha256sum" 50; then
+  if ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute" "$IPchnroute_sha256sum" 50 && \
+     ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" "$IPchnroute_sha256sum" 50; then
     if [[ -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}IPchnroute retained existing${cRES}"
     else
@@ -112,7 +122,8 @@ if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute "$IPchnroute_sha256sum") = "false"
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt "$DomainsChn_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10; then
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10 && \
+     ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10; then
     if [[ -s "/opt/de_GWD/.repo/Domains.chn.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.chn.txt retained existing${cRES}"
     else
@@ -122,7 +133,8 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt "$DomainsChn_sha256sum") = "f
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt "$DomainsApple_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5; then
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5 && \
+     ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5; then
     if [[ -s "/opt/de_GWD/.repo/Domains.apple.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.apple.txt retained existing${cRES}"
     else
@@ -132,7 +144,8 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt "$DomainsApple_sha256sum") 
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt "$DomainsGames_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5; then
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5 && \
+     ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5; then
     if [[ -s "/opt/de_GWD/.repo/Domains.games.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.games.txt retained existing${cRES}"
     else
@@ -142,7 +155,8 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt "$DomainsGames_sha256sum") 
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf "$bogusNxdomain_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1; then
+  if ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1 && \
+     ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1; then
     if [[ -s "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}bogus-nxdomain retained existing${cRES}"
     else

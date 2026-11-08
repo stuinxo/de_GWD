@@ -17,7 +17,7 @@ branch="main"
 
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/client)
 EOF
 `
 
@@ -129,21 +129,31 @@ preDL(){
 mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 
-sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
-if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
-rm -rf /tmp/IPchnroute
-wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
-[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+if [[ -f "./resource/chnroute/IPchnroute" ]]; then
+    cp -f ./resource/chnroute/IPchnroute /opt/de_GWD/.repo/IPchnroute
+elif [[ -f "./IPchnroute" ]]; then
+    cp -f ./IPchnroute /opt/de_GWD/.repo/IPchnroute
+else
+    sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute.sha256sum 2>/dev/null)
+    [[ -z "$sha256sum_IPchnroute" ]] && sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum 2>/dev/null)
+    if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
+    rm -rf /tmp/IPchnroute
+    wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute 2>/dev/null || \
+    wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
+    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
+    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+    fi
 fi
 
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
-    mv -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
+    cp -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
+elif [[ -f "./resource/de_GWD_$architecture.zip" ]]; then
+    cp -f ./resource/de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 else
-    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip.sha256sum)
+    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/de_GWD_"$architecture".zip.sha256sum)
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
-    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip
+    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://de-gwd.accxio.workers.dev/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
@@ -168,20 +178,24 @@ chmod +x /opt/de_GWD/tcpTime
 
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repo Download${cRES}\r\c"
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
-sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip.sha256sum)
+sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum 2>/dev/null)
+sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum 2>/dev/null)
+sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/client/Archive.zip.sha256sum 2>/dev/null)
 
-if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
+if [[ -f "./resource/nginx/nginx_$architecture" ]]; then
+    cp -f ./resource/nginx/nginx_$architecture /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+elif [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
 rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture"
+wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_"$architecture"
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
 fi
 
-if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
+if [[ -f "./resource/nginx/nginxConf.zip" ]]; then
+    cp -f ./resource/nginx/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
+elif [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
 rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip
+wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
 [[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
@@ -200,18 +214,20 @@ if [[ -f "./resource/client/Archive.zip" ]]; then
   cp -f ./resource/client/Archive.zip /opt/de_GWD/.repo/client.zip
 elif [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
   rm -rf /tmp/client.zip
-  gh_download /tmp/client.zip "https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip" 100
+  gh_download /tmp/client.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/client/Archive.zip" 100
   [[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
   [[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
-
-if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
-rm -rf /opt/de_GWD/.repo/version.php
-wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
+if [[ -f "./version.php" ]]; then
+  cp -f ./version.php /opt/de_GWD/.repo/version.php
+else
+  remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php 2>/dev/null | head -n 1)
+  if [[ -n "$remoteVer" ]] && [[ $localVer != $remoteVer || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
+    rm -rf /opt/de_GWD/.repo/version.php
+    wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php
+  fi
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repo Download${cRES}"
@@ -2444,7 +2460,11 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+if [[ -f "./resource/kernel/installkernel" ]]; then
+  chmod +x ./resource/kernel/installkernel && ./resource/kernel/installkernel
+else
+  bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/kernel/installkernel)
+fi
 }
 
 
