@@ -3216,14 +3216,16 @@ installGWD(){
     echo -e "${GREEN}================== ${cRES}"
     echo -e "${GREEN} Input VPS domain${cRES}"
     echo -e "${GREEN}================== ${cRES}"
-    read vpsdomainP
+    [[ -z "$vpsdomainP" ]] && read vpsdomainP
 
 domain=$(echo $vpsdomainP | cut -d: -f1)
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
-sslMode="1"
+if [[ -z "$sslMode" ]]; then
+    sslMode="1"
+fi
 if [[ $port != "443" ]]; then
     echo -e "${GREEN}================================================================ ${cRES}"
     echo -e "${GREEN} Non-443 port detected ($port). Select SSL Mode:${cRES}"
@@ -3231,7 +3233,7 @@ if [[ $port != "443" ]]; then
     echo -e "${GREEN} [2] Cloudflare DNS verification (Requires CF API KEY & Zone)${cRES}"
     echo -e "${GREEN} [3] Use existing /var/www/ssl/ certificate${cRES}"
     echo -e "${GREEN}================================================================ ${cRES}"
-    read -p "Select [Default 1]: " sslMode
+    [[ -z "$sslMode" || "$sslMode" == "1" && -t 0 ]] && read -p "Select [Default 1]: " sslModeInput && [[ -n "$sslModeInput" ]] && sslMode="$sslModeInput"
     [[ -z "$sslMode" ]] && sslMode="1"
 
     if [[ "$sslMode" == "2" ]]; then

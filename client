@@ -2545,32 +2545,32 @@ installGWD(){
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} de_GWD local IP address${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read localAddr
+    [[ -z "$localAddr" ]] && read localAddr
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} Upstream route IP address${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read gatewayAddr
+    [[ -z "$gatewayAddr" ]] && read gatewayAddr
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} DoH / DoG${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read DoGorDOH
+    [[ -z "$DoGorDOH" ]] && read DoGorDOH
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} V2 Address${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read v2addr
+    [[ -z "$v2addr" ]] && read v2addr
     
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} V2 UUID${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read uuid
+    [[ -z "$uuid" ]] && read uuid
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} V2 Path [Default: /${uuid%%-*}]${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read path
+    [[ -z "$path" && -t 0 ]] && read path
     [[ -z "$path" ]] && path="/${uuid%%-*}"
     [[ "${path:0:1}" != "/" ]] && path="/$path"
 
