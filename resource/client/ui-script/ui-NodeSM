@@ -13,7 +13,7 @@ jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMtvb"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMbahamut"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMopenai"))' |\
 jq 'del(.routing.rules[] | select(.outboundTag == "nodeSMapple"))' |\
-jq 'del(.routing.rules[] | select(.domain == ["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]))' |\
+jq 'del(.routing.rules[] | select(.domain == ["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]))' |\
 jq 'del(.routing.rules[] | select(.domain == ["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]))' | sponge /opt/de_GWD/vtrui/config.json
 
 
@@ -183,12 +183,12 @@ uuid=$(jq -r --argjson nodecheck $nodeSMnumApple '.v2node | to_entries[] | selec
 path=$(jq -r --argjson nodecheck $nodeSMnumApple '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf)
 jq --arg address $address '.v2nodeDIV.nodeSM.apple=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 tag="nodeSMapple"
-routingDomain='["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
+routingDomain='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 /opt/de_GWD/ui-V2routingDomain $tag $routingDomain
 /opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
 elif [[ $8 = "0" ]]; then
 	jq 'del(.v2nodeDIV.nodeSM.apple)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-	/opt/de_GWD/ui-V2routingDomain 'direct' '["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
+	/opt/de_GWD/ui-V2routingDomain 'direct' '["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 else
 address=$(jq -r '.v2nodeDIV.nodeSM.apple' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 	if [[ -n $address ]]; then
@@ -197,7 +197,7 @@ address=$(jq -r '.v2nodeDIV.nodeSM.apple' /opt/de_GWD/0conf 2>/dev/null | grep -
 		uuid=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf)
 		path=$(jq -r --arg nodecheck $address '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf)
 		tag="nodeSMapple"
-		routingDomain='["geosite:apple","geosite:apple-ads","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
+		routingDomain='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
 		/opt/de_GWD/ui-V2routingDomain $tag $routingDomain
 		/opt/de_GWD/ui-V2outbound $tag $address $tls $uuid $path
 	fi

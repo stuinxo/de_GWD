@@ -21,6 +21,9 @@ foreach($arr as $k=>$v){
 }
 
 $DOHarray = array();
+if (empty($DoH2) && !empty($DoH1)) {
+    $DoH2 = $DoH1;
+}
 array_push($DOHarray, "$DoH1", "$DoH2");
 $conf['dns']['dog'] = $DoGc;
 $conf['dns']['doh'] = $DOHarray;
