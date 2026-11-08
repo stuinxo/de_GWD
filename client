@@ -97,10 +97,10 @@ echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
 apt update && apt install apparmor apparmor-utils google-perftools
 fi
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
 [[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
@@ -391,23 +391,23 @@ fi
 
 if [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php7.3-fpm" ]] || [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php8.0-fpm" ]]; then
     rm -rf /etc/php/7.3/
-    apt remove --purge '^php7.3.*'
+    apt remove --purge -y '^php7.3.*'
     rm -rf /etc/php/8.0/
-    apt remove --purge '^php8.0.*'
+    apt remove --purge -y '^php8.0.*'
 fi
 
 [[ -f "/etc/nginx/off" ]] && rm -rf /etc/nginx/off
 rm -rf /etc/dnsmasq.d/89-bogus-domains.china.conf
 rm -rf /etc/dnsmasq.d/89-bogus-nxdomains.china.conf
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^smartdns$') ]] && rm -rf /etc/smartdns && apt remove --purge smartdns
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^smartdns$') ]] && rm -rf /etc/smartdns && apt remove --purge -y smartdns
 [[ -n $(systemctl cat v2dns 2>/dev/null) ]] && systemctl disable --now v2dns >/dev/null 2>&1 && \
 rm -rf /lib/systemd/system/v2dns.service && \
 rm -rf /etc/systemd/system/v2dns.service && \
 rm -rf /opt/de_GWD/v2dns
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge subversion
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd$') ]] && apt remove --purge lighttpd
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd-mod-deflate$') ]] && apt remove --purge lighttpd-mod-deflate
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge -y subversion
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd$') ]] && apt remove --purge -y lighttpd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd-mod-deflate$') ]] && apt remove --purge -y lighttpd-mod-deflate
 
 rm -rf /etc/pihole/migration_backup
 rm -rf /etc/dnsmasq.d/89-bogus-nxdomain.china.conf

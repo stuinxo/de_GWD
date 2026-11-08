@@ -33,7 +33,7 @@ rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
 
 
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge -y os-prober
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
