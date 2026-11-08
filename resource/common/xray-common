@@ -1,0 +1,176 @@
+#!/bin/bash
+# de_GWD Unified VLESS-XHTTP-TLS Common Functions
+
+uuid_to_path() {
+    local uuid="$1"
+    local first="${uuid%%-*}"
+    printf '/%s' "$first"
+}
+
+build_vless_xhttp_outbound() {
+    local tag="$1"
+    local domain="$2"
+    local port="$3"
+    local uuid="$4"
+    local tls="$5"
+    local path="$6"
+    local mark="${7:-255}"
+
+    [[ -z "$port" ]] && port="443"
+    [[ -z "$tls" ]] && tls="$domain"
+    if [[ -z "$path" ]]; then
+        path=$(uuid_to_path "$uuid")
+    fi
+    [[ "${path:0:1}" != "/" ]] && path="/$path"
+
+    local sockoptJson=""
+    if [[ -n "$mark" && "$mark" != "0" ]]; then
+        sockoptJson='"sockopt": { "mark": '"$mark"', "tcpFastOpen": true, "tcpNoDelay": true }'
+    else
+        sockoptJson='"sockopt": { "tcpFastOpen": true, "tcpNoDelay": true }'
+    fi
+
+    cat << EOF
+{
+  "tag": "$tag",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [
+      {
+        "address": "$domain",
+        "port": $port,
+        "users": [
+          {
+            "id": "$uuid",
+            "encryption": "none"
+          }
+        ]
+      }
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$tls",
+      "allowInsecure": false
+    },
+    "xhttpSettings": {
+      "path": "$path",
+      "mode": "packet-up"
+    },
+    $sockoptJson
+  }
+}
+EOF
+}
+
+build_vless_xhttp_inbound_nginx_tls() {
+    local port="${1:-9890}"
+    local uuid="$2"
+    local path="$3"
+    if [[ -z "$path" ]]; then
+        path=$(uuid_to_path "$uuid")
+    fi
+    [[ "${path:0:1}" != "/" ]] && path="/$path"
+
+    cat << EOF
+{
+  "listen": "127.0.0.1",
+  "port": $port,
+  "protocol": "vless",
+  "settings": {
+    "clients": [
+      {
+        "id": "$uuid"
+      }
+    ],
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "none",
+    "xhttpSettings": {
+      "path": "$path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpMptcp": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+}
+
+build_vless_xhttp_inbound_direct_tls() {
+    local port="$1"
+    local uuids_json="$2"
+    local path="$3"
+    local cer="${4:-/var/www/ssl/de_GWD.cer}"
+    local key="${5:-/var/www/ssl/de_GWD.key}"
+    local tag="${6:-inbound-fwd}"
+
+    [[ "${path:0:1}" != "/" ]] && path="/$path"
+
+    cat << EOF
+{
+  "tag": "$tag",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "vless",
+  "settings": {
+    "clients": $uuids_json,
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "certificates": [
+        {
+          "certificateFile": "$cer",
+          "keyFile": "$key"
+        }
+      ]
+    },
+    "xhttpSettings": {
+      "path": "$path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+}
+
+build_vless_xhttp_uri() {
+    local domain="$1"
+    local port="$2"
+    local uuid="$3"
+    local path="$4"
+    local sni="$5"
+    local name="$6"
+
+    [[ -z "$port" ]] && port="443"
+    [[ -z "$sni" ]] && sni="$domain"
+    if [[ -z "$path" ]]; then
+        path=$(uuid_to_path "$uuid")
+    fi
+    [[ "${path:0:1}" != "/" ]] && path="/$path"
+    [[ -z "$name" ]] && name="${domain}:${port}"
+
+    printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&type=xhttp&path=%s&mode=packet-up#%s\n' \
+        "$uuid" "$domain" "$port" "$sni" "$path" "$name"
+}

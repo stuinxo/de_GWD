@@ -1,27 +1,70 @@
 #!/bin/bash
 FWD0port=$(jq -r '.FORWARD.FWD0.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD0uuid=$(jq -r '.FORWARD.FWD0.uuid[].FWD0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD0path=$(jq -r '.FORWARD.FWD0.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
-FWD0in=`cat << EOF
-    {
-      "tag": "forward0",
-      "port": $FWD0port,
-      "protocol": "vmess",
-      "settings":{
-        "clients":[]
-      },
-      "streamSettings": {
-        "network": "tcp"
-      }
-    }
-EOF
-`
-jq --argjson FWD0in "$FWD0in" '.inbounds[1]=$FWD0in' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+uuid_to_path() {
+    local u="$1"
+    local first="${u%%-*}"
+    printf '/%s' "$first"
+}
 
-for uuid in $FWD0uuid; do
-uuidStr='{"id":"'$uuid'","alterId":0}'
-jq --argjson uuidStr1 "$uuidStr" '.inbounds[1].settings.clients+=[$uuidStr1]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+# If FWD0path is not set, initialize it from the first UUID's prefix and persist
+if [[ -z "$FWD0path" ]]; then
+    first_uuid=$(echo "$FWD0uuid" | head -n1)
+    if [[ -n "$first_uuid" ]]; then
+        FWD0path=$(uuid_to_path "$first_uuid")
+        jq --arg path "$FWD0path" '.FORWARD.FWD0.path=$path' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    else
+        FWD0path="/fwd0"
+    fi
+fi
+[[ "${FWD0path:0:1}" != "/" ]] && FWD0path="/$FWD0path"
+
+# Build clients JSON array
+clients_json="[]"
+for u in $FWD0uuid; do
+    clients_json=$(jq --arg id "$u" '. += [{"id": $id}]' <<< "$clients_json")
 done
-chmod 644 /var/www/ssl/*.key
 
-[[ $1 = "r" ]] && systemctl restart vtrui >/dev/null
+FWD0in=$(cat << EOF
+{
+  "tag": "forward0",
+  "port": $FWD0port,
+  "protocol": "vless",
+  "settings": {
+    "clients": $clients_json,
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "certificates": [
+        {
+          "certificateFile": "/var/www/ssl/de_GWD.cer",
+          "keyFile": "/var/www/ssl/de_GWD.key"
+        }
+      ]
+    },
+    "xhttpSettings": {
+      "path": "$FWD0path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+)
+
+jq --argjson FWD0in "$FWD0in" '.inbounds[1]=$FWD0in' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+
+[[ "$1" = "r" ]] && systemctl restart vtrui >/dev/null 2>&1

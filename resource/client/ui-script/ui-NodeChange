@@ -4,10 +4,21 @@ tls=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $d
 uuid=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 path=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
-domain=$(echo -e $address | cut -d: -f1)
-port=$(echo -e $address | cut -d: -f2 | grep '^[[:digit:]]*$')
+domain=$(echo -e "$address" | cut -d: -f1)
+port=$(echo -e "$address" | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
-[[ -z $tls ]] && tls=$domain
+[[ -z $tls ]] && tls="$domain"
+
+uuid_to_path() {
+    local u="$1"
+    local first="${u%%-*}"
+    printf '/%s' "$first"
+}
+
+if [[ -z $path ]]; then
+    path=$(uuid_to_path "$uuid")
+fi
+[[ "${path:0:1}" != "/" ]] && path="/$path"
 
 jq '.update.v2node={}' /opt/de_GWD/0conf |\
 jq --arg domain "$domain" '.update.v2node.domain=$domain' |\
@@ -17,82 +28,55 @@ jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
 chmod 666 /opt/de_GWD/0conf
 
-if [[ -z $path ]]; then
-OBdefault=`cat << EOF
-    {
-      "tag": "default",
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
+build_vless_xhttp_outbound() {
+    local o_tag="$1"
+    local o_domain="$2"
+    local o_port="$3"
+    local o_uuid="$4"
+    local o_tls="$5"
+    local o_path="$6"
+    local o_mark="${7:-255}"
+
+    cat << EOF
+{
+  "tag": "$o_tag",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [
+      {
+        "address": "$o_domain",
+        "port": $o_port,
+        "users": [
           {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
+            "id": "$o_uuid",
+            "encryption": "none"
           }
         ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux":{"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"skip"}
+      }
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$o_tls",
+      "allowInsecure": false
+    },
+    "xhttpSettings": {
+      "path": "$o_path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "mark": $o_mark,
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
     }
+  }
+}
 EOF
-`
-else
-OBdefault=`cat << EOF
-    {
-      "tag": "default",
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      },
-      "mux":{"enabled":true,"concurrency":1,"xudpConcurrency":1,"xudpProxyUDP443":"skip"}
-    }
-EOF
-`
-fi
+}
+
+OBdefault=$(build_vless_xhttp_outbound "default" "$domain" "$port" "$uuid" "$tls" "$path" 255)
 
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 

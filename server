@@ -38,6 +38,7 @@ pkgDEP(){
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge subversion
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -61,7 +62,6 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^bc$') ]] && aptPKG+=(bc)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
@@ -302,7 +302,7 @@ topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n1)
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 }
 
@@ -439,32 +439,7 @@ dpkg --configure -a
 
 pkgDEP
 
-cat << EOF >/etc/default/rng-tools-debian
-# -*- mode: sh -*-
-#-
-# Configuration for the rng-tools-debian initscript
-
-# Set to the input source for random data, leave undefined
-# for the initscript to attempt auto-detection.  Set to /dev/null
-# for the viapadlock driver.
-#HRNGDEVICE=/dev/hwrng
-#HRNGDEVICE=/dev/null
-HRNGDEVICE=/dev/urandom
-
-# Additional options to send to rngd. See the rngd(8) manpage for
-# more information.  Do not specify -r/--rng-device here, use
-# HRNGDEVICE for that instead.
-#RNGDOPTIONS="--hrng=intelfwh --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viakernel --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viapadlock --fill-watermark=90% --feed-interval=1"
-# For TPM (also add tpm-rng to /etc/initramfs-tools/modules or /etc/modules):
-#RNGDOPTIONS="--fill-watermark=90% --feed-interval=1"
-
-# If you need to configure which RNG to use, do it here:
-#HRNGSELECT="virtio_rng.0"
-# Use this instead of sysfsutils, which starts too late.
-EOF
-systemctl restart rng-tools
+rm -f /etc/default/rng-tools-debian
 
 cat << EOF >/etc/chrony/chrony.conf
 server time.cloudflare.com iburst
@@ -1361,27 +1336,19 @@ location /dq {
 
 # V2_START
 location $path {
-  if (\$http_upgrade != "websocket") { return 404; }
   proxy_pass                  http://xray;
   proxy_http_version          1.1;
   proxy_set_header            Host \$host;
-  proxy_set_header            Upgrade "websocket";
-  proxy_set_header            Connection "upgrade";
   proxy_set_header            X-Real-IP \$remote_addr;
   proxy_set_header            X-Real-PORT \$remote_port;
   proxy_set_header            X-Forwarded-For \$proxy_add_x_forwarded_for;
-  proxy_connect_timeout       600;
-  proxy_read_timeout          600;
-  proxy_send_timeout          600;
-  chunked_transfer_encoding   off;
   proxy_redirect              off;
-  proxy_store                 off;
-  proxy_cache                 off;
   proxy_buffering             off;
-  proxy_buffer_size           4k;
-  proxy_busy_buffers_size     16k;
-  proxy_buffers               4 16k;
-  add_header Cache-Control no-cache;
+  proxy_request_buffering     off;
+  client_max_body_size        0;
+  proxy_connect_timeout       600s;
+  proxy_read_timeout          600s;
+  proxy_send_timeout          600s;
 }
 # V2_END
 
@@ -1393,6 +1360,9 @@ EOF
 
 
 XrayInbound(){
+[[ -z "$path" ]] && path="/${uuids%%-*}"
+[[ "${path:0:1}" != "/" ]] && path="/$path"
+
 cat << EOF >/opt/de_GWD/vtrui/config.json
 {
   "log": {
@@ -1413,15 +1383,17 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
     {
       "listen":"127.0.0.1",
       "port": 9890,
-      "protocol":"vmess",
+      "protocol":"vless",
       "settings":{
-        "clients":[]
+        "clients":[],
+        "decryption":"none"
       },
       "streamSettings":{
-        "network":"ws",
+        "network":"xhttp",
         "security":"none",
-        "wsSettings":{
-          "path":"$path"
+        "xhttpSettings":{
+          "path":"$path",
+          "mode":"packet-up"
         },
         "sockopt": {
           "tcpFastOpen": true,
@@ -1442,7 +1414,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 EOF
 
 for uuid in $uuids; do
-uuidStr='{"id": "'$uuid'", "alterId":0}'
+uuidStr='{"id": "'$uuid'"}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
 }
@@ -1643,7 +1615,7 @@ topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 if [[ $port = "443" ]]; then
 makeSSL_W
@@ -1676,11 +1648,14 @@ changeXrayVerify(){
     echo -e "${GREEN} New UUID${cRES}"
     echo -e "${GREEN}========== ${cRES}"
     read nuuid
+    [[ -z "$nuuid" ]] && nuuid=$(cat /proc/sys/kernel/random/uuid)
 
     echo -e "${GREEN}========== ${cRES}"
-    echo -e "${GREEN} New Path${cRES}"
+    echo -e "${GREEN} New Path [Default: /${nuuid%%-*}]${cRES}"
     echo -e "${GREEN}========== ${cRES}"
     read npath
+    [[ -z "$npath" ]] && npath="/${nuuid%%-*}"
+    [[ "${npath:0:1}" != "/" ]] && npath="/$npath"
 
 domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
@@ -2243,7 +2218,7 @@ showXHTTPNode() {
     echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
     echo -e "${BLUE}SNI:         ${YELLOW}$vpsdomain${cRES}"
     echo
-    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${path}&sni=${vpsdomain}#${vpsdomain}-XHTTP"
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${path}&mode=packet-up&sni=${vpsdomain}#${vpsdomain}-XHTTP"
     echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
     echo
     echo -e "${BLUE}QR Code: ${cRES}"
@@ -2620,7 +2595,7 @@ setupVlessXHTTP() {
     },
     "xhttpSettings": {
       "path": "$inputPath",
-      "mode": "auto"
+      "mode": "packet-up"
     },
     "sockopt": {
       "tcpFastOpen": true,
@@ -3155,7 +3130,7 @@ else
 vpsdomainP=$vpsdomain:$port
 fi
 
-path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 local haproxyRules=($(getHaproxyRules))
@@ -3178,7 +3153,7 @@ done
 fi
 
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
-echo -e "${GREEN}Default Node Information (VMess + WS + TLS)${cRES}"
+echo -e "${GREEN}Default Node Information (VLESS + XHTTP + TLS)${cRES}"
 echo
 echo -e "${BLUE}DoH:       ${YELLOW}$vpsdomainP/dq${cRES}"
 echo -e "${BLUE}Address:   ${YELLOW}$vpsdomainP${cRES}"
@@ -3187,9 +3162,10 @@ echo -e "${BLUE}Path:      ${YELLOW}$path${cRES}"
 echo
 echo -e "${BLUE}QR code: ${cRES}"
 subAddr=$(echo -n "$(jq -r '.inbounds[0].settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')@$vpsdomain:$port")
-subUrl="vmess://${subAddr}?encryption=auto&type=ws&security=tls&tlsAllowInsecure=false&path=${path}&host=${vpsdomain}&sni=${vpsdomain}&tfo=1#${vpsdomain}:${port}"
+subUrl="vless://${subAddr}?encryption=none&security=tls&sni=${vpsdomain}&type=xhttp&path=${path}&mode=packet-up#${vpsdomain}:${port}"
 qrencode -t UTF8 -s 1 -m 3 $subUrl
 echo
+echo -e "${BLUE}Link:        ${YELLOW}${subUrl}${cRES}"
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 
 # Print active extra protocols if any
@@ -3245,7 +3221,7 @@ if [[ $port != "443" ]]; then
 fi
 
 uuids=$(cat /proc/sys/kernel/random/uuid)
-path="/$(echo $uuids | awk '{print substr($0,length($1)-5)}')"
+path="/${uuids%%-*}"
 
 ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
 localAddrCIDR=$(ip -4 a | grep "$ethernetnum" | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}\b' | head -n 1)

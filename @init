@@ -242,6 +242,7 @@ apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclea
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -255,7 +256,6 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^unzip$') ]] && aptPKG+=(unzip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
@@ -264,32 +264,7 @@ unset aptPKG
 [[ -f "/etc/ld.so.preload" ]] && sed -i "/libjemalloc/d" /etc/ld.so.preload
 ldconfig
 
-cat << EOF >/etc/default/rng-tools-debian
-# -*- mode: sh -*-
-#-
-# Configuration for the rng-tools-debian initscript
-
-# Set to the input source for random data, leave undefined
-# for the initscript to attempt auto-detection.  Set to /dev/null
-# for the viapadlock driver.
-#HRNGDEVICE=/dev/hwrng
-#HRNGDEVICE=/dev/null
-HRNGDEVICE=/dev/urandom
-
-# Additional options to send to rngd. See the rngd(8) manpage for
-# more information.  Do not specify -r/--rng-device here, use
-# HRNGDEVICE for that instead.
-#RNGDOPTIONS="--hrng=intelfwh --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viakernel --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viapadlock --fill-watermark=90% --feed-interval=1"
-# For TPM (also add tpm-rng to /etc/initramfs-tools/modules or /etc/modules):
-#RNGDOPTIONS="--fill-watermark=90% --feed-interval=1"
-
-# If you need to configure which RNG to use, do it here:
-#HRNGSELECT="virtio_rng.0"
-# Use this instead of sysfsutils, which starts too late.
-EOF
-systemctl restart rng-tools
+rm -f /etc/default/rng-tools-debian
 
 cat << EOF >/etc/chrony/chrony.conf
 server time.cloud.tencent.com iburst

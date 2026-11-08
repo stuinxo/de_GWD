@@ -2,148 +2,167 @@
 FWD1port=$(jq -r '.FORWARD.FWD1.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD1uuid=$(jq -r '.FORWARD.FWD1.uuid[].FWD1uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD1upstream=$(jq -r '.FORWARD.FWD1.upstream' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1path=$(jq -r '.FORWARD.FWD1.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 rm -rf /opt/de_GWD/vtrui1
 mkdir -p /opt/de_GWD/vtrui1
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/vtrui1/vtrui1
 chmod +x /opt/de_GWD/vtrui1/vtrui1
 
-v2nodeID=$(jq -r --arg FWD1upstream $FWD1upstream '.v2node | to_entries[] | select(.value.domain == $FWD1upstream) | .key' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+uuid_to_path() {
+    local u="$1"
+    local first="${u%%-*}"
+    printf '/%s' "$first"
+}
+
+# If FWD1path is not set, initialize it from the first UUID's prefix and persist
+if [[ -z "$FWD1path" ]]; then
+    first_uuid=$(echo "$FWD1uuid" | head -n1)
+    if [[ -n "$first_uuid" ]]; then
+        FWD1path=$(uuid_to_path "$first_uuid")
+        jq --arg path "$FWD1path" '.FORWARD.FWD1.path=$path' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    else
+        FWD1path="/fwd1"
+    fi
+fi
+[[ "${FWD1path:0:1}" != "/" ]] && FWD1path="/$FWD1path"
+
+v2nodeID=$(jq -r --arg FWD1upstream "$FWD1upstream" '.v2node | to_entries[] | select(.value.domain == $FWD1upstream) | .key' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 address=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].domain" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-domain=$(echo $address | cut -d: -f1)
-port=$(echo $address | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
-[[ -z $tls ]] && tls=$domain
+domain=$(echo "$address" | cut -d: -f1)
+port=$(echo "$address" | cut -d: -f2 | grep '^[[:digit:]]*$')
+[[ -z "$port" ]] && port="443"
 
 tls=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].tls" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+[[ -z "$tls" ]] && tls="$domain"
 uuid=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].uuid" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-path=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].path" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+upstream_path=$(jq -r --arg v2nodeID "$v2nodeID" ".v2node[$v2nodeID].path" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+
+if [[ -z "$upstream_path" ]]; then
+    upstream_path=$(uuid_to_path "$uuid")
+fi
+[[ "${upstream_path:0:1}" != "/" ]] && upstream_path="/$upstream_path"
+
+# Build inbound clients JSON
+clients_json="[]"
+for u in $FWD1uuid; do
+    clients_json=$(jq --arg id "$u" '. += [{"id": $id}]' <<< "$clients_json")
+done
 
 cat << EOF >/opt/de_GWD/vtrui1/config.json
 {
   "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
+    "access": "none",
+    "error": "none",
+    "loglevel": "none"
   },
-  "dns":{
-    "tag":"dnsflow",
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
+  "dns": {
+    "tag": "dnsflow",
+    "queryStrategy": "UseIP",
+    "disableCache": true,
+    "servers": ["tcp+local://127.0.0.1:53"]
   },
-  "routing":{
-    "rules":[
-    ]
+  "routing": {
+    "rules": []
   },
-  "inbounds":[
+  "inbounds": [
     {
+      "tag": "forward1",
       "port": $FWD1port,
-      "protocol": "vmess",
-      "settings":{
-        "clients":[]
+      "protocol": "vless",
+      "settings": {
+        "clients": $clients_json,
+        "decryption": "none"
       },
       "streamSettings": {
-        "network": "tcp"
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "/var/www/ssl/de_GWD.cer",
+              "keyFile": "/var/www/ssl/de_GWD.key"
+            }
+          ]
+        },
+        "xhttpSettings": {
+          "path": "$FWD1path",
+          "mode": "packet-up"
+        },
+        "sockopt": {
+          "tcpFastOpen": true,
+          "tcpNoDelay": true
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
       }
     }
   ]
 }
 EOF
 
-if [[ -z $path ]]; then
-OBfwd=`cat << EOF
-    {
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
+OBfwd=$(cat << EOF
+{
+  "tag": "fwd1-outbound",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [
+      {
+        "address": "$domain",
+        "port": $port,
+        "users": [
           {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
+            "id": "$uuid",
+            "encryption": "none"
           }
         ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
       }
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$tls",
+      "allowInsecure": false
+    },
+    "xhttpSettings": {
+      "path": "$upstream_path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "mark": 255,
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
     }
-EOF
-`
-else
-OBfwd=`cat << EOF
-{
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      }
+  }
 }
 EOF
-`
-fi
+)
 
-OBdir=`cat << EOF
+OBdir=$(cat << EOF
 {
-      "tag":"direct",
-      "protocol":"freedom",
-      "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true}}
+  "tag": "direct",
+  "protocol": "freedom",
+  "streamSettings": {
+    "sockopt": {
+      "mark": 255,
+      "tcpFastOpen": true
+    }
+  }
 }
 EOF
-`
+)
 
-for uuid in $FWD1uuid; do
-uuidStr='{"id":"'$uuid'","alterId":0}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui1/config.json | sponge /opt/de_GWD/vtrui1/config.json
-done
 jq '.outbounds=[]' /opt/de_GWD/vtrui1/config.json |\
-jq --argjson OBfwd "$OBfwd" '.outbounds+=[$OBfwd]' |\
-jq --argjson OBdir "$OBdir" '.outbounds+=[$OBdir]' | sponge /opt/de_GWD/vtrui1/config.json
+jq --argjson OBfwd "$OBfwd" '.outbounds += [$OBfwd]' |\
+jq --argjson OBdir "$OBdir" '.outbounds += [$OBdir]' | sponge /opt/de_GWD/vtrui1/config.json
 
 chmod 666 /opt/de_GWD/vtrui1/config.json
-chmod 644 /var/www/ssl/*.key
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 
 rm -rf /lib/systemd/system/vtrui1.service
 cat << "EOF" >/etc/systemd/system/vtrui1.service
@@ -166,11 +185,12 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 EOF
+
 systemctl daemon-reload >/dev/null
 systemctl restart vtrui1
 if [[ $? -ne 0 ]]; then
-sed -i '/Nice=/d' /etc/systemd/system/vtrui1.service
-systemctl daemon-reload >/dev/null
-systemctl restart vtrui1
+    sed -i '/Nice=/d' /etc/systemd/system/vtrui1.service
+    systemctl daemon-reload >/dev/null
+    systemctl restart vtrui1
 fi
 systemctl enable vtrui1 >/dev/null 2>&1

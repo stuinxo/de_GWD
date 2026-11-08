@@ -101,6 +101,7 @@ fi
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -122,7 +123,6 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^bc$') ]] && aptPKG+=(bc)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
@@ -716,32 +716,7 @@ dpkg --configure -a
 
 pkgDEP1
 
-cat << EOF >/etc/default/rng-tools-debian
-# -*- mode: sh -*-
-#-
-# Configuration for the rng-tools-debian initscript
-
-# Set to the input source for random data, leave undefined
-# for the initscript to attempt auto-detection.  Set to /dev/null
-# for the viapadlock driver.
-#HRNGDEVICE=/dev/hwrng
-#HRNGDEVICE=/dev/null
-HRNGDEVICE=/dev/urandom
-
-# Additional options to send to rngd. See the rngd(8) manpage for
-# more information.  Do not specify -r/--rng-device here, use
-# HRNGDEVICE for that instead.
-#RNGDOPTIONS="--hrng=intelfwh --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viakernel --fill-watermark=90% --feed-interval=1"
-#RNGDOPTIONS="--hrng=viapadlock --fill-watermark=90% --feed-interval=1"
-# For TPM (also add tpm-rng to /etc/initramfs-tools/modules or /etc/modules):
-#RNGDOPTIONS="--fill-watermark=90% --feed-interval=1"
-
-# If you need to configure which RNG to use, do it here:
-#HRNGSELECT="virtio_rng.0"
-# Use this instead of sysfsutils, which starts too late.
-EOF
-systemctl restart rng-tools
+rm -f /etc/default/rng-tools-debian
 
 cat << EOF >/etc/chrony/chrony.conf
 server time.cloud.tencent.com iburst
@@ -1366,80 +1341,48 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 }
 EOF
 
-if [[ -z $path ]]; then
-OBdefault=`cat << EOF
-    {
-      "tag": "default",
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
-          {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
-          }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
-      }
-    }
-EOF
-`
-else
-OBdefault=`cat << EOF
+[[ -z $path ]] && path="/${uuid%%-*}"
+[[ "${path:0:1}" != "/" ]] && path="/$path"
+[[ -z $tls ]] && tls="$domain"
+
+OBdefault=$(cat << EOF
 {
-      "tag": "default",
-      "protocol": "vmess",
-      "settings": {
-        "vnext": [
+  "tag": "default",
+  "protocol": "vless",
+  "settings": {
+    "vnext": [
+      {
+        "address": "$domain",
+        "port": $port,
+        "users": [
           {
-            "address": "$domain",
-            "port": $port,
-            "users": [
-              {
-                "id": "$uuid",
-                "alterId": 0,
-                "security": "auto"
-              }
-            ]
+            "id": "$uuid",
+            "encryption": "none"
           }
         ]
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": {
-          "path": "$path",
-          "headers": {
-            "Host": "$tls"
-          }
-        },
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$tls",
-          "allowInsecure": false
-        },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
-        }
       }
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$tls",
+      "allowInsecure": false
+    },
+    "xhttpSettings": {
+      "path": "$path",
+      "mode": "packet-up"
+    },
+    "sockopt": {
+      "mark": 255,
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  }
 }
 EOF
-`
-fi
+)
 
 jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 
