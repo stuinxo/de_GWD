@@ -1,4 +1,17 @@
 #!/bin/bash
+if [[ $EUID -ne 0 ]]; then
+  if [[ -f "$0" ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      exec sudo bash "$0" "$@"
+    else
+      echo -e "\033[1;31mPlease run as root!\033[0m" >&2
+      exit 1
+    fi
+  else
+    echo -e "\033[1;31mPlease run as root or with sudo!\033[0m" >&2
+    exit 1
+  fi
+fi
 clear
 RED='\E[1;31m'
 GREEN='\E[1;32m'
@@ -1907,6 +1920,29 @@ echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 
 
 
+saveCommand(){
+mkdir -p /opt/de_GWD
+if [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/server" && "$0" != *"/bin/de_GWD" ]]; then
+  cp -f "$0" /opt/de_GWD/server
+else
+  wget --no-check-certificate -qO /tmp/server_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null || \
+  curl -fsSL -o /tmp/server_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null
+  if [[ -f /tmp/server_new && $(wc -l < /tmp/server_new) -gt 500 ]]; then
+    mv -f /tmp/server_new /opt/de_GWD/server
+  fi
+  rm -rf /tmp/server_new
+fi
+
+if [[ -f /opt/de_GWD/server ]]; then
+  chmod +x /opt/de_GWD/server
+  grep -q 'start_menu' /opt/de_GWD/server || echo 'start_menu' >> /opt/de_GWD/server
+  ln -sf /opt/de_GWD/server /usr/local/bin/de_GWD 2>/dev/null
+  ln -sf /opt/de_GWD/server /usr/bin/de_GWD 2>/dev/null
+fi
+}
+
+
+
 installGWD(){
     echo -e "${GREEN}================== ${cRES}"
     echo -e "${GREEN} Input VPS domain${cRES}"
@@ -1970,6 +2006,8 @@ enableAutoUpdate
 
 printNode
 
+saveCommand
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed${cRES}"
 }
 
@@ -1999,6 +2037,8 @@ XrayInbound
 XrayOutboundDirect
 
 postInstall
+
+saveCommand
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Updated${cRES}"
 
@@ -2095,6 +2135,7 @@ exit
 
 
 start_menu(){
+[[ ! -x /usr/local/bin/de_GWD ]] && saveCommand >/dev/null 2>&1
 echo
 if [[ -f "/var/www/ssl/de_GWD.cer" ]]; then
   sslExpireDate=$(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer | sed 's/notAfter=//')

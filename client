@@ -1,4 +1,17 @@
 #!/bin/bash
+if [[ $EUID -ne 0 ]]; then
+  if [[ -f "$0" ]]; then
+    if command -v sudo >/dev/null 2>&1; then
+      exec sudo bash "$0" "$@"
+    else
+      echo -e "\033[1;31mPlease run as root!\033[0m" >&2
+      exit 1
+    fi
+  else
+    echo -e "\033[1;31mPlease run as root or with sudo!\033[0m" >&2
+    exit 1
+  fi
+fi
 clear
 RED='\E[1;31m'
 GREEN='\E[1;32m'
@@ -2523,6 +2536,30 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 
 
 
+saveCommand(){
+mkdir -p /opt/de_GWD
+if [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/client" && "$0" != *"/bin/de_GWD" ]]; then
+  cp -f "$0" /opt/de_GWD/client
+else
+  gh_download /tmp/client_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client" 30 || \
+  wget --no-check-certificate -qO /tmp/client_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client" 2>/dev/null || \
+  curl -fsSL -o /tmp/client_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client" 2>/dev/null
+  if [[ -f /tmp/client_new && $(wc -l < /tmp/client_new) -gt 500 ]]; then
+    mv -f /tmp/client_new /opt/de_GWD/client
+  fi
+  rm -rf /tmp/client_new
+fi
+
+if [[ -f /opt/de_GWD/client ]]; then
+  chmod +x /opt/de_GWD/client
+  grep -q 'start_menu' /opt/de_GWD/client || echo 'start_menu' >> /opt/de_GWD/client
+  ln -sf /opt/de_GWD/client /usr/local/bin/de_GWD 2>/dev/null
+  ln -sf /opt/de_GWD/client /usr/bin/de_GWD 2>/dev/null
+fi
+}
+
+
+
 installGWD(){
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} de_GWD local IP address${cRES}"
@@ -2641,6 +2678,8 @@ piholeSet
 
 postInstall
 
+saveCommand
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed${cRES}"
 }
 
@@ -2658,6 +2697,8 @@ de_GWDconnect u a
 else
 de_GWDconnect u
 fi
+
+saveCommand
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Updated${cRES}"
 }
@@ -2692,6 +2733,8 @@ installPihole
 piholeSet
 
 postInstall
+
+saveCommand
 }
 
 updateGWD_Red(){
@@ -2728,6 +2771,8 @@ installPihole
 piholeSet
 
 postInstall
+
+saveCommand
 }
 
 
@@ -2812,6 +2857,7 @@ fi
 
 
 start_menu(){
+[[ ! -x /usr/local/bin/de_GWD ]] && saveCommand >/dev/null 2>&1
 serverStatus
 
  echo
