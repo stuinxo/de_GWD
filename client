@@ -2331,7 +2331,7 @@ mv -f /tmp/ui-web/* /var/www/html >/dev/null
 
 mkdir -p /var/www/html/restore
 chown -R www-data:www-data /var/www/html
-chmod -R +x /var/www/html
+chmod -R 755 /var/www/html
 chmod +x /opt/de_GWD/*
 
 if [[ $TTYD_UPDATE = "true" ]]; then
@@ -2675,7 +2675,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 installGWD(){
     backup_dns
     INSTALL_SUCCESS="false"
-    trap restore_dns_on_exit ERR INT TERM EXIT
+    trap restore_dns_on_exit INT TERM EXIT
 
     for arg in "$@"; do
         if [[ "$arg" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
@@ -2809,7 +2809,7 @@ jq --arg port "$port" '.update.v2node.port=$port' |\
 jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
 jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-[[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.DoG=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+[[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.dog=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 [[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1, $doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 chmod 666 /opt/de_GWD/0conf
 
@@ -2838,7 +2838,7 @@ piholeSet
 postInstall
 
 INSTALL_SUCCESS="true"
-trap - ERR INT TERM EXIT
+trap - INT TERM EXIT
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed${cRES}"
 }
 
@@ -2849,7 +2849,7 @@ updateGWD(){
 
 backup_dns
 INSTALL_SUCCESS="false"
-trap restore_dns_on_exit ERR INT TERM EXIT
+trap restore_dns_on_exit INT TERM EXIT
 
 cleanDep
 
@@ -2862,7 +2862,7 @@ de_GWDconnect u
 fi
 
 INSTALL_SUCCESS="true"
-trap - ERR INT TERM EXIT
+trap - INT TERM EXIT
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Updated${cRES}"
 }
 

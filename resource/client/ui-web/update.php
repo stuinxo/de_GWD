@@ -250,18 +250,18 @@ EOT;
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">本机地址</span>
         </div>
-          <input id="updateAddr" type="text" class="form-control" value="<?php echo $de_GWDconf->update->updateAddr ?>">
+          <input id="updateAddr" type="text" class="form-control" value="<?php echo isset($de_GWDconf->update->updateAddr) ? $de_GWDconf->update->updateAddr : ''; ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo $de_GWDconf->update->updatePort ?>">
+          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo isset($de_GWDconf->update->updatePort) ? $de_GWDconf->update->updatePort : ''; ?>">
       </div>
 
       <div class="input-group my-2 col-md-8">
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">CMD</span>
         </div>
-          <input id="updateCMD" type="text" class="form-control" value="<?php echo $de_GWDconf->update->updateCMD ?>">
+          <input id="updateCMD" type="text" class="form-control" value="<?php echo isset($de_GWDconf->update->updateCMD) ? $de_GWDconf->update->updateCMD : ''; ?>">
           <button id="buttonUpdateSave" type="button" class="btn btn-outline-danger btn-sm text-right ml-2" style="border-Radius: 0px;">
             <span id="buttonUpdateSaveLoading"></span>
             保存并更新

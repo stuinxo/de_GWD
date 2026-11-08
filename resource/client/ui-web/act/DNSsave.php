@@ -15,9 +15,12 @@ $hostsCustomize = preg_replace("/\s(?=\s)/", "\\1", $hostsCustomize);
 $hostsCustomize = str_replace(" ", ",", $hostsCustomize);
 $arr = explode("\n",$hostsCustomize);
 $arr = array_filter(array_map('trim', $arr));
+$hosts = array();
 foreach($arr as $k=>$v){
-        $arr = explode(',',$v);
-        $hosts[$arr[1]] = $arr[0];
+        $parts = explode(',',$v);
+        if (isset($parts[1])) {
+            $hosts[$parts[1]] = $parts[0];
+        }
 }
 
 $DOHarray = array();

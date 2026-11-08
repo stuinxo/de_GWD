@@ -33,6 +33,7 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $v2nodeCount = isset($de_GWDconf->v2node) && is_countable($de_GWDconf->v2node) ? count($de_GWDconf->v2node) : 0; ?>
 <?php $DoG = isset($de_GWDconf->dns->dog) ? $de_GWDconf->dns->dog : null; ?>
 
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
@@ -252,7 +253,7 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
       <div id="nodeSMyoutube" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMyoutube0' onclick="buttonNodeSMyoutube(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -273,7 +274,7 @@ EOT;
       <div id="nodeSMnetflix" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMnetflix0' onclick="buttonNodeSMnetflix(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -296,7 +297,7 @@ EOT;
       <div id="nodeSMhdh" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMhdh0' onclick="buttonNodeSMhdh(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -317,7 +318,7 @@ EOT;
       <div id="nodeSMtvb" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMtvb0' onclick="buttonNodeSMtvb(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -338,7 +339,7 @@ EOT;
       <div id="nodeSMbahamut" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMbahamut0' onclick="buttonNodeSMbahamut(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -359,7 +360,7 @@ EOT;
       <div id="nodeSMopenai" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMopenai0' onclick="buttonNodeSMopenai(this)"> 默认代理 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -380,7 +381,7 @@ EOT;
       <div id="nodeSMapple" class="dropdown-menu">
 <a class='dropdown-item' href='#' id='nodeSMapple0' onclick="buttonNodeSMapple(this)"> 直连 </a>
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
   $num = $i+1;
 print <<<EOT
@@ -617,7 +618,7 @@ EOT;
     <button id="nodeDTshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeDT" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
@@ -647,7 +648,7 @@ EOT;
     <button id="nodeCUshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeCU" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
@@ -685,7 +686,7 @@ EOT;
                 <tbody id="nodeTable">
 <?php
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<$v2nodeCount; $i++){
   $nodeNUM = $i+1;
   $domain = $de_GWDconf->v2node[$i]->domain;
   $name = $de_GWDconf->v2node[$i]->name;
@@ -734,7 +735,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 1</span>
                 </div>
-                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[0];?>">
+                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo isset($de_GWDconf->dns->doh[0]) ? $de_GWDconf->dns->doh[0] : '';?>">
                 <div class="input-group-append">
                   <span id="pingDOH1" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -744,7 +745,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 2</span>
                 </div>
-                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[1];?>">
+                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo isset($de_GWDconf->dns->doh[1]) ? $de_GWDconf->dns->doh[1] : '';?>">
                 <div class="input-group-append">
                   <span id="pingDOH2" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
