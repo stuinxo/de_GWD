@@ -184,6 +184,16 @@ if ! command -v docker >/dev/null 2>&1; then
         apt install -y docker.io containerd
     fi
 fi
+if command -v docker >/dev/null 2>&1; then
+    if [[ ! -f /etc/docker/daemon.json ]]; then
+        mkdir -p /etc/docker
+        cat << 'EOF' > /etc/docker/daemon.json
+{
+  "dns": ["223.5.5.5", "119.29.29.29", "8.8.8.8"]
+}
+EOF
+    fi
+fi
 }
 
 checkSum(){
@@ -2040,6 +2050,10 @@ rm -rf /var/log/php.log
 rm -rf /run/php/php-fpm.pid
 rm -rf /run/php/php7.4-fpm.pid
 rm -rf /lib/systemd/system/php7.4-fpm.service /etc/systemd/system/php7.4-fpm.service
+systemctl stop php${PHP_VER}-fpm 2>/dev/null
+systemctl disable php${PHP_VER}-fpm 2>/dev/null
+killall -9 php-fpm php-fpm${PHP_VER} php-fpm7.4 php-fpm8.2 2>/dev/null
+rm -f /run/php/*.sock
 
 PHP_FPM_BIN=$(which php-fpm${PHP_VER} 2>/dev/null || which php-fpm 2>/dev/null || echo "/usr/sbin/php-fpm${PHP_VER}")
 
@@ -2342,7 +2356,18 @@ cp -f /opt/de_GWD/.repo/version.php /var/www/html/act/version.php
 
 pullpihole(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Pi-hole${cRES}\r\c"
-docker pull pihole/pihole:latest
+if ! docker image inspect pihole/pihole:latest >/dev/null 2>&1; then
+    mkdir -p /etc/systemd/system/docker.service.d
+    cat << 'EOF' > /etc/systemd/system/docker.service.d/http-proxy.conf
+[Service]
+Environment=HTTP_PROXY=http://127.0.0.1:10809
+Environment=HTTPS_PROXY=http://127.0.0.1:10809
+Environment=NO_PROXY=localhost,127.0.0.1
+EOF
+    systemctl daemon-reload >/dev/null 2>&1
+    systemctl restart docker >/dev/null 2>&1
+    docker pull pihole/pihole:latest
+fi
 }
 
 
