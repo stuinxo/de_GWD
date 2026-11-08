@@ -110,14 +110,14 @@ debian_codename=$(get_debian_codename)
 mkdir -p /etc/apt/keyrings
 rm -rf /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/docker.asc /usr/share/keyrings/docker-archive-keyring.gpg
 if is_china_network; then
-    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+    curl -fsSL --connect-timeout 4 -m 8 https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL --connect-timeout 4 -m 8 https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
     if [[ -s /etc/apt/keyrings/docker.gpg ]]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
     else
         rm -f /etc/apt/keyrings/docker.gpg
     fi
 else
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+    curl -fsSL --connect-timeout 4 -m 8 https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL --connect-timeout 4 -m 8 https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
     if [[ -s /etc/apt/keyrings/docker.gpg ]]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
     else
@@ -134,7 +134,6 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^tmux$') ]] && aptPKG+=(tmux)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce docker-ce-cli containerd.io)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-fpm$') ]] && aptPKG+=(php-fpm)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-cgi$') ]] && aptPKG+=(php-cgi)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-sqlite3$') ]] && aptPKG+=(php-sqlite3)
@@ -143,6 +142,15 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 [[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+
+if ! command -v docker >/dev/null 2>&1; then
+    if [[ -s /etc/apt/sources.list.d/docker.list ]]; then
+        apt update && apt install -y docker-ce docker-ce-cli containerd.io
+    fi
+    if ! command -v docker >/dev/null 2>&1; then
+        apt install -y docker.io containerd
+    fi
+fi
 }
 
 checkSum(){
@@ -950,9 +958,9 @@ EOF
 sync
 sysctl -p >/dev/null 2>&1
 
-if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
+if command -v docker >/dev/null 2>&1; then
 mkdir -p /etc/docker/
-systemctl stop docker docker.socket containerd
+systemctl stop docker docker.socket containerd 2>/dev/null
 cat << EOF >/etc/docker/daemon.json
 {
   "iptables": false

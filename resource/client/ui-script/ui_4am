@@ -30,102 +30,58 @@ elif [[ $sha256sumL != $2 ]]; then
 fi
 }
 
-geosite_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum | awk '{print$1}')
-geoip_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum | awk '{print$1}')
-IPchnroute_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
-DomainsChn_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum)
-DomainsApple_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum)
-DomainsGames_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum)
-bogusNxdomain_sha256sum=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum)
+ui_dl() {
+    local url="$1"
+    local dest="$2"
+    wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghproxy.net/$url" 2>/dev/null || \
+    wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghp.ci/$url" 2>/dev/null || \
+    wget --no-check-certificate --timeout=10 --tries=1 --show-progress -cqO "$dest" "$url" 2>/dev/null
+}
 
-if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat $geosite_sha256sum) = "false" ]]; then
-rm -rf /tmp/geosite.dat
-wget --show-progress -cqO /tmp/geosite.dat https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat
-  if [[ $(checkSum /tmp/geosite.dat $geosite_sha256sum) = "true" ]]; then
-    mv -f /tmp/geosite.dat /opt/de_GWD/.repo/geosite.dat
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}geosite.dat${RED} Download Failed${cRES}"
-  fi
-fi
+get_sha256() {
+    local url="$1"
+    curl -fsSLo- --connect-timeout 4 -m 8 "https://ghproxy.net/$url" 2>/dev/null || \
+    curl -fsSLo- --connect-timeout 4 -m 8 "https://ghp.ci/$url" 2>/dev/null || \
+    curl -fsSLo- --connect-timeout 4 -m 8 "$url" 2>/dev/null
+}
 
-if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat $geoip_sha256sum) = "false" ]]; then
-rm -rf /tmp/geoip.dat
-wget --show-progress -cqO /tmp/geoip.dat https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat
-  if [[ $(checkSum /tmp/geoip.dat $geoip_sha256sum) = "true" ]]; then
-    mv -f /tmp/geoip.dat /opt/de_GWD/.repo/geoip.dat
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}geoip.dat${RED} Download Failed${cRES}"
-  fi
-fi
+update_rule_file() {
+    local file="$1"
+    local url="$2"
+    local sha_url="$3"
 
-if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $IPchnroute_sha256sum) = "false" ]]; then
-rm -rf /tmp/IPchnroute
-wget --show-progress -cqO /tmp/IPchnroute https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
-  if [[ $(checkSum /tmp/IPchnroute $IPchnroute_sha256sum) = "true" ]]; then
-    mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}IPchnroute${RED} Download Failed${cRES}"
-  fi
-fi
+    local remote_sha=$(get_sha256 "$sha_url" | awk '{print$1}')
+    local local_file="/opt/de_GWD/.repo/$file"
 
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt $DomainsChn_sha256sum) = "false" ]]; then
-rm -rf /tmp/Domains.chn.txt
-wget --show-progress -cqO /tmp/Domains.chn.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt
-  if [[ $(checkSum /tmp/Domains.chn.txt $DomainsChn_sha256sum) = "true" ]]; then
-    mv -f /tmp/Domains.chn.txt /opt/de_GWD/.repo/Domains.chn.txt
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.chn.txt${RED} Download Failed${cRES}"
-  fi
-fi
+    if [[ ! -s "$local_file" ]] || { [[ -n "$remote_sha" ]] && [[ $(checkSum "$local_file" "$remote_sha") = "false" ]]; }; then
+        rm -rf "/tmp/$file"
+        ui_dl "$url" "/tmp/$file"
+        if [[ -s "/tmp/$file" ]]; then
+            if [[ -z "$remote_sha" ]] || [[ $(checkSum "/tmp/$file" "$remote_sha") = "true" ]]; then
+                mv -f "/tmp/$file" "$local_file"
+            fi
+        fi
+    fi
+}
 
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt $DomainsApple_sha256sum) = "false" ]]; then
-rm -rf /tmp/Domains.apple.txt
-wget --show-progress -cqO /tmp/Domains.apple.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt
-  if [[ $(checkSum /tmp/Domains.apple.txt $DomainsApple_sha256sum) = "true" ]]; then
-    mv -f /tmp/Domains.apple.txt /opt/de_GWD/.repo/Domains.apple.txt
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.apple.txt${RED} Download Failed${cRES}"
-  fi
-fi
+update_rule_file "geosite.dat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum"
+update_rule_file "geoip.dat" "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat" "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum"
+update_rule_file "IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum"
+update_rule_file "Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum"
+update_rule_file "Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum"
+update_rule_file "Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum"
+update_rule_file "99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum"
 
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt $DomainsGames_sha256sum) = "false" ]]; then
-rm -rf /tmp/Domains.games.txt
-wget --show-progress -cqO /tmp/Domains.games.txt https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt
-  if [[ $(checkSum /tmp/Domains.games.txt $DomainsGames_sha256sum) = "true" ]]; then
-    mv -f /tmp/Domains.games.txt /opt/de_GWD/.repo/Domains.games.txt
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.games.txt${RED} Download Failed${cRES}"
-  fi
-fi
+mkdir -p /etc/dnsmasq.d
+[[ -s "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]] && cp -f "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" /etc/dnsmasq.d/
+[[ -s "/opt/de_GWD/.repo/geosite.dat" ]] && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/mosdns/geosite.dat
+[[ -s "/opt/de_GWD/.repo/geoip.dat" ]] && cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
 
-if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf $bogusNxdomain_sha256sum) = "false" ]]; then
-rm -rf /tmp/99-bogus-nxdomain.china.conf
-wget --show-progress -cqO /tmp/99-bogus-nxdomain.china.conf https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf
-  if [[ $(checkSum /tmp/99-bogus-nxdomain.china.conf $bogusNxdomain_sha256sum) = "true" ]]; then
-    mv -f /tmp/99-bogus-nxdomain.china.conf /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf
-  else
-    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}bogus-nxdomain.china.conf${RED} Download Failed${cRES}"
-  fi
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf $bogusNxdomain_sha256sum) = "true" ]]; then
-  cp -f /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf /etc/dnsmasq.d/
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat $geosite_sha256sum) = "true" ]]; then
-  cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat
-  cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/mosdns/geosite.dat
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat $geoip_sha256sum) = "true" ]]; then
-  cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $IPchnroute_sha256sum) = "true" ]]; then
+if [[ -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
 cp -f /opt/de_GWD/.repo/IPchnroute /opt/de_GWD/nftables/IP_CHNROUTE
 sed -i '/^\s*$/d' /opt/de_GWD/nftables/IP_CHNROUTE
 sed -i 's/$/,/g' /opt/de_GWD/nftables/IP_CHNROUTE
-nft flush set ip de_GWD CHNROUTE
+nft flush set ip de_GWD CHNROUTE 2>/dev/null
 cat << EOF >/opt/de_GWD/nftables/SET_CHNROUTE.nft
 #!/usr/sbin/nft -f
 table ip de_GWD {
@@ -138,7 +94,7 @@ table ip de_GWD {
 }
 EOF
 chmod +x /opt/de_GWD/nftables/SET_CHNROUTE.nft
-/opt/de_GWD/nftables/SET_CHNROUTE.nft
+/opt/de_GWD/nftables/SET_CHNROUTE.nft 2>/dev/null
 fi
 
 if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
