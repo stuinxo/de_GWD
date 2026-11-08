@@ -1078,6 +1078,9 @@ rm -rf "/root/.acme.sh"
 
 export CF_Key="$CFapikey"
 export CF_Email="$CFemail"
+cfZone=$(curl -sX GET "https://api.cloudflare.com/client/v4/zones?per_page=50" -H "X-Auth-Email: $CFemail" -H "X-Auth-Key: $CFapikey" -H "Content-Type: application/json" | jq --arg d "$domain" -r '.result[].name | select($d == . or ($d | endswith("." + .)))' 2>/dev/null | head -n1)
+[[ -n $cfZone ]] && topDomain=$cfZone
+[[ "$domain" == *.*."$topDomain" ]] && topDomain=$(echo $domain | cut -d. -f2-)
 
 if [[ $(systemctl is-active 'nginx') != "active" ]]; then
   systemctl restart nginx
@@ -1094,7 +1097,7 @@ rm -rf /var/www/ssl/*.cer
 rm -rf /var/www/ssl/*.key
 find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
 
-curl https://get.acme.sh | sh
+curl https://get.acme.sh | sh -s email=$CFemail
 "/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
 "/root/.acme.sh"/acme.sh --issue --dns dns_cf -d $topDomain -d *.$topDomain -k ec-256 --dnssleep 180
