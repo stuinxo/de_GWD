@@ -47,17 +47,16 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install FileRu
 
 filerunDep(){
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mysql$') ]] && aptPKG+=(php7.4-mysql)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mbstring$') ]] && aptPKG+=(php7.4-mbstring)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-curl$') ]] && aptPKG+=(php7.4-curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-zip$') ]] && aptPKG+=(php7.4-zip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-gd$') ]] && aptPKG+=(php7.4-gd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-ldap$') ]] && aptPKG+=(php7.4-ldap)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-opcache$') ]] && aptPKG+=(php7.4-opcache)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-imagick$') ]] && aptPKG+=(php7.4-imagick)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-memcached$') ]] && aptPKG+=(php7.4-memcached)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-mysql$') ]] && aptPKG+=(php-mysql)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-mbstring$') ]] && aptPKG+=(php-mbstring)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-curl$') ]] && aptPKG+=(php-curl)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-zip$') ]] && aptPKG+=(php-zip)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-gd$') ]] && aptPKG+=(php-gd)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-ldap$') ]] && aptPKG+=(php-ldap)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-xml$') ]] && aptPKG+=(php-xml)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-opcache$') ]] && aptPKG+=(php-opcache)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-imagick$') ]] && aptPKG+=(php-imagick)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-memcached$') ]] && aptPKG+=(php-memcached)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^imagemagick$') ]] && aptPKG+=(imagemagick)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^memcached$') ]] && aptPKG+=(memcached)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmemcached-tools$') ]] && aptPKG+=(libmemcached-tools)
@@ -87,10 +86,14 @@ if [[ -n $(unzip -tq /tmp/ioncube_loaders_lin.zip | grep "No errors detected in 
 rm -rf /usr/local/ioncube
 unzip /tmp/ioncube_loaders_lin.zip -d /usr/local >/dev/null 2>&1
 
-echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_7.4.so" >/etc/php/7.4/mods-available/ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/fpm/conf.d/00-ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/cli/conf.d/00-ioncube.ini
-systemctl restart php7.4-fpm
+PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "8.2")
+mkdir -p /etc/php/${PHP_VER}/mods-available /etc/php/${PHP_VER}/fpm/conf.d /etc/php/${PHP_VER}/cli/conf.d
+if [[ -f "/usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" ]]; then
+echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" >/etc/php/${PHP_VER}/mods-available/ioncube.ini
+ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/fpm/conf.d/00-ioncube.ini
+ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/cli/conf.d/00-ioncube.ini
+fi
+systemctl restart php-fpm 2>/dev/null || systemctl restart php*-fpm 2>/dev/null
 else
 echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}ioncube_loader${RED} Download Failed${cRES}" && exit
 fi
@@ -122,7 +125,7 @@ location ~ [^/]\.php(/|$) {
 
   include               fastcgi_params;
   fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
-  fastcgi_pass          unix:/run/php/php7.4-fpm.sock;
+  fastcgi_pass          unix:/run/php/php-fpm.sock;
   fastcgi_index         index.php;
 }
 }
@@ -138,8 +141,9 @@ rm -rf /var/www/html/filerun
 
 rm -rf /etc/nginx/conf.d/filerun.conf
 
-sed -i "/zend_extension/d" /etc/php/7.4/fpm/php.ini
-sed -i "/zend_extension/d" /etc/php/7.4/cli/php.ini
+PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || echo "8.2")
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
 rm -rf /usr/local/ioncube
 
 dpkg -r stl-thumb
@@ -150,7 +154,7 @@ apt remove --purge && apt clean && apt autoclean
 
 cat << "EOF" >/tmp/filerunRestart
 #!/bin/bash
-systemctl restart php7.4-fpm
+systemctl restart php-fpm 2>/dev/null || systemctl restart php*-fpm 2>/dev/null
 systemctl force-reload nginx
 rm -rf /tmp/filerunRestart
 EOF

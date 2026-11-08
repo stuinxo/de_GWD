@@ -15,9 +15,26 @@ export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
 branch="main"
 
+get_debian_codename() {
+    local codename=""
+    if [[ -f /etc/os-release ]]; then
+        codename=$(grep -oP '(?<=^VERSION_CODENAME=)[a-zA-Z0-9]+' /etc/os-release 2>/dev/null)
+        if [[ -z "$codename" ]]; then
+            codename=$(grep -oP '(?<=^VERSION=)[^"]*' /etc/os-release 2>/dev/null | grep -Po '(?<=\()[a-z]+(?=\))')
+        fi
+    fi
+    if [[ -z "$codename" ]] && command -v lsb_release >/dev/null 2>&1; then
+        codename=$(lsb_release -cs 2>/dev/null)
+    fi
+    if [[ -z "$codename" ]]; then
+        codename="bookworm"
+    fi
+    echo "$codename"
+}
+
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/client)
+bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/0xberx/de_GWD/main/client || wget --no-check-certificate -qO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/client)
 EOF
 `
 
@@ -35,13 +52,13 @@ Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
 echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
-apt update && apt install apparmor apparmor-utils google-perftools
+apt update && apt install -y apparmor apparmor-utils google-perftools
 fi
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -66,13 +83,17 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 }
 
 pkgDEP2(){
-curl -fsSL https://download.docker.com/linux/debian/gpg | install -m 0644 -D /dev/stdin /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
-
+debian_codename=$(get_debian_codename)
+mkdir -p /etc/apt/keyrings
+rm -rf /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/docker.asc /usr/share/keyrings/docker-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+fi
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^python3-toml$') ]] && aptPKG+=(python3-toml)
@@ -84,15 +105,14 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-fpm$') ]] && aptPKG+=(php7.4-fpm)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-cgi$') ]] && aptPKG+=(php7.4-cgi)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-sqlite3$') ]] && aptPKG+=(php7.4-sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-fpm$') ]] && aptPKG+=(php-fpm)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-cgi$') ]] && aptPKG+=(php-cgi)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-sqlite3$') ]] && aptPKG+=(php-sqlite3)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-xml$') ]] && aptPKG+=(php-xml)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^php-intl$') ]] && aptPKG+=(php-intl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 }
 
 checkSum(){
@@ -110,28 +130,35 @@ preDL(){
 mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 
-sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum)
-if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
-rm -rf /tmp/IPchnroute
-wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
-[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+if [[ -f "./resource/client/IPchnroute" ]]; then
+    cp -f ./resource/client/IPchnroute /opt/de_GWD/.repo/IPchnroute
+elif [[ -f "./IPchnroute" ]]; then
+    cp -f ./IPchnroute /opt/de_GWD/.repo/IPchnroute
+else
+    sha256sum_IPchnroute=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum 2>/dev/null || curl -fsSLo- https://ghp.ci/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum 2>/dev/null)
+    if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
+    rm -rf /tmp/IPchnroute
+    wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute 2>/dev/null || wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghp.ci/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
+    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
+    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+    fi
 fi
 
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
-    mv -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
+    cp -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
+elif [[ -f "/opt/de_GWD/.repo/de_GWD.zip" ]] && [[ -n $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip 2>/dev/null | grep "No errors detected in compressed data") ]]; then
+    :
 else
-    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip.sha256sum)
+    sha256sum_de_GWD=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/de_GWD_"$architecture".zip.sha256sum 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip.sha256sum 2>/dev/null || curl -fsSLo- https://ghp.ci/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip.sha256sum 2>/dev/null)
     if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
     rm -rf /tmp/de_GWD.zip
-    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://de-gwd.accxio.workers.dev/de_GWD_"$architecture".zip
+    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://raw.githubusercontent.com/0xberx/de_GWD/$branch/de_GWD_"$architecture".zip 2>/dev/null || wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip 2>/dev/null || wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghp.ci/https://raw.githubusercontent.com/jacyl4/de_GWD/main/de_GWD_"$architecture".zip
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
     [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
     fi
 fi
 
-[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip 2>/dev/null | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
 
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
@@ -149,44 +176,56 @@ chmod +x /opt/de_GWD/tcpTime
 
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repo Download${cRES}\r\c"
-sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum)
-sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum)
-sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip.sha256sum)
 
-if [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
-rm -rf /tmp/nginx
-wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginx_"$architecture"
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/nginx $sha256sum_nginx) = "true" ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+if [[ -f "./resource/nginx/nginx_$architecture" ]]; then
+    cp -f "./resource/nginx/nginx_$architecture" /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+fi
+if [[ -f "./resource/nginx/nginxConf.zip" ]]; then
+    cp -f "./resource/nginx/nginxConf.zip" /opt/de_GWD/.repo/nginxConf.zip
+fi
+if [[ -f "./resource/client/Archive.zip" ]]; then
+    cp -f "./resource/client/Archive.zip" /opt/de_GWD/.repo/client.zip
+fi
+if [[ -f "./version.php" ]]; then
+    cp -f "./version.php" /opt/de_GWD/.repo/version.php
 fi
 
-if [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
-rm -rf /tmp/nginxConf.zip
-wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/nginx/nginxConf.zip
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "true" ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
+if [[ ! -x "/usr/sbin/nginx" ]]; then
+    sha256sum_nginx=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/nginx/nginx_"$architecture".sha256sum 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/nginx/nginx_"$architecture".sha256sum 2>/dev/null)
+    rm -rf /tmp/nginx
+    wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/nginx/nginx_"$architecture" 2>/dev/null || wget --show-progress -cqO /tmp/nginx https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/nginx/nginx_"$architecture"
+    [[ -n $sha256sum_nginx && $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]] && echo -e "${WHITE}NGINX Core${RED} Download Failed${cRES}" && exit
+    [[ -f /tmp/nginx ]] && mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
+fi
+
+if [[ ! -f "/opt/de_GWD/.repo/nginxConf.zip" ]]; then
+    sha256sum_nginxConf=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/nginx/nginxConf.zip.sha256sum 2>/dev/null)
+    rm -rf /tmp/nginxConf.zip
+    wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/nginx/nginxConf.zip 2>/dev/null || wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/nginx/nginxConf.zip
+    [[ -n $sha256sum_nginxConf && $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]] && echo -e "${RED}Download Failed${cRES}" && exit
+    [[ -f /tmp/nginxConf.zip ]] && mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
-wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
+wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m) 2>/dev/null || wget --show-progress -cqO /tmp/ttyd https://ghp.ci/https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
 [[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
 [[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
 fi
 
-if [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
-rm -rf /tmp/client.zip
-wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip
-[[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
+if [[ ! -f "/opt/de_GWD/.repo/client.zip" ]]; then
+    sha256sum_client=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/client/Archive.zip.sha256sum 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/client/Archive.zip.sha256sum 2>/dev/null)
+    rm -rf /tmp/client.zip
+    wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/client/Archive.zip 2>/dev/null || wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/client/Archive.zip
+    [[ -n $sha256sum_client && $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
+    [[ -f /tmp/client.zip ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
+remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/version.php 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php 2>/dev/null | head -n 1)
 
-if [[ $localVer != $remoteVer ]] || [[ ! -f '/opt/de_GWD/.repo/version.php' ]]; then
-rm -rf /opt/de_GWD/.repo/version.php
-wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php
-[[ $? -ne 0 ]] && echo -e "${WHITE}Version file${RED} Download Failed${cRES}" && exit
+if [[ ! -f '/opt/de_GWD/.repo/version.php' ]] || [[ -n $remoteVer && $localVer != $remoteVer ]]; then
+    rm -rf /opt/de_GWD/.repo/version.php
+    wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/0xberx/de_GWD/$branch/version.php 2>/dev/null || wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php 2>/dev/null
 fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repo Download${cRES}"
@@ -297,12 +336,6 @@ if [[ -d "/opt/de_GWD/xDNSs" ]]; then
     jq 'del(.FORWARD.xDNSs)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 fi
 
-if [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php7.3-fpm" ]] || [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php8.0-fpm" ]]; then
-    rm -rf /etc/php/7.3/
-    apt remove --purge '^php7.3.*'
-    rm -rf /etc/php/8.0/
-    apt remove --purge '^php8.0.*'
-fi
 
 [[ -f "/etc/nginx/off" ]] && rm -rf /etc/nginx/off
 rm -rf /etc/dnsmasq.d/89-bogus-domains.china.conf
@@ -1751,17 +1784,24 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
-cat << EOF >/etc/apt/sources.list
-deb http://cloudfront.debian.net/debian bookworm main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian-security bookworm-security main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian bookworm-updates main contrib non-free non-free-firmware
-deb http://cloudfront.debian.net/debian bookworm-backports main contrib non-free non-free-firmware
-EOF
+debian_codename=$(get_debian_codename)
+rm -rf /etc/apt/sources.list.d/php.list
 
-echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
-apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+if [[ -n "$chnAPTsource" ]]; then
+cat << EOF >/etc/apt/sources.list
+deb http://$chnAPTsource/debian ${debian_codename} main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian ${debian_codename}-updates main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian ${debian_codename}-backports main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
+EOF
+else
+cat << EOF >/etc/apt/sources.list
+deb http://deb.debian.org/debian ${debian_codename} main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian ${debian_codename}-updates main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian ${debian_codename}-backports main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
+EOF
+fi
 
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
@@ -1786,16 +1826,26 @@ DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 rm -rf /var/log/journal/*
 systemctl restart systemd-journald >/dev/null 2>&1
 
+PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null)
+if [[ -z "$PHP_VER" ]]; then
+    PHP_VER=$(ls -d /etc/php/*.* 2>/dev/null | sort -V | tail -n1 | xargs -n1 basename 2>/dev/null)
+fi
+[[ -z "$PHP_VER" ]] && PHP_VER="8.2"
+
+mkdir -p /etc/php/${PHP_VER}/mods-available /etc/php/${PHP_VER}/cli/conf.d /etc/php/${PHP_VER}/fpm/conf.d /run/php
+
 if [[ -d "/usr/local/ioncube" ]]; then
-echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_7.4.so" >/etc/php/7.4/mods-available/ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/fpm/conf.d/00-ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/cli/conf.d/00-ioncube.ini
+    if [[ -f "/usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" ]]; then
+        echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" >/etc/php/${PHP_VER}/mods-available/ioncube.ini
+        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/fpm/conf.d/00-ioncube.ini
+        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/cli/conf.d/00-ioncube.ini
+    fi
 fi
 
-sed -i "/zend_extension/d" /etc/php/7.4/cli/php.ini
-sed -i "/zend_extension/d" /etc/php/7.4/fpm/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/cli/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/fpm/php.ini
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
 
 cat << EOF >/etc/php/00-init.ini
 expose_php              = Off
@@ -1840,13 +1890,14 @@ session.cookie_lifetime  = 0
 session.cookie_httponly  = 1
 session.cookie_secure    = 1
 EOF
-ln -sf /etc/php/00-init.ini /etc/php/7.4/cli/conf.d/00-init.ini
-ln -sf /etc/php/00-init.ini /etc/php/7.4/fpm/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/${PHP_VER}/cli/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/${PHP_VER}/fpm/conf.d/00-init.ini
 
-rm -rf /etc/php/7.4/fpm/pool.d
-cat << EOF >/etc/php/7.4/fpm/php-fpm.conf
+rm -rf /etc/php/${PHP_VER}/fpm/pool.d
+mkdir -p /etc/php/${PHP_VER}/fpm
+cat << EOF >/etc/php/${PHP_VER}/fpm/php-fpm.conf
 [global]
-pid = /run/php/php7.4-fpm.pid
+pid = /run/php/php-fpm.pid
 error_log = /var/log/php.log
 
 [www]
@@ -1855,7 +1906,7 @@ group = www-data
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
-listen = /run/php/php7.4-fpm.sock
+listen = /run/php/php-fpm.sock
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
 
@@ -1875,7 +1926,7 @@ env[TEMP] = /tmp
 env[TMPDIR] = /tmp
 EOF
 
-cat << EOF >/etc/php/7.4/mods-available/opcache.ini
+cat << EOF >/etc/php/${PHP_VER}/mods-available/opcache.ini
 ; configuration for php opcache module
 ; priority=10
 zend_extension=opcache.so
@@ -1893,18 +1944,22 @@ opcache.save_comments=1
 EOF
 
 rm -rf /var/log/php.log
-rm -rf /run/php7.4-fpm.pid
-rm -rf /lib/systemd/system/php7.4-fpm.service
-cat << EOF >/etc/systemd/system/php7.4-fpm.service
+rm -rf /run/php/php-fpm.pid
+rm -rf /run/php/php7.4-fpm.pid
+rm -rf /lib/systemd/system/php7.4-fpm.service /etc/systemd/system/php7.4-fpm.service
+
+PHP_FPM_BIN=$(which php-fpm${PHP_VER} 2>/dev/null || which php-fpm 2>/dev/null || echo "/usr/sbin/php-fpm${PHP_VER}")
+
+cat << EOF >/etc/systemd/system/php-fpm.service
 [Unit]
-Description=The PHP 7.4 FastCGI Process Manager
+Description=The PHP FastCGI Process Manager
 After=network.target
 
 [Service]
 Type=simple
-PIDFile=/run/php7.4-fpm.pid
+PIDFile=/run/php/php-fpm.pid
 ExecStartPre=/usr/bin/touch /var/log/php.log
-ExecStart=/usr/sbin/php-fpm7.4 --nodaemonize --fpm-config /etc/php/7.4/fpm/php-fpm.conf
+ExecStart=${PHP_FPM_BIN} --nodaemonize --fpm-config /etc/php/${PHP_VER}/fpm/php-fpm.conf
 ExecReload=$(which kill) -USR2 \$MAINPID
 Restart=always
 RestartSec=2
@@ -1913,9 +1968,13 @@ TimeoutStopSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+
 systemctl daemon-reload >/dev/null
-systemctl enable php7.4-fpm >/dev/null 2>&1
-systemctl restart php7.4-fpm
+systemctl enable php-fpm >/dev/null 2>&1
+systemctl restart php-fpm
+
+ln -sf /run/php/php-fpm.sock /run/php/php7.4-fpm.sock
+ln -sf /run/php/php-fpm.sock /run/php/php${PHP_VER}-fpm.sock
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Dependencies${cRES}"
 }
@@ -2103,7 +2162,7 @@ location ~ [^/]\.php(/|$) {
 
   include               fastcgi_params;
   fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
-  fastcgi_pass          unix:/run/php/php7.4-fpm.sock;
+  fastcgi_pass          unix:/run/php/php-fpm.sock;
   fastcgi_index         index.php;
 }
 # PHP_END
@@ -2410,7 +2469,13 @@ fi
 
 
 installkernel(){
-bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+if [[ -f "./resource/kernel/installkernel" ]]; then
+    bash ./resource/kernel/installkernel
+elif [[ -f "/opt/de_GWD/installkernel" ]]; then
+    bash /opt/de_GWD/installkernel
+else
+    bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/0xberx/de_GWD/$branch/resource/kernel/installkernel 2>/dev/null || wget --show-progress -cqO- https://raw.githubusercontent.com/jacyl4/de_GWD/main/resource/kernel/installkernel)
+fi
 }
 
 
@@ -2502,9 +2567,10 @@ installGWD(){
 
 ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
 netmask=$(ip route | grep "$ethernetnum" | awk 'NR==2{print$1}' | sed -r 's/([0-9]{1,3}\.){3}[0-9]{1,3}//g')
+[[ -z "$netmask" || "$netmask" != /* ]] && netmask="/24"
 localAddr=$(echo $localAddr | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
-localAddrCIDR=$(echo "$localAddr$netmask")
-localCIDR="$(echo $localAddr | cut -d . -f1-3).0$netmask"
+localAddrCIDR="${localAddr}${netmask}"
+localCIDR="$(echo $localAddr | cut -d . -f1-3).0${netmask}"
 
 if [[ $DoGorDOH =~ "/" ]]; then
 doh1=$DoGorDOH
@@ -2525,27 +2591,27 @@ nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
-if [[ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) = "stretch" ]]; then
-cat << EOF >/etc/apt/sources.list
-deb http://$chnAPTsource/debian buster main contrib non-free
-deb http://$chnAPTsource/debian buster-updates main contrib non-free
-deb http://$chnAPTsource/debian-security buster/updates main contrib non-free
-EOF
+debian_codename=$(get_debian_codename)
+rm -rf /etc/apt/sources.list.d/php.list
 
-sed -i "s/ stretch / buster /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+if [[ -n "$chnAPTsource" ]]; then
+cat << EOF >/etc/apt/sources.list
+deb http://$chnAPTsource/debian ${debian_codename} main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian ${debian_codename}-updates main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian ${debian_codename}-backports main contrib non-free non-free-firmware
+deb http://$chnAPTsource/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
+EOF
+else
+cat << EOF >/etc/apt/sources.list
+deb http://deb.debian.org/debian ${debian_codename} main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian ${debian_codename}-updates main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian ${debian_codename}-backports main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
+EOF
 fi
 
-cat << EOF >/etc/apt/sources.list
-deb http://$chnAPTsource/debian bookworm main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian bookworm-updates main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian bookworm-backports main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian-security bookworm-security main contrib non-free non-free-firmware
-EOF
-
-sed -i "s/ buster / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
-sed -i "s/ bullseye / bookworm /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
+sed -i "s/ buster / ${debian_codename} /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
+sed -i "s/ bullseye / ${debian_codename} /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
@@ -2741,12 +2807,12 @@ else
   echo -e "${WHITE} Nginx          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(systemctl is-active 'php7.4-fpm') = "active" ]]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [ ! -f "/etc/php/7.4/fpm/php-fpm.conf" ]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
+if [[ $(systemctl is-active 'php-fpm') = "active" ]] || systemctl is-active --quiet "php*-fpm" || [[ $(systemctl is-active 'php7.4-fpm') = "active" ]]; then
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
+elif [[ -z "$(which php 2>/dev/null)" ]]; then
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
 if [[ -n $(crontab -l 2>&1 | grep "autoUpdate") ]] && [[ -f "/opt/de_GWD/autoUpdate" ]]; then
@@ -2783,7 +2849,7 @@ serverStatus
 
  echo
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
- echo -e "${BLUE}Debian Version:                 $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) ${cRES}"
+ echo -e "${BLUE}Debian Version:                 $(get_debian_codename) ${cRES}"
  echo -e "${BLUE}Kernel:                         $(uname -r) ${cRES}"
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
 

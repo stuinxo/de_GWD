@@ -9,7 +9,7 @@ else
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
 localVer=$(awk 'NR==1' /var/www/html/act/version.php)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php | head -n 1)
+remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/0xberx/de_GWD/main/version.php 2>/dev/null || curl -fsSLo- https://raw.githubusercontent.com/jacyl4/de_GWD/main/version.php 2>/dev/null | head -n 1)
 
 echo $localVer >/tmp/de_GWD_Ver
 echo $remoteVer >>/tmp/de_GWD_Ver
@@ -17,10 +17,10 @@ echo $remoteVer >>/tmp/de_GWD_Ver
 VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
 
 if [[ $VerCP = $localVer ]]; then
-systemctl stop php7.4-fpm
+systemctl stop php-fpm 2>/dev/null || systemctl stop php*-fpm 2>/dev/null
 
 rm -rf /tmp/autoUpdate
-wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/jacyl4/de_GWD/main/client
+wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/0xberx/de_GWD/main/client || wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/jacyl4/de_GWD/main/client
 
 if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
 sed -i '$d' /tmp/autoUpdate
@@ -30,7 +30,7 @@ chmod +x /tmp/autoUpdate
 rm -rf /tmp/autoUpdate
 fi
 
-systemctl restart php7.4-fpm
+systemctl restart php-fpm 2>/dev/null || systemctl restart php*-fpm 2>/dev/null
 fi
 
 rm -rf /tmp/de_GWD_Ver

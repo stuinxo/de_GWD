@@ -9,6 +9,23 @@ WHITE='\E[1;37m'
 cRES='\E[0m'
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
+
+get_debian_codename() {
+    local codename=""
+    if [[ -f /etc/os-release ]]; then
+        codename=$(grep -oP '(?<=^VERSION_CODENAME=)[a-zA-Z0-9]+' /etc/os-release 2>/dev/null)
+        if [[ -z "$codename" ]]; then
+            codename=$(grep -oP '(?<=^VERSION=)[^"]*' /etc/os-release 2>/dev/null | grep -Po '(?<=\()[a-z]+(?=\))')
+        fi
+    fi
+    if [[ -z "$codename" ]] && command -v lsb_release >/dev/null 2>&1; then
+        codename=$(lsb_release -cs 2>/dev/null)
+    fi
+    if [[ -z "$codename" ]]; then
+        codename="bookworm"
+    fi
+    echo "$codename"
+}
 cat << EOF >/etc/apt/apt.conf.d/01InstallLess
 APT::Get::Assume-Yes "true";
 APT::Install-Recommends "false";
@@ -172,7 +189,7 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/zabbly-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable $(get_debian_codename) main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
 apt update && apt install linux-zabbly
 
@@ -297,7 +314,7 @@ if [[ $architecture != "amd64" ]]; then
 elif [[ $architecture == "amd64" ]]; then
 curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
 cat /tmp/liquorix.gpg.key | gpg --dearmor >/etc/apt/keyrings/liquorix.gpg
-echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/liquorix-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(get_debian_codename) main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
 apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 

@@ -76,7 +76,12 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/zabbly-kernel.list
+debian_codename="bookworm"
+if [[ -f /etc/os-release ]]; then
+    debian_codename=$(grep -oP '(?<=^VERSION_CODENAME=)[a-zA-Z0-9]+' /etc/os-release 2>/dev/null || grep -oP '(?<=^VERSION=)[^"]*' /etc/os-release 2>/dev/null | grep -Po '(?<=\()[a-z]+(?=\))')
+fi
+[[ -z "$debian_codename" ]] && debian_codename="bookworm"
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable ${debian_codename} main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
 apt update && apt install linux-zabbly
 

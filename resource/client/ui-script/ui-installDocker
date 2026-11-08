@@ -13,14 +13,21 @@ dockerComposeVer_reserved="1.29.2"
 
 
 installDocker(){
-curl -fsSLo- https://download.docker.com/linux/debian/gpg | gpg --dearmor >/usr/share/keyrings/docker-ce-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-ce-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
+debian_codename="bookworm"
+if [[ -f /etc/os-release ]]; then
+    debian_codename=$(grep -oP '(?<=^VERSION_CODENAME=)[a-zA-Z0-9]+' /etc/os-release 2>/dev/null || grep -oP '(?<=^VERSION=)[^"]*' /etc/os-release 2>/dev/null | grep -Po '(?<=\()[a-z]+(?=\))')
+fi
+[[ -z "$debian_codename" ]] && debian_codename="bookworm"
+
+mkdir -p /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce-cli$') ]] && aptPKG+=(docker-ce-cli)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]] && aptPKG+=(containerd.io)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 
 if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
 mkdir -p /etc/docker/
