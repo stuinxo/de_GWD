@@ -32,16 +32,28 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
 <?php $checkMariaDB = file_exists('/usr/bin/mariadb'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
 <?php $checkNFS = file_exists('/etc/auto.nfs'); ?>
 <?php $checkDocker = file_exists('/usr/bin/docker') ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php
+$FileRunPort = null;
+if (file_exists('/etc/nginx/conf.d/filerun.conf')) {
+    $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf');
+    preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $matches);
+    $FileRunPort = isset($matches[0][0]) ? $matches[0][0] : null;
+}
+$serverName = 'de_GWD';
+if (file_exists('/etc/nginx/conf.d/default.conf')) {
+    $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf');
+    preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $matches);
+    $serverName = isset($matches[0][0]) ? rtrim($matches[0][0], ";") : 'de_GWD';
+}
+?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -65,14 +77,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -255,7 +267,7 @@ EOT;
     <div class="form-row">
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
+          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === 'installed') echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="bitwardenBackup" type="button" class="btn btn-outline-secondary">
@@ -277,7 +289,7 @@ EOT;
 
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
+          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkJellyfin === 'installed') echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="JellyfinBackup" type="button" class="btn btn-outline-secondary">

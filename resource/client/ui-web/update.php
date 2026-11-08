@@ -32,14 +32,26 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php
+$FileRunPort = null;
+if (file_exists('/etc/nginx/conf.d/filerun.conf')) {
+    $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf');
+    preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $matches);
+    $FileRunPort = isset($matches[0][0]) ? $matches[0][0] : null;
+}
+$serverName = 'de_GWD';
+if (file_exists('/etc/nginx/conf.d/default.conf')) {
+    $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf');
+    preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $matches);
+    $serverName = isset($matches[0][0]) ? rtrim($matches[0][0], ";") : 'de_GWD';
+}
+?>
 
-<?php $checkAutoUpdateHour = $de_GWDconf->address->autoUpdateHour; ?>
+<?php $checkAutoUpdateHour = isset($de_GWDconf->address->autoUpdateHour) ? $de_GWDconf->address->autoUpdateHour : null; ?>
 <?php $checkAutoUpdateStatus = file_exists('/opt/de_GWD/autoUpdate'); ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
@@ -64,14 +76,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -213,7 +225,7 @@
                 </div>
               <div class="btn-group btn-group-sm">
                 <button id="autoUpdateHourShow" class="btn <?php if ($checkAutoUpdateStatus === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> mt-1 dropdown-toggle dropdown-toggle-split" type="button" data-toggle="dropdown" style="border-radius: 0px;">
-                  <?php if ($checkAutoUpdateHour === off || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
+                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
                 </button>
 <div class="dropdown-menu dropdown-menu-sm">
 <a class="dropdown-item text-center" href="#" onclick="autoUpdateHour(this)">关闭</a>

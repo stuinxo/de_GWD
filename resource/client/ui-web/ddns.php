@@ -34,12 +34,24 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php
+$FileRunPort = null;
+if (file_exists('/etc/nginx/conf.d/filerun.conf')) {
+    $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf');
+    preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $matches);
+    $FileRunPort = isset($matches[0][0]) ? $matches[0][0] : null;
+}
+$serverName = 'de_GWD';
+if (file_exists('/etc/nginx/conf.d/default.conf')) {
+    $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf');
+    preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $matches);
+    $serverName = isset($matches[0][0]) ? rtrim($matches[0][0], ";") : 'de_GWD';
+}
+?>
 
 <?php $checkWGinstall = exec('sudo dpkg -l | grep " wireguard-tools "')?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
@@ -65,14 +77,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -360,29 +372,29 @@ print <<<EOT
       <div class="input-group mb-2 col-md-6">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 90px;">节点$nodeNUM</span>
-          <button id="buttonWGgenCKey${i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
-          <input id="cprivatekey${i}" type="hidden" value="$cprivatekey">
-          <input id="cpublickey${i}" type="hidden" value="$cpublickey">
+          <button id="buttonWGgenCKey{$i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
+          <input id="cprivatekey{$i}" type="hidden" value="$cprivatekey">
+          <input id="cpublickey{$i}" type="hidden" value="$cpublickey">
           <span class="input-group-text">备注</span>
         </div>
-          <input id="WGmark${i}" type="text" class="form-control" value="$mark">
+          <input id="WGmark{$i}" type="text" class="form-control" value="$mark">
         <div class="input-group-prepend input-group-append">
-          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop${i}" onclick="WGqr(this)">显示二维码</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop{$i}" onclick="WGqr(this)">显示二维码</button>
         </div>
         <div class="input-group-append">
           <button type="button" class="btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="WGclear(this)">清空</button>
         </div>
       </div>
 
-<div id="wgqrpop${i}" class="modal fade" role="dialog" aria-hidden="true">
+<div id="wgqrpop{$i}" class="modal fade" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title mx-auto" >WireGuard客户端$nodeNUM</h5>
       </div>
       <div class="modal-body">
-        <div id="qrcode${i}" class="text-center"></div>
-        <textarea id="qrstr${i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
+        <div id="qrcode{$i}" class="text-center"></div>
+        <textarea id="qrstr{$i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
       </div>
     </div>
   </div>

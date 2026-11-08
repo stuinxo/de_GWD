@@ -1,14 +1,7 @@
 <?php
     session_start();
-    $PWDhash = json_decode(file_get_contents('/opt/de_GWD/0conf'))->address->PWD;
-    if(isset($PWDhash))
-    {
-        $GWDpwhash = $PWDhash;
-    }
-    else
-    {
-        $GWDpwhash = "";
-    }
+    $conf = json_decode(file_get_contents('/opt/de_GWD/0conf'));
+    $GWDpwhash = isset($conf->address->PWD) ? $conf->address->PWD : "";
 
 
     if(isset($_GET['logout']))

@@ -34,19 +34,19 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
 <?php $checkCer = file_exists('/var/www/ssl/de_GWD.cer'); ?>
 
 <?php $checkcoredns = exec('sudo systemctl is-active coredns'); ?>
-<?php $DoGsConf = strpos(file_get_contents('/opt/de_GWD/coredns/corefile'),'grpc://.:');?>
+<?php $DoGsConf = file_exists('/opt/de_GWD/coredns/corefile') ? strpos(file_get_contents('/opt/de_GWD/coredns/corefile'),'grpc://.:') : false; ?>
 
-<?php $checkBlock53 = $de_GWDconf->FORWARD->block53; ?>
+<?php $checkBlock53 = isset($de_GWDconf->FORWARD->block53) ? $de_GWDconf->FORWARD->block53 : null; ?>
 
 <?php $checkVtrui = exec('sudo systemctl is-active vtrui'); ?>
-<?php $vtruiConf = json_decode(file_get_contents('/opt/de_GWD/vtrui/config.json')); ?>
+<?php $vtruiConf = file_exists('/opt/de_GWD/vtrui/config.json') ? json_decode(file_get_contents('/opt/de_GWD/vtrui/config.json')) : null; ?>
 <?php $checkFWD0 = empty($vtruiConf->inbounds[1]); ?>
 
 <?php $checkVtrui1 = exec('sudo systemctl is-active vtrui1'); ?>
@@ -54,13 +54,25 @@
 <?php $checkFWD1 = file_exists('/opt/de_GWD/vtrui1/config.json'); ?>
 
 <?php $checkRproxyS = exec('sudo systemctl is-active RproxyS'); ?>
-<?php $RproxySconf = json_decode(file_get_contents('/opt/de_GWD/RproxyS/config.json')); ?>
+<?php $RproxySconf = file_exists('/opt/de_GWD/RproxyS/config.json') ? json_decode(file_get_contents('/opt/de_GWD/RproxyS/config.json')) : null; ?>
 
 <?php $checkRproxyC = exec('sudo systemctl is-active RproxyC'); ?>
-<?php $RproxyCconf = json_decode(file_get_contents('/opt/de_GWD/RproxyC/config.json')); ?>
+<?php $RproxyCconf = file_exists('/opt/de_GWD/RproxyC/config.json') ? json_decode(file_get_contents('/opt/de_GWD/RproxyC/config.json')) : null; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php
+$FileRunPort = null;
+if (file_exists('/etc/nginx/conf.d/filerun.conf')) {
+    $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf');
+    preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $matches);
+    $FileRunPort = isset($matches[0][0]) ? $matches[0][0] : null;
+}
+$serverName = 'de_GWD';
+if (file_exists('/etc/nginx/conf.d/default.conf')) {
+    $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf');
+    preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $matches);
+    $serverName = isset($matches[0][0]) ? rtrim($matches[0][0], ";") : 'de_GWD';
+}
+?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -84,14 +96,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -237,7 +249,7 @@
   <span id="buttonDoGsStopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonDoGsSave" type="button" class="btn <?php if ($DoGsConf !== false && $checkcoredns === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonDoGsSave" type="button" class="btn <?php if ($DoGsConf !== false && $checkcoredns === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonDoGsSaveLoading"></span>
   <span>应用</span>
 </button>
@@ -277,7 +289,7 @@
   <span id="buttonBlock53offLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonBlock53on" type="button" class="btn <?php if ($checkBlock53 === on) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonBlock53on" type="button" class="btn <?php if ($checkBlock53 === 'on') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonBlock53onLoading"></span>
   <span>不对外开放53端口</span>
 </button>
@@ -292,7 +304,7 @@
   <span id="buttonFWD0stopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonFWD0save" type="button" class="btn <?php if ($checkFWD0 === false && $checkVtrui === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonFWD0save" type="button" class="btn <?php if ($checkFWD0 === false && $checkVtrui === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonFWD0saveLoading"></span>
   <span>应用</span>
 </button>
@@ -380,7 +392,7 @@ EOT;
   <span id="buttonFWD1stopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonFWD1save" type="button" class="btn <?php if ($checkFWD1 === true && $checkVtrui1 === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonFWD1save" type="button" class="btn <?php if ($checkFWD1 === true && $checkVtrui1 === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonFWD1saveLoading"></span>
   <span>应用</span>
 </button>
@@ -481,7 +493,7 @@ EOT;
   <span id="buttonRproxySstopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonRproxySsave" type="button" class="btn <?php if (empty($RproxySconf) === false && $checkRproxyS === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonRproxySsave" type="button" class="btn <?php if (empty($RproxySconf) === false && $checkRproxyS === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonRproxySsaveLoading"></span>
   <span>应用</span>
 </button>
@@ -518,15 +530,15 @@ EOT;
             <div class="card mb-3 mt-2">
               <div class="card-header">
                 代理型
-<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if (isset($de_GWDconf->FORWARD->Rproxy->server->inStatus) && $de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'block'; else echo 'none';?>">
 <button id="buttonRproxyS0Add" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">添加 UUID</button>
 <button id="buttonRproxyS0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
 </span>
-<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'none'; else echo 'block';?>">
+<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if (isset($de_GWDconf->FORWARD->Rproxy->server->inStatus) && $de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'none'; else echo 'block';?>">
 <button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyS0Switch()">展开</button>
 </span>
               </div>
-              <div id="RproxyS0Body" class="card-body" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+              <div id="RproxyS0Body" class="card-body" style="display:<?php if (isset($de_GWDconf->FORWARD->Rproxy->server->inStatus) && $de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'block'; else echo 'none';?>">
                 <div class="form-row">
                   <div class="col-md-3">
                   <div class="input-group my-2">
@@ -635,7 +647,7 @@ EOT;
   <span id="buttonRproxyCstopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonRproxyCsave" type="button" class="btn <?php if (empty($RproxyCconf) === false && $checkRproxyC === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonRproxyCsave" type="button" class="btn <?php if (empty($RproxyCconf) === false && $checkRproxyC === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonRproxyCsaveLoading"></span>
   <span>应用</span>
 </button>
