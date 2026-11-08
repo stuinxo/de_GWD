@@ -1128,7 +1128,7 @@ sed -i '/Nice=/d' /etc/systemd/system/nginx.service
 fi
 systemctl daemon-reload >/dev/null
 
-[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -out /var/www/ssl/dhparam.pem 2048
+[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -dsaparam -out /var/www/ssl/dhparam.pem 2048
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NGINX${cRES}"
 }
@@ -1279,7 +1279,7 @@ cat << EOF >/etc/nginx/conf.d/.ssl_certs
 ssl_certificate /var/www/ssl/de_GWD.cer;
 ssl_certificate_key /var/www/ssl/de_GWD.key;
 ssl_dhparam /var/www/ssl/dhparam.pem;
-ssl_protocols TLSv1.3;
+ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers on;
 ssl_ecdh_curve X25519:secp384r1;
 ssl_conf_command Options KTLS;

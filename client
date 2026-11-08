@@ -1196,8 +1196,6 @@ systemctl daemon-reload >/dev/null
 mkdir -p /var/log/smartdns
 >/var/log/smartdns/smartdns.log
 cat << EOF >/opt/de_GWD/smartdns/smartdns.conf
-bind :53 -group DNS_global
-
 bind 127.0.0.1:5331 -no-speed-check -no-cache -group DNS_chn
 bind-tcp 127.0.0.1:5331 -no-speed-check -no-cache -group DNS_chn
 
@@ -1268,6 +1266,7 @@ echo -e "${BLUE}################################################################
 echo
 
 if [[ -n $doh1 ]]; then
+doh1=$(echo "$doh1" | sed -e 's|^https\?://||')
 echo -e "${WHITE}DNS over Https 1:\t${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh1Domain=$(echo $doh1 | cut -d/ -f1 | cut -d: -f1)
@@ -1295,6 +1294,7 @@ echo
 fi
 
 if [[ -n $doh2 ]]; then
+doh2=$(echo "$doh2" | sed -e 's|^https\?://||')
 echo -e "${WHITE}DNS over Https 2: ${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh2Domain=$(echo $doh2 | cut -d/ -f1 | cut -d: -f1)
@@ -2149,7 +2149,7 @@ printf "[Service]\nExecStartPost=/bin/sleep 0.1\n" >/etc/systemd/system/nginx.se
 systemctl daemon-reload >/dev/null
 systemctl enable nginx >/dev/null 2>&1
 
-[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -out /var/www/ssl/dhparam.pem 2048
+[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -dsaparam -out /var/www/ssl/dhparam.pem 2048
 }
 
 
@@ -2215,7 +2215,7 @@ cat << EOF >/etc/nginx/conf.d/.ssl_certs
 ssl_certificate /var/www/ssl/de_GWD.cer;
 ssl_certificate_key /var/www/ssl/de_GWD.key;
 ssl_dhparam /var/www/ssl/dhparam.pem;
-ssl_protocols TLSv1.3;
+ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers on;
 ssl_ecdh_curve X25519:secp384r1;
 ssl_conf_command Options KTLS;
@@ -2788,8 +2788,6 @@ installSmartDNS
 
 installXray
 
-installNftables
-
 echo "{}" >/opt/de_GWD/0conf
 jq '.address={}' /opt/de_GWD/0conf |\
 jq '.dns={}' |\
@@ -2834,6 +2832,14 @@ pullpihole
 installPihole
 
 piholeSet
+
+if [[ -z $(jq -r '.address.PWD' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+    default_pwd_hash=$(php -r "echo hash('sha256', hash('sha256', 'root'));" 2>/dev/null || echo "8737fe2e24535f5a4ffafdf7e7e4da78b4805aed77e8bb6ab36ea079bbfb8c1c")
+    jq --arg pwd "$default_pwd_hash" '.address.PWD=$pwd' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    chmod 666 /opt/de_GWD/0conf
+fi
+
+installNftables
 
 postInstall
 
@@ -2887,13 +2893,19 @@ installSmartDNS
 
 installXray
 
-installNftables
-
 pullpihole
 
 installPihole
 
 piholeSet
+
+if [[ -z $(jq -r '.address.PWD' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+    default_pwd_hash=$(php -r "echo hash('sha256', hash('sha256', 'root'));" 2>/dev/null || echo "8737fe2e24535f5a4ffafdf7e7e4da78b4805aed77e8bb6ab36ea079bbfb8c1c")
+    jq --arg pwd "$default_pwd_hash" '.address.PWD=$pwd' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    chmod 666 /opt/de_GWD/0conf
+fi
+
+installNftables
 
 postInstall
 }
@@ -2908,8 +2920,6 @@ preDL
 installSmartDNS
 
 installXray
-
-installNftables
 
 de_GWDconnect
 
@@ -2930,6 +2940,14 @@ pullpihole
 installPihole
 
 piholeSet
+
+if [[ -z $(jq -r '.address.PWD' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+    default_pwd_hash=$(php -r "echo hash('sha256', hash('sha256', 'root'));" 2>/dev/null || echo "8737fe2e24535f5a4ffafdf7e7e4da78b4805aed77e8bb6ab36ea079bbfb8c1c")
+    jq --arg pwd "$default_pwd_hash" '.address.PWD=$pwd' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    chmod 666 /opt/de_GWD/0conf
+fi
+
+installNftables
 
 postInstall
 }
