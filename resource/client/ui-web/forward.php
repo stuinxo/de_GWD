@@ -50,7 +50,8 @@
 <?php $checkFWD0 = empty($vtruiConf->inbounds[1]); ?>
 
 <?php $checkVtrui1 = exec('sudo systemctl is-active vtrui1'); ?>
-<?php $checkFWD1OB = explode("\n", shell_exec('sudo /opt/de_GWD/ui-checkFWD1')); ?>
+<?php $checkFWD1OB_raw = shell_exec('sudo /opt/de_GWD/ui-checkFWD1'); ?>
+<?php $checkFWD1OB = !empty($checkFWD1OB_raw) ? explode("\n", $checkFWD1OB_raw) : ['', '']; ?>
 <?php $checkFWD1 = file_exists('/opt/de_GWD/vtrui1/config.json'); ?>
 
 <?php $checkRproxyS = exec('sudo systemctl is-active RproxyS'); ?>
@@ -184,7 +185,7 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -217,21 +218,21 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">域名</span>
                 </div>
-                  <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>">
+                  <input id="CFdomain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : ''; ?>">
               </div>
 
               <div class="col-md-5 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF API KEY</span>
                 </div>
-                  <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->APIkey ?>">
+                  <input id="CFapikey" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->APIkey) ? $de_GWDconf->FORWARD->APIkey : ''; ?>">
               </div>
 
               <div class="col-md-4 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF E-mail</span>
                 </div>
-                  <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Email ?>">
+                  <input id="CFemail" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->Email) ? $de_GWDconf->FORWARD->Email : ''; ?>">
               </div>
             </div>
           </div>
@@ -266,14 +267,14 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->DoGs->port ?>">
+                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->DoGs->port) ? $de_GWDconf->FORWARD->DoGs->port : ''; ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->DoGs->port ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo (isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : '') . ':' . (isset($de_GWDconf->FORWARD->DoGs->port) ? $de_GWDconf->FORWARD->DoGs->port : ''); ?>" READONLY>
               </div>
             </div>
           </div>
@@ -322,7 +323,7 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD0port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD0->port ?>">
+                  <input id="FWD0port" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->FWD0->port) ? $de_GWDconf->FORWARD->FWD0->port : ''; ?>">
                 </div>
               </div>
 
@@ -331,13 +332,14 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->FWD0->port ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo (isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : '') . ':' . (isset($de_GWDconf->FORWARD->FWD0->port) ? $de_GWDconf->FORWARD->FWD0->port : ''); ?>" READONLY>
                 </div>
               </div>
 
               <div id="FWD0List" class="col-md-7">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->FWD0->uuid); $i++){
+$fwd0Count = isset($de_GWDconf->FORWARD->FWD0->uuid) && is_countable($de_GWDconf->FORWARD->FWD0->uuid) ? count($de_GWDconf->FORWARD->FWD0->uuid) : 0;
+for( $i=0; $i<$fwd0Count; $i++){
   $FWD0num = $i + 1;
   $FWD0uuid = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0uuid;
   $FWD0mark = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0mark;
@@ -410,7 +412,7 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD1port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD1->port ?>">
+                  <input id="FWD1port" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->FWD1->port) ? $de_GWDconf->FORWARD->FWD1->port : ''; ?>">
                 </div>
               </div>
 
@@ -419,15 +421,16 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->FWD1->port ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo (isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : '') . ':' . (isset($de_GWDconf->FORWARD->FWD1->port) ? $de_GWDconf->FORWARD->FWD1->port : ''); ?>" READONLY>
                 </div>
 
 <div class="btn-group">
   <label class="input-group-text">上级v2节点</label>
-  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $checkFWD1OB[1] ?>"><?php echo $checkFWD1OB[0] ?></button>
+  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo isset($checkFWD1OB[1]) ? $checkFWD1OB[1] : ''; ?>"><?php echo isset($checkFWD1OB[0]) ? $checkFWD1OB[0] : ''; ?></button>
   <div id="FWD1upstreamDrop" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+$v2nodeCount = isset($de_GWDconf->v2node) && is_countable($de_GWDconf->v2node) ? count($de_GWDconf->v2node) : 0;
+for( $i=0; $i<$v2nodeCount; $i++){
   $address = $de_GWDconf->v2node[$i]->domain;
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
@@ -441,7 +444,8 @@ EOT;
 
               <div id="FWD1List" class="col-md-7">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->FWD1->uuid); $i++){
+$fwd1Count = isset($de_GWDconf->FORWARD->FWD1->uuid) && is_countable($de_GWDconf->FORWARD->FWD1->uuid) ? count($de_GWDconf->FORWARD->FWD1->uuid) : 0;
+for( $i=0; $i<$fwd1Count; $i++){
   $FWD1num = $i + 1;
   $FWD1uuid = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1uuid;
   $FWD1mark = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1mark;
@@ -509,21 +513,21 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>">
+                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->port) ? $de_GWDconf->FORWARD->Rproxy->server->tunnel->port : ''; ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo (isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : '') . ':' . (isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->port) ? $de_GWDconf->FORWARD->Rproxy->server->tunnel->port : ''); ?>" READONLY>
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?>">
+                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid) ? $de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid : ''; ?>">
                 </div>
             </div>
 
@@ -545,13 +549,14 @@ EOT;
                     <div class="input-group-prepend">
                       <span class="input-group-text">连入地址</span>
                     </div>
-                    <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?>" READONLY>
+                    <input type="text" class="form-control" value="<?php echo (isset($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : '') . ':' . (isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->port) ? $de_GWDconf->FORWARD->Rproxy->server->tunnel->port : ''); ?>" READONLY>
                   </div>
                   </div>
 
                   <div id="RproxyS0List" class="col-md-9">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->inUUID); $i++){
+$rproxySInCount = isset($de_GWDconf->FORWARD->Rproxy->server->inUUID) && is_countable($de_GWDconf->FORWARD->Rproxy->server->inUUID) ? count($de_GWDconf->FORWARD->Rproxy->server->inUUID) : 0;
+for( $i=0; $i<$rproxySInCount; $i++){
   $RproxyS0num = $i + 1;
   $RproxyS0uuid = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0uuid;
   $RproxyS0mark = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0mark;
@@ -607,7 +612,8 @@ EOT;
               <div id="RproxyS1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxySconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyS1List" class="form-row">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->mapping); $i++){
+$rproxySMapCount = isset($de_GWDconf->FORWARD->Rproxy->server->mapping) && is_countable($de_GWDconf->FORWARD->Rproxy->server->mapping) ? count($de_GWDconf->FORWARD->Rproxy->server->mapping) : 0;
+for( $i=0; $i<$rproxySMapCount; $i++){
   $RproxyS1Port = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->port;
   $RproxyS1Protocol = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->protocol;
 print <<<EOT
@@ -663,14 +669,14 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?>">
+                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->Rproxy->client->tunnel->address) ? $de_GWDconf->FORWARD->Rproxy->client->tunnel->address : ''; ?>">
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?>">
+                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo isset($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid) ? $de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid : ''; ?>">
                 </div>
             </div>
 
@@ -710,7 +716,8 @@ EOT;
               <div id="RproxyC1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxyCconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyC1List" class="form-row">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->client->mapping); $i++){
+$rproxyCMapCount = isset($de_GWDconf->FORWARD->Rproxy->client->mapping) && is_countable($de_GWDconf->FORWARD->Rproxy->client->mapping) ? count($de_GWDconf->FORWARD->Rproxy->client->mapping) : 0;
+for( $i=0; $i<$rproxyCMapCount; $i++){
   $RproxyC1extPort = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extPort;
   $RproxyC1extProtocol = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extProtocol;
   $RproxyC1intIP = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intIP;

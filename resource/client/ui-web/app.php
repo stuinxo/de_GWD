@@ -165,7 +165,7 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -197,9 +197,9 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
 
           <div class="card-body" id="NFSbody" style="display:<?php if ($checkNFS === true) echo 'block'; else echo 'none';?>">
 <?php
-$arrayNFS=shell_exec("sudo nfsstat -m | sed '/Flags/d' | sed '/^\s*$/d'");
-$arrayNFS=explode("\n", $arrayNFS);
-$NFSnum=count($arrayNFS)-1;
+$rawNFS = shell_exec("sudo nfsstat -m | sed '/Flags/d' | sed '/^\s*$/d'");
+$arrayNFS = !empty($rawNFS) ? explode("\n", trim($rawNFS)) : [];
+$NFSnum = count($arrayNFS);
 for( $i=0; $i<$NFSnum; $i++){
   $NFSstr1 = explode(" ",$arrayNFS[$i]);
   $NFSstr2 = explode(":",$NFSstr1[2]);

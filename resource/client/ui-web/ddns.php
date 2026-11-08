@@ -164,7 +164,7 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -216,21 +216,21 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="f3322domain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->domain ?>">
+          <input id="f3322domain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->domain) ? $de_GWDconf->ddns->ddns3322->domain : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">用户名</span>
         </div>
-          <input id="f3322usr" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->user ?>">
+          <input id="f3322usr" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->user) ? $de_GWDconf->ddns->ddns3322->user : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">密码</span>
         </div>
-          <input id="f3322pwd" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->pwd ?>">
+          <input id="f3322pwd" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->pwd) ? $de_GWDconf->ddns->ddns3322->pwd : ''; ?>">
       </div>
     </div>
           </div>
@@ -264,21 +264,21 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfDomain ?>">
+          <input id="CFdomain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfDomain) ? $de_GWDconf->ddns->ddnsCF->cfDomain : ''; ?>">
       </div>
 
       <div class="col-md-5 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF API KEY</span>
         </div>
-          <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfAPIkey ?>">
+          <input id="CFapikey" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfAPIkey) ? $de_GWDconf->ddns->ddnsCF->cfAPIkey : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF E-mail</span>
         </div>
-          <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfEmail ?>">
+          <input id="CFemail" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfEmail) ? $de_GWDconf->ddns->ddnsCF->cfEmail : ''; ?>">
       </div>
     </div>
           </div>
@@ -314,10 +314,10 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
           </div>
           <div id="WGbody" class="card-body" style="display:none">
 <?php
-  $sprivatekey = $de_GWDconf->wireguard->server->sprivatekey;
-  $spublickey = $de_GWDconf->wireguard->server->spublickey;
-  $WGaddress = $de_GWDconf->wireguard->server->WGaddress;
-  $WGport = $de_GWDconf->wireguard->server->WGport;
+  $sprivatekey = isset($de_GWDconf->wireguard->server->sprivatekey) ? $de_GWDconf->wireguard->server->sprivatekey : '';
+  $spublickey = isset($de_GWDconf->wireguard->server->spublickey) ? $de_GWDconf->wireguard->server->spublickey : '';
+  $WGaddress = isset($de_GWDconf->wireguard->server->WGaddress) ? $de_GWDconf->wireguard->server->WGaddress : '';
+  $WGport = isset($de_GWDconf->wireguard->server->WGport) ? $de_GWDconf->wireguard->server->WGport : '';
 
   if ($sprivatekey == null || $sprivatekey == '')
   {
@@ -351,7 +351,8 @@ EOT;
 
 <div id="WGclients" class="form-row mb-1">
 <?php
-for( $i=0; $i<count($de_GWDconf->wireguard->clients); $i++){
+$wgClientsCount = isset($de_GWDconf->wireguard->clients) && is_countable($de_GWDconf->wireguard->clients) ? count($de_GWDconf->wireguard->clients) : 0;
+for( $i=0; $i<$wgClientsCount; $i++){
   $nodeNUM = $i+1;
   $cprivatekey = $de_GWDconf->wireguard->clients[$i]->cprivatekey;
   $cpublickey = $de_GWDconf->wireguard->clients[$i]->cpublickey;
