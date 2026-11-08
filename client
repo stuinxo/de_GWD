@@ -15,6 +15,39 @@ export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.3"
 branch="main"
 
+# DNS self-healing and failure recovery
+if [[ -f /etc/resolv.conf ]] && grep -q "^nameserver 127\." /etc/resolv.conf 2>/dev/null; then
+    if ! ss -H -lntu 2>/dev/null | grep -q ":53\b"; then
+        echo -e "${YELLOW}Notice: Local DNS (127.0.0.1:53) not active, auto-injecting public DNS for recovery...${cRES}"
+        echo -e "nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 1.1.1.1" >> /etc/resolv.conf
+    fi
+fi
+
+backup_dns() {
+    mkdir -p /opt/de_GWD/.backup 2>/dev/null
+    if [[ -f /etc/resolv.conf ]] && ! grep -q "^nameserver 127\." /etc/resolv.conf 2>/dev/null; then
+        cp -fp /etc/resolv.conf /opt/de_GWD/.backup/resolv.conf.original 2>/dev/null
+    fi
+}
+
+restore_dns_on_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 && "$INSTALL_SUCCESS" != "true" ]]; then
+        echo -e "\n${YELLOW}[!] Task interrupted or failed (code $exit_code), restoring DNS resolver...${cRES}"
+        if [[ -s /opt/de_GWD/.backup/resolv.conf.original ]]; then
+            cp -fp /opt/de_GWD/.backup/resolv.conf.original /etc/resolv.conf 2>/dev/null
+        else
+            cat << 'EOF' > /etc/resolv.conf
+nameserver 223.5.5.5
+nameserver 119.29.29.29
+nameserver 180.76.76.76
+nameserver 114.114.114.114
+EOF
+        fi
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}DNS ${GREEN}Restored${cRES}"
+    fi
+}
+
 get_debian_codename() {
     local codename=""
     if [[ -f /etc/os-release ]]; then
@@ -2597,6 +2630,10 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 
 
 installGWD(){
+    backup_dns
+    INSTALL_SUCCESS="false"
+    trap restore_dns_on_exit ERR INT TERM EXIT
+
     if [[ -n "$1" ]]; then
         localAddr="$1"
     else
@@ -2744,6 +2781,8 @@ piholeSet
 
 postInstall
 
+INSTALL_SUCCESS="true"
+trap - ERR INT TERM EXIT
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed${cRES}"
 }
 
@@ -2751,6 +2790,10 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN
 
 updateGWD(){
 [[ -f "/opt/de_GWD/version.php" ]] && echo -e "${RED}This is not client${cRES}" && exit
+
+backup_dns
+INSTALL_SUCCESS="false"
+trap restore_dns_on_exit ERR INT TERM EXIT
 
 cleanDep
 
@@ -2762,6 +2805,8 @@ else
 de_GWDconnect u
 fi
 
+INSTALL_SUCCESS="true"
+trap - ERR INT TERM EXIT
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Updated${cRES}"
 }
 
