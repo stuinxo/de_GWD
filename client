@@ -2357,13 +2357,7 @@ cp -f /opt/de_GWD/.repo/version.php /var/www/html/act/version.php
 pullpihole(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Pi-hole${cRES}\r\c"
 if ! docker image inspect pihole/pihole:latest >/dev/null 2>&1; then
-    mkdir -p /etc/systemd/system/docker.service.d
-    cat << 'EOF' > /etc/systemd/system/docker.service.d/http-proxy.conf
-[Service]
-Environment=HTTP_PROXY=http://127.0.0.1:10809
-Environment=HTTPS_PROXY=http://127.0.0.1:10809
-Environment=NO_PROXY=localhost,127.0.0.1
-EOF
+    rm -f /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null 2>&1
     systemctl daemon-reload >/dev/null 2>&1
     systemctl restart docker >/dev/null 2>&1
     docker pull pihole/pihole:latest
@@ -2404,6 +2398,11 @@ docker run -d \
 -v /opt/de_GWD/pihole:/etc/pihole \
 -v /etc/dnsmasq.d:/etc/dnsmasq.d \
 pihole/pihole:latest
+
+for i in {1..30}; do
+    [[ -s "/opt/de_GWD/pihole/pihole.toml" ]] && break
+    sleep 1
+done
 
 python3 <<EOF
 import toml
