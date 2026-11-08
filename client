@@ -247,7 +247,7 @@ if [[ ! -s "/opt/de_GWD/.repo/geosite.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/g
     [[ -s /tmp/geosite.dat ]] && mv -f /tmp/geosite.dat /opt/de_GWD/.repo/geosite.dat
 fi
 
-if [[ ! -s "/opt/de_GWD/.repo/geoip.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -lt 8000 ]]; then
+if [[ ! -s "/opt/de_GWD/.repo/geoip.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -lt 5000 ]]; then
     rm -rf /tmp/geoip.dat
     gh_dl "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat" /tmp/geoip.dat
     [[ -s /tmp/geoip.dat ]] && mv -f /tmp/geoip.dat /opt/de_GWD/.repo/geoip.dat
@@ -1398,6 +1398,17 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
       "protocol":"dokodemo-door",
       "settings":{"network":"tcp,udp","followRedirect":true},
       "streamSettings":{"sockopt":{"tproxy":"tproxy","mark":255,"tcpFastOpen":true,"tcpMptcp":true}}
+    },
+    {
+      "port":10809,
+      "listen":"127.0.0.1",
+      "protocol":"http"
+    },
+    {
+      "port":10808,
+      "listen":"127.0.0.1",
+      "protocol":"socks",
+      "settings":{"auth":"noauth","udp":true}
     }
   ],
   "outbounds":[
@@ -2357,10 +2368,18 @@ cp -f /opt/de_GWD/.repo/version.php /var/www/html/act/version.php
 pullpihole(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Pi-hole${cRES}\r\c"
 if ! docker image inspect pihole/pihole:latest >/dev/null 2>&1; then
-    rm -f /etc/systemd/system/docker.service.d/http-proxy.conf >/dev/null 2>&1
-    systemctl daemon-reload >/dev/null 2>&1
-    systemctl restart docker >/dev/null 2>&1
-    docker pull pihole/pihole:latest
+    docker pull pihole/pihole:latest || {
+        mkdir -p /etc/systemd/system/docker.service.d
+        cat << 'EOF' > /etc/systemd/system/docker.service.d/http-proxy.conf
+[Service]
+Environment="HTTP_PROXY=http://127.0.0.1:10809"
+Environment="HTTPS_PROXY=http://127.0.0.1:10809"
+Environment="NO_PROXY=localhost,127.0.0.1,10.0.0.0/8"
+EOF
+        systemctl daemon-reload >/dev/null 2>&1
+        systemctl restart docker >/dev/null 2>&1
+        docker pull pihole/pihole:latest
+    }
 fi
 }
 
@@ -2981,7 +3000,7 @@ else
   echo -e "${WHITE} GeoSite        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -ge 8000 ]]; then
+if [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -ge 5000 ]]; then
   echo -e "${WHITE} GeoIP          \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
 else
   echo -e "${WHITE} GeoIP          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
