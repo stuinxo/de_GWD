@@ -2114,6 +2114,1037 @@ fi
 
 
 
+checkPortAvailable() {
+    local targetPort="$1"
+    local currentPort="$2"
+    if [[ ! "$targetPort" =~ ^[0-9]+$ ]] || [ "$targetPort" -lt 1 ] || [ "$targetPort" -gt 65535 ]; then
+        echo "invalid"
+        return 1
+    fi
+    if [ "$targetPort" -eq 443 ]; then
+        echo "reserved_443"
+        return 1
+    fi
+    if [[ -n "$currentPort" && "$targetPort" -eq "$currentPort" ]]; then
+        echo "ok"
+        return 0
+    fi
+    if ss -tulpn 2>/dev/null | grep -qE "[: ]${targetPort}[ \t]"; then
+        echo "in_use"
+        return 1
+    fi
+    echo "ok"
+    return 0
+}
+
+getXrayInboundPort() {
+    local tag="$1"
+    jq -r --arg tag "$tag" '.inbounds[] | select(.tag == $tag) | .port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$' | head -n1
+}
+
+hasXrayInbound() {
+    local tag="$1"
+    jq -e --arg tag "$tag" '.inbounds[] | select(.tag == $tag)' /opt/de_GWD/vtrui/config.json >/dev/null 2>&1
+}
+
+removeXrayInbound() {
+    local tag="$1"
+    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
+    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+    if [[ "$tag" == "inbound-vless-reality" ]]; then
+        rm -f /opt/de_GWD/vtrui/reality.info
+    fi
+    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+        systemctl restart vtrui
+        rm -f /opt/de_GWD/vtrui/config.json.bak
+        return 0
+    else
+        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        systemctl restart vtrui
+        return 1
+    fi
+}
+
+applyXrayInbound() {
+    local newInboundJson="$1"
+    local tag="$2"
+    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
+    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json |\
+    jq --argjson n "$newInboundJson" '.inbounds += [$n]' | sponge /opt/de_GWD/vtrui/config.json
+
+    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/tmp/vtrui_test.log 2>&1; then
+        systemctl restart vtrui
+        rm -f /opt/de_GWD/vtrui/config.json.bak
+        return 0
+    else
+        echo -e "${RED}Xray configuration validation failed!${cRES}"
+        cat /tmp/vtrui_test.log
+        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        systemctl restart vtrui
+        return 1
+    fi
+}
+
+showRealityNode() {
+    if ! hasXrayInbound "inbound-vless-reality"; then
+        echo -e "${YELLOW}VLESS + TCP + Reality + Vision is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    [[ -z "$vpsdomain" ]] && vpsdomain=$(curl -4 -s --connect-timeout 3 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+    local p=$(getXrayInboundPort "inbound-vless-reality")
+    local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-reality") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local sni=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-reality") | .streamSettings.realitySettings.serverNames[0]' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local dest=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-reality") | .streamSettings.realitySettings.dest' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local sid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-reality") | .streamSettings.realitySettings.shortIds[0]' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local pbk=""
+    if [[ -f /opt/de_GWD/vtrui/reality.info ]]; then
+        pbk=$(awk -F'=' '/^PUBKEY=/ {print $2}' /opt/de_GWD/vtrui/reality.info)
+    fi
+    [[ -z "$pbk" ]] && pbk=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-reality") | .streamSettings.realitySettings.publicKey' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] VLESS + TCP + Reality + Vision${cRES}"
+    echo
+    echo -e "${BLUE}Address:     ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Flow:        ${YELLOW}xtls-rprx-vision${cRES}"
+    echo -e "${BLUE}SNI / Dest:  ${YELLOW}$sni${cRES} -> ${YELLOW}$dest${cRES}"
+    echo -e "${BLUE}PublicKey:   ${YELLOW}$pbk${cRES}"
+    echo -e "${BLUE}ShortId:     ${YELLOW}$sid${cRES}"
+    echo
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${sni}&fp=chrome&pbk=${pbk}&sid=${sid}&type=tcp#${vpsdomain}-Reality"
+    echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
+    echo
+    echo -e "${BLUE}QR Code: ${cRES}"
+    qrencode -t UTF8 -s 1 -m 3 "$link"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showXHTTPNode() {
+    if ! hasXrayInbound "inbound-vless-xhttp"; then
+        echo -e "${YELLOW}VLESS + XHTTP + TLS is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    local p=$(getXrayInboundPort "inbound-vless-xhttp")
+    local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-xhttp") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-xhttp") | .streamSettings.xhttpSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] VLESS + XHTTP + TLS${cRES}"
+    echo
+    echo -e "${BLUE}Address:     ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Network:     ${YELLOW}xhttp${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
+    echo -e "${BLUE}SNI:         ${YELLOW}$vpsdomain${cRES}"
+    echo
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${path}&sni=${vpsdomain}#${vpsdomain}-XHTTP"
+    echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
+    echo
+    echo -e "${BLUE}QR Code: ${cRES}"
+    qrencode -t UTF8 -s 1 -m 3 "$link"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showVlessWSNode() {
+    if ! hasXrayInbound "inbound-vless-ws"; then
+        echo -e "${YELLOW}VLESS + WS + TLS is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    local p=$(getXrayInboundPort "inbound-vless-ws")
+    local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-ws") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-ws") | .streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] VLESS + WS + TLS${cRES}"
+    echo
+    echo -e "${BLUE}Address:     ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
+    echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
+    echo
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=ws&path=${path}&host=${vpsdomain}&sni=${vpsdomain}#${vpsdomain}-VLESS-WS"
+    echo -e "${BLUE}Direct Link: ${YELLOW}${link}${cRES}"
+    echo
+    echo -e "${BLUE}QR Code: ${cRES}"
+    qrencode -t UTF8 -s 1 -m 3 "$link"
+    echo
+    echo -e "${CYAN}Tip: If reverse-proxying via 443 with a custom domain, proxy ${YELLOW}$path${CYAN} to ${YELLOW}http://127.0.0.1:$p${cRES}"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showVMessWSNode() {
+    if ! hasXrayInbound "inbound-vmess-ws"; then
+        echo -e "${YELLOW}VMess + WS + TLS is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    local p=$(getXrayInboundPort "inbound-vmess-ws")
+    local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vmess-ws") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vmess-ws") | .streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] VMess + WS + TLS${cRES}"
+    echo
+    echo -e "${BLUE}Address:     ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
+    echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
+    echo
+    local vmessJson="{\"v\":\"2\",\"ps\":\"${vpsdomain}-VMess-WS\",\"add\":\"${vpsdomain}\",\"port\":\"${p}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${vpsdomain}\",\"path\":\"${path}\",\"tls\":\"tls\",\"sni\":\"${vpsdomain}\"}"
+    local b64=$(echo -n "$vmessJson" | base64 -w 0 2>/dev/null || echo -n "$vmessJson" | base64 | tr -d '\r\n')
+    local link="vmess://${b64}"
+    echo -e "${BLUE}Direct Link: ${YELLOW}${link}${cRES}"
+    echo
+    echo -e "${BLUE}QR Code: ${cRES}"
+    qrencode -t UTF8 -s 1 -m 3 "$link"
+    echo
+    echo -e "${CYAN}Tip: If reverse-proxying via 443 with a custom domain, proxy ${YELLOW}$path${CYAN} to ${YELLOW}http://127.0.0.1:$p${cRES}"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showSocks5Node() {
+    if ! hasXrayInbound "inbound-socks5"; then
+        echo -e "${YELLOW}SOCKS5 is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    [[ -z "$vpsdomain" ]] && vpsdomain=$(curl -4 -s --connect-timeout 3 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+    local p=$(getXrayInboundPort "inbound-socks5")
+    local auth=$(jq -r '.inbounds[] | select(.tag=="inbound-socks5") | .settings.auth' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local user=$(jq -r '.inbounds[] | select(.tag=="inbound-socks5") | .settings.accounts[0].user' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+    local pass=$(jq -r '.inbounds[] | select(.tag=="inbound-socks5") | .settings.accounts[0].pass' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] SOCKS5 Inbound${cRES}"
+    echo
+    echo -e "${BLUE}Address:     ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "${BLUE}Auth Type:   ${YELLOW}$auth${cRES}"
+    local link=""
+    if [[ "$auth" == "password" && -n "$user" ]]; then
+        echo -e "${BLUE}Username:    ${YELLOW}$user${cRES}"
+        echo -e "${BLUE}Password:    ${YELLOW}$pass${cRES}"
+        link="socks://${user}:${pass}@${vpsdomain}:${p}#${vpsdomain}-SOCKS5"
+    else
+        link="socks://${vpsdomain}:${p}#${vpsdomain}-SOCKS5"
+    fi
+    echo
+    echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showDokodemoNode() {
+    if ! hasXrayInbound "inbound-dokodemo"; then
+        echo -e "${YELLOW}Dokodemo-door is not enabled.${cRES}"
+        return 1
+    fi
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    [[ -z "$vpsdomain" ]] && vpsdomain=$(curl -4 -s --connect-timeout 3 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+    local p=$(getXrayInboundPort "inbound-dokodemo")
+    local tgtAddr=$(jq -r '.inbounds[] | select(.tag=="inbound-dokodemo") | .settings.address' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+    local tgtPort=$(jq -r '.inbounds[] | select(.tag=="inbound-dokodemo") | .settings.port' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    echo -e "${GREEN}[Protocol] Dokodemo-door (Port Forward)${cRES}"
+    echo
+    echo -e "${BLUE}Listening Port: ${YELLOW}$vpsdomain:$p (TCP & UDP)${cRES}"
+    echo -e "${BLUE}Target:         ${YELLOW}$tgtAddr:$tgtPort${cRES}"
+    echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+    if [[ "$1" == "wait" ]]; then
+        read -p "Press Enter to return..."
+    fi
+}
+
+showAllExtraNodes() {
+    local hasAny=0
+    if hasXrayInbound "inbound-vless-reality"; then
+        showRealityNode
+        hasAny=1
+    fi
+    if hasXrayInbound "inbound-vless-xhttp"; then
+        showXHTTPNode
+        hasAny=1
+    fi
+    if hasXrayInbound "inbound-vless-ws"; then
+        showVlessWSNode
+        hasAny=1
+    fi
+    if hasXrayInbound "inbound-vmess-ws"; then
+        showVMessWSNode
+        hasAny=1
+    fi
+    if hasXrayInbound "inbound-socks5"; then
+        showSocks5Node
+        hasAny=1
+    fi
+    if hasXrayInbound "inbound-dokodemo"; then
+        showDokodemoNode
+        hasAny=1
+    fi
+
+    if [[ $hasAny -eq 0 && "$1" == "wait" ]]; then
+        echo -e "${YELLOW}No extra protocols enabled.${cRES}"
+    fi
+
+    if [[ "$1" == "wait" ]]; then
+        echo
+        read -p "Press Enter to return..."
+    fi
+}
+
+setupReality() {
+    local curPort=$(getXrayInboundPort "inbound-vless-reality")
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    [[ -z "$vpsdomain" ]] && vpsdomain=$(curl -4 -s --connect-timeout 3 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+    local nginxPort=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$' | head -n1)
+    [[ -z "$nginxPort" ]] && nginxPort="443"
+
+    clear
+    echo -e "${GREEN}============ Configure VLESS + TCP + Reality + Vision ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View Node Link & QR Code"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable This Protocol"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showRealityNode "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-vless-reality"
+                echo -e "${GREEN}VLESS Reality disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="2096"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Listening Port [Default: $recPort] (Note: 443 is reserved for reverse proxy): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy/web services! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number. Must be 1-65535.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use by another process. Please choose another port.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    echo
+    read -p "Enter SNI camouflage domain [Default: $vpsdomain]: " inputSni
+    [[ -z "$inputSni" ]] && inputSni="$vpsdomain"
+
+    local recDest="127.0.0.1:$nginxPort"
+    if ss -tulpn 2>/dev/null | grep -qE "[: ]443[ \t]"; then
+        recDest="127.0.0.1:443"
+    fi
+    echo
+    read -p "Enter Fallback dest [Default: $recDest]: " inputDest
+    [[ -z "$inputDest" ]] && inputDest="$recDest"
+
+    local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+    local keys=$(/opt/de_GWD/vtrui/vtrui x25519)
+    local priKey=$(echo "$keys" | awk -F': ' '/PrivateKey/ {print $2}' | tr -d '\r\n ')
+    local pubKey=$(echo "$keys" | awk -F': ' '/PublicKey/ {print $2}' | tr -d '\r\n ')
+    local shortId=$(openssl rand -hex 8)
+
+    local inboundJson=$(cat << EOF
+{
+  "tag": "inbound-vless-reality",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "vless",
+  "settings": {
+    "clients": [
+      {
+        "id": "$uuid",
+        "flow": "xtls-rprx-vision"
+      }
+    ],
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "tcp",
+    "security": "reality",
+    "realitySettings": {
+      "show": false,
+      "dest": "$inputDest",
+      "xver": 0,
+      "serverNames": ["$inputSni"],
+      "privateKey": "$priKey",
+      "shortIds": ["$shortId"],
+      "publicKey": "$pubKey"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+)
+
+    if applyXrayInbound "$inboundJson" "inbound-vless-reality"; then
+        cat << EOF > /opt/de_GWD/vtrui/reality.info
+PORT=$port
+UUID=$uuid
+SNI=$inputSni
+DEST=$inputDest
+PUBKEY=$pubKey
+PRIKEY=$priKey
+SHORTID=$shortId
+EOF
+        echo -e "${GREEN}VLESS + TCP + Reality + Vision successfully configured!${cRES}"
+        echo
+        showRealityNode "wait"
+    fi
+}
+
+setupVlessXHTTP() {
+    if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
+        echo -e "${RED}Certificate files (/var/www/ssl/de_GWD.cer) not found! Run Option 1 or 3 first.${cRES}"
+        read -p "Press Enter to return..."
+        return 1
+    fi
+    local curPort=$(getXrayInboundPort "inbound-vless-xhttp")
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+
+    clear
+    echo -e "${GREEN}============ Configure VLESS + XHTTP + TLS ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View Node Link & QR Code"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable This Protocol"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showXHTTPNode "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-vless-xhttp"
+                echo -e "${GREEN}VLESS XHTTP disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="2083"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Listening Port [Default: $recPort] (443 is reserved): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy/web services! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    echo
+    read -p "Enter XHTTP Path [Default: /xhttp]: " inputPath
+    [[ -z "$inputPath" ]] && inputPath="/xhttp"
+    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
+
+    local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+
+    local inboundJson=$(cat << EOF
+{
+  "tag": "inbound-vless-xhttp",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "vless",
+  "settings": {
+    "clients": [
+      {
+        "id": "$uuid"
+      }
+    ],
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "certificates": [
+        {
+          "certificateFile": "/var/www/ssl/de_GWD.cer",
+          "keyFile": "/var/www/ssl/de_GWD.key"
+        }
+      ]
+    },
+    "xhttpSettings": {
+      "path": "$inputPath",
+      "mode": "auto"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+)
+
+    if applyXrayInbound "$inboundJson" "inbound-vless-xhttp"; then
+        echo -e "${GREEN}VLESS + XHTTP + TLS successfully configured!${cRES}"
+        echo
+        showXHTTPNode "wait"
+    fi
+}
+
+setupVlessWS() {
+    if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
+        echo -e "${RED}Certificate files (/var/www/ssl/de_GWD.cer) not found! Run Option 1 or 3 first.${cRES}"
+        read -p "Press Enter to return..."
+        return 1
+    fi
+    local curPort=$(getXrayInboundPort "inbound-vless-ws")
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    local nginxPort=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$' | head -n1)
+
+    clear
+    echo -e "${GREEN}============ Configure VLESS + WS + TLS ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View Node Link & QR Code"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable This Protocol"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showVlessWSNode "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-vless-ws"
+                echo -e "${GREEN}VLESS WS disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="2053"
+    [[ "$recPort" == "$nginxPort" ]] && recPort="8443"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Listening Port [Default: $recPort] (443 is reserved): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy/web services! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    echo
+    read -p "Enter WebSocket Path [Default: /vlessws]: " inputPath
+    [[ -z "$inputPath" ]] && inputPath="/vlessws"
+    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
+
+    local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+
+    local inboundJson=$(cat << EOF
+{
+  "tag": "inbound-vless-ws",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "vless",
+  "settings": {
+    "clients": [
+      {
+        "id": "$uuid"
+      }
+    ],
+    "decryption": "none"
+  },
+  "streamSettings": {
+    "network": "ws",
+    "security": "tls",
+    "tlsSettings": {
+      "certificates": [
+        {
+          "certificateFile": "/var/www/ssl/de_GWD.cer",
+          "keyFile": "/var/www/ssl/de_GWD.key"
+        }
+      ]
+    },
+    "wsSettings": {
+      "path": "$inputPath"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+)
+
+    if applyXrayInbound "$inboundJson" "inbound-vless-ws"; then
+        echo -e "${GREEN}VLESS + WS + TLS successfully configured!${cRES}"
+        echo
+        showVlessWSNode "wait"
+    fi
+}
+
+setupVMessWS() {
+    if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
+        echo -e "${RED}Certificate files (/var/www/ssl/de_GWD.cer) not found! Run Option 1 or 3 first.${cRES}"
+        read -p "Press Enter to return..."
+        return 1
+    fi
+    local curPort=$(getXrayInboundPort "inbound-vmess-ws")
+    local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+    local nginxPort=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$' | head -n1)
+
+    clear
+    echo -e "${GREEN}============ Configure VMess + WS + TLS ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View Node Link & QR Code"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable This Protocol"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showVMessWSNode "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-vmess-ws"
+                echo -e "${GREEN}VMess WS disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="2082"
+    [[ "$recPort" == "$nginxPort" ]] && recPort="8443"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Listening Port [Default: $recPort] (443 is reserved): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy/web services! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    echo
+    read -p "Enter WebSocket Path [Default: /vmessws]: " inputPath
+    [[ -z "$inputPath" ]] && inputPath="/vmessws"
+    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
+
+    local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+
+    local inboundJson=$(cat << EOF
+{
+  "tag": "inbound-vmess-ws",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "vmess",
+  "settings": {
+    "clients": [
+      {
+        "id": "$uuid",
+        "alterId": 0
+      }
+    ]
+  },
+  "streamSettings": {
+    "network": "ws",
+    "security": "tls",
+    "tlsSettings": {
+      "certificates": [
+        {
+          "certificateFile": "/var/www/ssl/de_GWD.cer",
+          "keyFile": "/var/www/ssl/de_GWD.key"
+        }
+      ]
+    },
+    "wsSettings": {
+      "path": "$inputPath"
+    },
+    "sockopt": {
+      "tcpFastOpen": true,
+      "tcpNoDelay": true
+    }
+  },
+  "sniffing": {
+    "enabled": true,
+    "destOverride": ["http", "tls", "quic"]
+  }
+}
+EOF
+)
+
+    if applyXrayInbound "$inboundJson" "inbound-vmess-ws"; then
+        echo -e "${GREEN}VMess + WS + TLS successfully configured!${cRES}"
+        echo
+        showVMessWSNode "wait"
+    fi
+}
+
+setupSocks5() {
+    local curPort=$(getXrayInboundPort "inbound-socks5")
+    clear
+    echo -e "${GREEN}============ Configure SOCKS5 Inbound ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View SOCKS5 Information & Link"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable SOCKS5"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showSocks5Node "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-socks5"
+                echo -e "${GREEN}SOCKS5 disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="10808"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Listening Port [Default: $recPort] (443 is reserved): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    echo
+    read -p "Enable Username & Password Authentication? [y/N]: " needAuth
+    local inboundJson=""
+    if [[ "$needAuth" =~ ^[yY] ]]; then
+        read -p "Enter Username: " sUser
+        [[ -z "$sUser" ]] && sUser="user$(openssl rand -hex 2)"
+        read -p "Enter Password: " sPass
+        [[ -z "$sPass" ]] && sPass="$(openssl rand -hex 6)"
+        inboundJson=$(cat << EOF
+{
+  "tag": "inbound-socks5",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "socks",
+  "settings": {
+    "auth": "password",
+    "accounts": [
+      {
+        "user": "$sUser",
+        "pass": "$sPass"
+      }
+    ],
+    "udp": true
+  }
+}
+EOF
+)
+    else
+        inboundJson=$(cat << EOF
+{
+  "tag": "inbound-socks5",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "socks",
+  "settings": {
+    "auth": "noauth",
+    "udp": true
+  }
+}
+EOF
+)
+    fi
+
+    if applyXrayInbound "$inboundJson" "inbound-socks5"; then
+        echo -e "${GREEN}SOCKS5 Inbound successfully configured!${cRES}"
+        echo
+        showSocks5Node "wait"
+    fi
+}
+
+setupDokodemo() {
+    local curPort=$(getXrayInboundPort "inbound-dokodemo")
+    clear
+    echo -e "${GREEN}============ Configure Dokodemo-door (Port Forward) ============ ${cRES}"
+    if [[ -n "$curPort" ]]; then
+        echo -e "${GREEN}Current Status: ${YELLOW}Enabled on port $curPort${cRES}"
+        echo
+        echo -e " [1] View Dokodemo-door Information"
+        echo -e " [2] Modify Configuration"
+        echo -e " [3] Disable Dokodemo-door"
+        echo -e " [0] Return"
+        echo
+        read -p "Select [0-3]: " act
+        case "$act" in
+            1) showDokodemoNode "wait"; return ;;
+            3)
+                removeXrayInbound "inbound-dokodemo"
+                echo -e "${GREEN}Dokodemo-door disabled.${cRES}"
+                sleep 1.5s
+                return
+                ;;
+            2) ;;
+            *) return ;;
+        esac
+    fi
+
+    local recPort="10809"
+    local port=""
+    while true; do
+        echo
+        read -p "Enter Local Listening Port [Default: $recPort] (443 is reserved): " inputPort
+        [[ -z "$inputPort" ]] && inputPort="$recPort"
+        local chk=$(checkPortAvailable "$inputPort" "$curPort")
+        if [[ "$chk" == "reserved_443" ]]; then
+            echo -e "${RED}Port 443 is reserved for reverse proxy! Please choose another port.${cRES}"
+        elif [[ "$chk" == "invalid" ]]; then
+            echo -e "${RED}Invalid port number.${cRES}"
+        elif [[ "$chk" == "in_use" ]]; then
+            echo -e "${RED}Port $inputPort is already in use.${cRES}"
+        else
+            port="$inputPort"
+            break
+        fi
+    done
+
+    local tgtAddr=""
+    echo
+    while true; do
+        read -p "Enter Target IP/Domain: " tgtAddr
+        tgtAddr=$(echo "$tgtAddr" | tr -d ' ')
+        [[ -n "$tgtAddr" ]] && break
+        echo -e "${RED}Target IP/Domain cannot be empty.${cRES}"
+    done
+
+    local tgtPort=""
+    echo
+    while true; do
+        read -p "Enter Target Port: " tgtPort
+        tgtPort=$(echo "$tgtPort" | tr -d ' ')
+        if [[ "$tgtPort" =~ ^[0-9]+$ ]] && [ "$tgtPort" -ge 1 ] && [ "$tgtPort" -le 65535 ]; then
+            break
+        fi
+        echo -e "${RED}Invalid port number.${cRES}"
+    done
+
+    local inboundJson=$(cat << EOF
+{
+  "tag": "inbound-dokodemo",
+  "listen": "0.0.0.0",
+  "port": $port,
+  "protocol": "dokodemo-door",
+  "settings": {
+    "address": "$tgtAddr",
+    "port": $tgtPort,
+    "network": "tcp,udp"
+  }
+}
+EOF
+)
+
+    if applyXrayInbound "$inboundJson" "inbound-dokodemo"; then
+        echo -e "${GREEN}Dokodemo-door successfully configured!${cRES}"
+        echo
+        showDokodemoNode "wait"
+    fi
+}
+
+disableAllExtraProtocols() {
+    clear
+    read -p "Are you sure you want to disable ALL extra protocols? (Default VMess node will be kept) [y/N]: " confirm
+    if [[ "$confirm" =~ ^[yY] ]]; then
+        local tags=("inbound-vless-reality" "inbound-vless-xhttp" "inbound-vless-ws" "inbound-vmess-ws" "inbound-socks5" "inbound-dokodemo")
+        for t in "${tags[@]}"; do
+            if hasXrayInbound "$t"; then
+                jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+            fi
+        done
+        rm -f /opt/de_GWD/vtrui/reality.info
+        if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+            systemctl restart vtrui
+            echo -e "${GREEN}All extra protocols disabled successfully.${cRES}"
+        fi
+        sleep 2s
+    fi
+}
+
+manageProtocols() {
+    while true; do
+        clear
+        echo -e "${GREEN}================================================================ ${cRES}"
+        echo -e "${GREEN}                   Manage Extra Protocols (Option 55)            ${cRES}"
+        echo -e "${GREEN}================================================================ ${cRES}"
+
+        local pReality=$(getXrayInboundPort "inbound-vless-reality")
+        local pXhttp=$(getXrayInboundPort "inbound-vless-xhttp")
+        local pVlessWs=$(getXrayInboundPort "inbound-vless-ws")
+        local pVmessWs=$(getXrayInboundPort "inbound-vmess-ws")
+        local pSocks5=$(getXrayInboundPort "inbound-socks5")
+        local pDokodemo=$(getXrayInboundPort "inbound-dokodemo")
+
+        echo -e "${BLUE}── Reality Protocol (Anti-Censorship / Fallback) ──${cRES}"
+        if [[ -n "$pReality" ]]; then
+            echo -e " [1] VLESS + TCP + Reality + Vision  [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pReality${cRES}]"
+        else
+            echo -e " [1] VLESS + TCP + Reality + Vision  [${WHITE}Disabled${cRES}]"
+        fi
+
+        echo
+        echo -e "${BLUE}── TLS Protocols (Cert / Custom Port / 443 Reverse-Proxy Ready) ──${cRES}"
+        if [[ -n "$pXhttp" ]]; then
+            echo -e " [2] VLESS + XHTTP + TLS             [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pXhttp${cRES}]"
+        else
+            echo -e " [2] VLESS + XHTTP + TLS             [${WHITE}Disabled${cRES}]"
+        fi
+
+        if [[ -n "$pVlessWs" ]]; then
+            echo -e " [3] VLESS + WS + TLS                [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pVlessWs${cRES}]"
+        else
+            echo -e " [3] VLESS + WS + TLS                [${WHITE}Disabled${cRES}]"
+        fi
+
+        if [[ -n "$pVmessWs" ]]; then
+            echo -e " [4] VMess + WS + TLS                [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pVmessWs${cRES}]"
+        else
+            echo -e " [4] VMess + WS + TLS                [${WHITE}Disabled${cRES}]"
+        fi
+
+        echo
+        echo -e "${BLUE}── Proxy & Port Forward ──${cRES}"
+        if [[ -n "$pSocks5" ]]; then
+            echo -e " [5] SOCKS5 Inbound                  [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pSocks5${cRES}]"
+        else
+            echo -e " [5] SOCKS5 Inbound                  [${WHITE}Disabled${cRES}]"
+        fi
+
+        if [[ -n "$pDokodemo" ]]; then
+            echo -e " [6] Dokodemo-door (Port Forward)    [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pDokodemo${cRES}]"
+        else
+            echo -e " [6] Dokodemo-door (Port Forward)    [${WHITE}Disabled${cRES}]"
+        fi
+
+        echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
+        echo -e " [7] View All Enabled Protocol Links & QR Codes"
+        echo -e " [8] Disable All Extra Protocols (Keep Default Only)"
+        echo -e " [0] Return to Main Menu"
+        echo -e "${GREEN}================================================================ ${cRES}"
+        read -p "Select [0-8]: " pChoice
+        case "$pChoice" in
+            1) setupReality ;;
+            2) setupVlessXHTTP ;;
+            3) setupVlessWS ;;
+            4) setupVMessWS ;;
+            5) setupSocks5 ;;
+            6) setupDokodemo ;;
+            7)
+                clear
+                showAllExtraNodes "wait"
+                ;;
+            8) disableAllExtraProtocols ;;
+            0) break ;;
+            *)
+                echo -e "${RED}Invalid selection.${cRES}"
+                sleep 1s
+                ;;
+        esac
+    done
+}
+
+
+
 printNode(){
 vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf)
@@ -2147,7 +3178,7 @@ done
 fi
 
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
-echo -e "${GREEN}Node Information${cRES}"
+echo -e "${GREEN}Default Node Information (VMess + WS + TLS)${cRES}"
 echo
 echo -e "${BLUE}DoH:       ${YELLOW}$vpsdomainP/dq${cRES}"
 echo -e "${BLUE}Address:   ${YELLOW}$vpsdomainP${cRES}"
@@ -2160,6 +3191,9 @@ subUrl="vmess://${subAddr}?encryption=auto&type=ws&security=tls&tlsAllowInsecure
 qrencode -t UTF8 -s 1 -m 3 $subUrl
 echo
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
+
+# Print active extra protocols if any
+showAllExtraNodes
 }
 
 
@@ -2449,6 +3483,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
+  echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -p "Select:" num || exit
@@ -2488,6 +3523,10 @@ read -p "Select:" num || exit
     changeTCPPF
     start_menu
     ;;
+    55)
+    manageProtocols
+    start_menu
+    ;;
     *)
     clear
     echo -e "${RED}Wrong number${cRES}"
@@ -2524,6 +3563,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
+  echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -p "Select:" num || exit
@@ -2566,6 +3606,10 @@ read -p "Select:" num || exit
     ;;
     44)
     changeTCPPF
+    start_menu
+    ;;
+    55)
+    manageProtocols
     start_menu
     ;;
     *)
