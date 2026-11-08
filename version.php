@@ -1,4 +1,4 @@
-v1.26.5
+v1.27.0
 -
 <?php
 $str= file_get_contents('https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php');
