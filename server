@@ -1617,21 +1617,36 @@ port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 
 path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
-if [[ $port = "443" ]]; then
-makeSSL_W
+sslMode="1"
+if [[ $port != "443" ]]; then
+    echo -e "${GREEN}================================================================ ${cRES}"
+    echo -e "${GREEN} Non-443 port detected ($port). Select SSL Mode:${cRES}"
+    echo -e "${GREEN} [1] HTTP-80 Webroot verification (Default, Port 80 must be open)${cRES}"
+    echo -e "${GREEN} [2] Cloudflare DNS verification (Requires CF API KEY & Zone)${cRES}"
+    echo -e "${GREEN} [3] Use existing /var/www/ssl/ certificate${cRES}"
+    echo -e "${GREEN}================================================================ ${cRES}"
+    read -p "Select [Default 1]: " sslMode
+    [[ -z "$sslMode" ]] && sslMode="1"
 
+    if [[ "$sslMode" == "2" ]]; then
+        echo -e "${GREEN}=============================== ${cRES}"
+        echo -e "${GREEN} Cloudflare API KEY${cRES}"
+        echo -e "${GREEN}=============================== ${cRES}"
+        read CFapikey
+
+        echo -e "${GREEN}=============================== ${cRES}"
+        echo -e "${GREEN} Cloudflare Email${cRES}"
+        echo -e "${GREEN}=============================== ${cRES}"
+        read CFemail
+    fi
+fi
+
+if [[ "$sslMode" == "3" && -f "/var/www/ssl/de_GWD.cer" && -f "/var/www/ssl/de_GWD.key" ]]; then
+    echo -e "${GREEN}Using existing SSL certificate.${cRES}"
+elif [[ "$sslMode" == "2" ]]; then
+    makeSSL_D
 else
-    echo -e "${GREEN}=============================== ${cRES}"
-    echo -e "${GREEN} Cloudflare API KEY${cRES}"
-    echo -e "${GREEN}=============================== ${cRES}"
-    read CFapikey
-
-    echo -e "${GREEN}=============================== ${cRES}"
-    echo -e "${GREEN} Cloudflare Email${cRES}"
-    echo -e "${GREEN}=============================== ${cRES}"
-    read CFemail
-
-makeSSL_D
+    makeSSL_W
 fi
 
 nginxWebConf
@@ -3208,16 +3223,28 @@ topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
+sslMode="1"
 if [[ $port != "443" ]]; then
-    echo -e "${GREEN}=============================== ${cRES}"
-    echo -e "${GREEN} Cloudflare API KEY${cRES}"
-    echo -e "${GREEN}=============================== ${cRES}"
-    read CFapikey
+    echo -e "${GREEN}================================================================ ${cRES}"
+    echo -e "${GREEN} Non-443 port detected ($port). Select SSL Mode:${cRES}"
+    echo -e "${GREEN} [1] HTTP-80 Webroot verification (Default, Port 80 must be open)${cRES}"
+    echo -e "${GREEN} [2] Cloudflare DNS verification (Requires CF API KEY & Zone)${cRES}"
+    echo -e "${GREEN} [3] Use existing /var/www/ssl/ certificate${cRES}"
+    echo -e "${GREEN}================================================================ ${cRES}"
+    read -p "Select [Default 1]: " sslMode
+    [[ -z "$sslMode" ]] && sslMode="1"
 
-    echo -e "${GREEN}=============================== ${cRES}"
-    echo -e "${GREEN} Cloudflare Email${cRES}"
-    echo -e "${GREEN}=============================== ${cRES}"
-    read CFemail
+    if [[ "$sslMode" == "2" ]]; then
+        echo -e "${GREEN}=============================== ${cRES}"
+        echo -e "${GREEN} Cloudflare API KEY${cRES}"
+        echo -e "${GREEN}=============================== ${cRES}"
+        read CFapikey
+
+        echo -e "${GREEN}=============================== ${cRES}"
+        echo -e "${GREEN} Cloudflare Email${cRES}"
+        echo -e "${GREEN}=============================== ${cRES}"
+        read CFemail
+    fi
 fi
 
 uuids=$(cat /proc/sys/kernel/random/uuid)
@@ -3242,10 +3269,12 @@ installNginx
 
 installXray
 
-if [[ $port == "443" ]]; then
-makeSSL_W
+if [[ "$sslMode" == "3" && -f "/var/www/ssl/de_GWD.cer" && -f "/var/www/ssl/de_GWD.key" ]]; then
+    echo -e "${GREEN}Using existing SSL certificate.${cRES}"
+elif [[ "$sslMode" == "2" ]]; then
+    makeSSL_D
 else
-makeSSL_D
+    makeSSL_W
 fi
 
 nginxWebConf
