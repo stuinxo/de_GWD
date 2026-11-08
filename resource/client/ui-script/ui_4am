@@ -12,9 +12,11 @@ cRES='\E[0m'
 
 /opt/de_GWD/tcpTime
 
-serverConnect1=$(curl -Is -m 5 google.com | grep 'HTTP')
-serverConnect2=$(curl -Is -m 5 youtube.com | grep 'HTTP')
-[[ -z $serverConnect1 ]] && [[ -z $serverConnect2 ]] && exit
+if [[ "$1" != "i" && "$1" != "f" ]]; then
+  serverConnect1=$(curl -Is -m 5 google.com | grep 'HTTP')
+  serverConnect2=$(curl -Is -m 5 youtube.com | grep 'HTTP')
+  [[ -z $serverConnect1 ]] && [[ -z $serverConnect2 ]] && exit
+fi
 
 [[ $1 = "u" ]] && service cron stop
 
@@ -112,6 +114,7 @@ fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat $geosite_sha256sum) = "true" ]]; then
   cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat
+  cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/mosdns/geosite.dat
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat $geoip_sha256sum) = "true" ]]; then

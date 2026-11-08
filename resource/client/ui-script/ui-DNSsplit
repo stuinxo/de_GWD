@@ -67,6 +67,7 @@ echo $hoststxt | while read line; do
   yq eval -i ".plugins.[0].args.entries += [\"$hostDomain $hostIP\"]" /opt/de_GWD/mosdns/hosts.yaml
 done
 hoststoml=$(echo "$hoststxt" | tr ' ' '\n' | awk 'NR%2==1 {line=$0} NR%2==0 {print "    \x27" line " " $0 "\x27,"}' | sed '$ s/,$//')
+if [[ -f "/opt/de_GWD/pihole/pihole.toml" ]]; then
 python3 <<EOF
 import toml
 with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
@@ -79,7 +80,9 @@ $hoststoml
 with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
 EOF
+fi
 else
+if [[ -f "/opt/de_GWD/pihole/pihole.toml" ]]; then
 python3 <<EOF
 import toml
 with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
@@ -90,6 +93,7 @@ data["dns"]["hosts"] = []
 with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
 EOF
+fi
 sed -i '/c/{p;:a;N;$!ba;d}' /opt/de_GWD/mosdns/hosts.yaml
 fi
 

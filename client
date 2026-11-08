@@ -48,6 +48,20 @@ is_china_network() {
     fi
 }
 
+gh_dl() {
+    local url="$1"
+    local dest="$2"
+    if is_china_network; then
+        wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghproxy.net/$url" 2>/dev/null || \
+        wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghp.ci/$url" 2>/dev/null || \
+        wget --no-check-certificate --timeout=10 --tries=1 --show-progress -cqO "$dest" "$url"
+    else
+        wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "$url" 2>/dev/null || \
+        wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghproxy.net/$url" 2>/dev/null || \
+        wget --no-check-certificate --timeout=15 --tries=2 --show-progress -cqO "$dest" "https://ghp.ci/$url"
+    fi
+}
+
 pkgDEP1(){
 if [[ $architecture = "arm64" ]];then
 unset Freeze_Package
@@ -86,6 +100,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^rng-tools-debian$') ]] && aptPKG+=(rng-tools-debian)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
 [[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
 }
@@ -96,13 +111,17 @@ mkdir -p /etc/apt/keyrings
 rm -rf /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/docker.asc /usr/share/keyrings/docker-archive-keyring.gpg
 if is_china_network; then
     curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-    if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+    if [[ -s /etc/apt/keyrings/docker.gpg ]]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+    else
+        rm -f /etc/apt/keyrings/docker.gpg
     fi
 else
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-    if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+    if [[ -s /etc/apt/keyrings/docker.gpg ]]; then
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+    else
+        rm -f /etc/apt/keyrings/docker.gpg
     fi
 fi
 
@@ -115,7 +134,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^tmux$') ]] && aptPKG+=(tmux)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce docker-ce-cli containerd.io)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-fpm$') ]] && aptPKG+=(php-fpm)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-cgi$') ]] && aptPKG+=(php-cgi)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-sqlite3$') ]] && aptPKG+=(php-sqlite3)
@@ -170,6 +189,28 @@ else
 fi
 
 [[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip 2>/dev/null | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+
+if [[ ! -s "/opt/de_GWD/.repo/geosite.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/geosite.dat 2>/dev/null | awk '{print$1}') -lt 3500 ]]; then
+    rm -rf /tmp/geosite.dat
+    gh_dl "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" /tmp/geosite.dat
+    [[ -s /tmp/geosite.dat ]] && mv -f /tmp/geosite.dat /opt/de_GWD/.repo/geosite.dat
+fi
+
+if [[ ! -s "/opt/de_GWD/.repo/geoip.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -lt 8000 ]]; then
+    rm -rf /tmp/geoip.dat
+    gh_dl "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat" /tmp/geoip.dat
+    [[ -s /tmp/geoip.dat ]] && mv -f /tmp/geoip.dat /opt/de_GWD/.repo/geoip.dat
+fi
+
+for f in Domains.chn.txt Domains.apple.txt Domains.games.txt 99-bogus-nxdomain.china.conf; do
+    if [[ ! -s "/opt/de_GWD/.repo/$f" ]]; then
+        rm -rf "/tmp/$f"
+        gh_dl "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/$f" "/tmp/$f"
+        [[ -s "/tmp/$f" ]] && mv -f "/tmp/$f" "/opt/de_GWD/.repo/$f"
+    fi
+done
+mkdir -p /etc/dnsmasq.d
+[[ -f "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]] && cp -f "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" /etc/dnsmasq.d/
 
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
@@ -1042,6 +1083,9 @@ chmod +x /opt/de_GWD/smartdns/smartdns
 chmod +x /opt/de_GWD/coredns/coredns
 chmod +x /opt/de_GWD/mosdns/mosdns
 chmod +x /opt/de_GWD/vtrui/vtrui
+[[ -f /opt/de_GWD/.repo/geosite.dat ]] && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/mosdns/geosite.dat
+[[ -f /opt/de_GWD/.repo/geosite.dat ]] && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat
+[[ -f /opt/de_GWD/.repo/geoip.dat ]] && cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
 rm -rf /tmp/de_GWD*
 else
 rm -rf /opt/de_GWD/.repo/de_GWD.zip
@@ -1408,6 +1452,8 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
+[[ -f /opt/de_GWD/.repo/geoip.dat ]] && cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
+[[ -f /opt/de_GWD/.repo/geosite.dat ]] && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat
 systemctl restart vtrui
 if [[ $? -ne 0 ]]; then
 sed -i '/Nice=/d' /etc/systemd/system/vtrui.service
@@ -2354,8 +2400,9 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Pi-hole Config
 
 postInstall(){
 /opt/de_GWD/ui-NodeOne
-/opt/de_GWD/ui_4am
+/opt/de_GWD/ui_4am i
 /opt/de_GWD/ui_4h
+systemctl restart vtrui
 systemctl restart smartdns
 systemctl restart mosdns
 if [[ $? -ne 0 ]]; then
