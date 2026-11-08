@@ -1243,6 +1243,8 @@ fi
 cat << EOF >>/opt/de_GWD/smartdns/smartdns.conf
 server-https https://$doh1Str -host-name $doh1Domain -no-check-certificate -group DNS_global
 EOF
+systemctl restart smartdns
+sleep 2
 fi
 
 echo -e "${WHITE}Domain: ${YELLOW}$doh1Domain\c" && echo -e "\t${WHITE}IP: ${YELLOW}$doh1IP${cRES}"
@@ -1315,6 +1317,12 @@ echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 systemctl stop mosdns
 sleep 5
 domainIP=$(dig @127.0.0.1 $domain -4p 5332 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+if [[ -z $domainIP ]]; then
+    domainIP=$(dig @127.0.0.1 $domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+fi
+if [[ -z $domainIP ]] && [[ "$domain" = "$doh1Domain" ]] && [[ -n "$doh1IP" ]]; then
+    domainIP="$doh1IP"
+fi
 echo -e "${WHITE}Domain: ${YELLOW}$domain\c" && echo -e "\t${WHITE}IP: ${YELLOW}$domainIP${cRES}"
 echo
 echo -e "${BLUE}################################################################# ${cRES}"
