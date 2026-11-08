@@ -1841,28 +1841,78 @@ fi
 
 
 
+getHaproxyRules(){
+    local rules=()
+    if [[ -f "/etc/haproxy/haproxy.cfg" ]]; then
+        local ports=($(grep '^# BEGIN_RULE_' /etc/haproxy/haproxy.cfg 2>/dev/null | cut -d_ -f3))
+        for p in "${ports[@]}"; do
+            local tgt
+            tgt=$(awk -v p="$p" '$1=="backend" && $2=="bk_"p {getline; print $3}' /etc/haproxy/haproxy.cfg 2>/dev/null)
+            if [[ -n "$tgt" ]]; then
+                rules+=("${p}|${tgt}")
+            fi
+        done
+    fi
+    echo "${rules[@]}"
+}
+
+initHaproxyBase(){
+    if [[ ! -f "/etc/haproxy/haproxy.cfg" ]] || ! grep -q 'resolvers local' /etc/haproxy/haproxy.cfg 2>/dev/null; then
+        mkdir -p /etc/haproxy
+        cat << "EOF" >/etc/haproxy/haproxy.cfg
+global
+  ulimit-n              500000
+  maxconn               200000
+
+defaults
+  mode                  tcp
+  option                dontlognull
+  option                tcp-smart-accept
+  option                tcp-smart-connect
+  timeout connect       10s
+  timeout client        1h
+  timeout server        1h
+  timeout check         10s
+
+resolvers local
+  nameserver            dns1 127.0.0.1:53
+  nameserver            dns2 8.8.8.8:53
+  nameserver            dns3 1.1.1.1:53
+  resolve_retries       3
+  timeout retry         3s
+  hold valid            10s
+  accepted_payload_size 8192
+
+EOF
+    fi
+}
+
 changeTCPPF(){
     clear
     echo -e "${GREEN}============ TCP Port Forward (HAProxy) ============ ${cRES}"
-    if [[ $(systemctl is-active 'haproxy' 2>/dev/null) == "active" && -f "/etc/haproxy/haproxy.cfg" ]]; then
-        echo -e "${GREEN}Status: ${YELLOW}Running (Enabled)${cRES}"
-        echo -e "${BLUE}Current Rules:${cRES}"
-        awk '/frontend/' /etc/haproxy/haproxy.cfg 2>/dev/null | while read -r line; do
-            fName=$(echo "$line" | awk '{print $2}')
-            [[ -z "$fName" ]] && continue
-            lPort=$(awk -v fn="$fName" '$1=="frontend" && $2==fn {getline; print $2}' /etc/haproxy/haproxy.cfg 2>/dev/null | tr -d ': ')
-            tgt=$(awk -v fn="$fName" '$1=="backend" && $2==fn {getline; print $3}' /etc/haproxy/haproxy.cfg 2>/dev/null)
-            echo -e "  ${WHITE}Local Port: ${YELLOW}${lPort}${cRES} -> ${WHITE}Target: ${YELLOW}${tgt}${cRES}"
+    local rules=($(getHaproxyRules))
+    local rCount=${#rules[@]}
+    if [[ $(systemctl is-active 'haproxy' 2>/dev/null) == "active" && $rCount -gt 0 ]]; then
+        echo -e "${GREEN}Status: ${YELLOW}Running (Enabled)${cRES} [${rCount} Active Rules]"
+        echo -e "${BLUE}---------------------------------------------------- ${cRES}"
+        local idx=1
+        for r in "${rules[@]}"; do
+            local p="${r%%|*}"
+            local tgt="${r##*|}"
+            echo -e "  [${idx}] ${WHITE}Local Port: ${YELLOW}:${p}${cRES} -> ${WHITE}Target: ${YELLOW}${tgt}${cRES}"
+            ((idx++))
         done
+        echo -e "${BLUE}---------------------------------------------------- ${cRES}"
     else
-        echo -e "${GREEN}Status: ${RED}Not Running / Disabled${cRES}"
+        echo -e "${GREEN}Status: ${RED}Not Running / No Rules Configured${cRES}"
     fi
     echo -e "${GREEN}==================================================== ${cRES}"
-    echo -e "${GREEN}[1]: Set / Update TCP Port Forward${cRES}"
-    echo -e "${GREEN}[2]: Delete TCP Port Forward${cRES}"
+    echo -e "${GREEN}[1]: Add / Update Port Forward Rule${cRES}"
+    echo -e "${GREEN}[2]: Delete Single Port Forward Rule${cRES}"
+    echo -e "${GREEN}[3]: Clear All Rules & Disable HAProxy${cRES}"
     echo -e "${YELLOW}[0]: Return to Main Menu${cRES}"
     echo -e "${GREEN}==================================================== ${cRES}"
-    read -p "Select [0-2]: " tcpPFsw
+    read -p "Select [0-3]: " tcpPFsw
 
 if [[ "$tcpPFsw" == "1" ]]; then
     echo
@@ -1894,12 +1944,31 @@ if [[ "$tcpPFsw" == "1" ]]; then
         return 1
     fi
 
-    conflict=$(ss -tulpn 2>/dev/null | grep -E ":${localP}\s" | grep -v 'haproxy')
-    if [[ -n "$conflict" ]]; then
-        echo -e "${RED}Port ${localP} is already in use by another service!${cRES}"
-        echo -e "$conflict"
-        sleep 3s
-        return 1
+    # Check if this port is already in existing rules
+    local existingTgt=""
+    for r in "${rules[@]}"; do
+        if [[ "${r%%|*}" == "$localP" ]]; then
+            existingTgt="${r##*|}"
+            break
+        fi
+    done
+
+    if [[ -n "$existingTgt" ]]; then
+        echo -e "${YELLOW}Notice: Local Port ${localP} is currently forwarding to ${existingTgt}.${cRES}"
+        read -p "Overwrite with target ${upDomainP}? [y/N]: " confirmUpdate
+        if [[ "$confirmUpdate" != [yY] && "$confirmUpdate" != [yY][eE][sS] ]]; then
+            echo -e "${YELLOW}Cancelled.${cRES}"
+            sleep 1.5s
+            return 0
+        fi
+    else
+        conflict=$(ss -tulpn 2>/dev/null | grep -E ":${localP}\s" | grep -v 'haproxy')
+        if [[ -n "$conflict" ]]; then
+            echo -e "${RED}Port ${localP} is already in use by another service!${cRES}"
+            echo -e "$conflict"
+            sleep 3s
+            return 1
+        fi
     fi
 
     echo -e "${WHITE}[...]\tChecking and installing HAProxy...${cRES}"
@@ -1907,46 +1976,35 @@ if [[ "$tcpPFsw" == "1" ]]; then
         apt-get update -qq && apt-get install -y -q haproxy
     fi
 
-    mkdir -p /etc/haproxy
-    cat << EOF >/etc/haproxy/haproxy.cfg
-global
-  ulimit-n              500000
-  maxconn               200000
+    initHaproxyBase
 
-defaults
-  mode                  tcp
-  option                dontlognull
-  option                tcp-smart-accept
-  option                tcp-smart-connect
-  timeout connect       10s
-  timeout client        1h
-  timeout server        1h
-  timeout check         10s
+    # Backup config before editing
+    cp -f /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak 2>/dev/null || true
 
-resolvers local
-  nameserver            dns1 127.0.0.1:53
-  nameserver            dns2 8.8.8.8:53
-  nameserver            dns3 1.1.1.1:53
-  resolve_retries       3
-  timeout retry         3s
-  hold valid            10s
-  accepted_payload_size 8192
+    # Remove existing rule for localP if any
+    sed -i "/# BEGIN_RULE_${localP}/,/# END_RULE_${localP}/d" /etc/haproxy/haproxy.cfg
 
-frontend $upDomain
-  bind                  :$localP
-  default_backend       $upDomain
+    # Append new rule
+    cat << EOF >>/etc/haproxy/haproxy.cfg
+# BEGIN_RULE_${localP}
+frontend ft_${localP}
+  bind                  :${localP}
+  default_backend       bk_${localP}
 
-backend $upDomain
-  server endpoint $upDomainP check resolvers local init-addr none
+backend bk_${localP}
+  server endpoint ${upDomainP} check resolvers local init-addr none
+# END_RULE_${localP}
 EOF
 
     # Validate HAProxy configuration
     if ! /usr/sbin/haproxy -c -q -f /etc/haproxy/haproxy.cfg; then
-        echo -e "${RED}HAProxy configuration validation failed!${cRES}"
+        echo -e "${RED}HAProxy configuration validation failed! Rolling back...${cRES}"
         /usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg
+        cp -f /etc/haproxy/haproxy.cfg.bak /etc/haproxy/haproxy.cfg 2>/dev/null || true
         sleep 3s
         return 1
     fi
+    rm -f /etc/haproxy/haproxy.cfg.bak 2>/dev/null || true
 
     # Systemd service drop-in limits override
     mkdir -p /etc/systemd/system/haproxy.service.d
@@ -1955,11 +2013,15 @@ EOF
 LimitNOFILE=500000
 LimitNPROC=200000
 EOF
-    # Remove any old broken unit override file if existed
     rm -f /etc/systemd/system/haproxy.service
     systemctl daemon-reload >/dev/null 2>&1
     systemctl enable haproxy >/dev/null 2>&1
-    systemctl restart haproxy
+
+    if [[ $(systemctl is-active 'haproxy' 2>/dev/null) == "active" ]]; then
+        systemctl reload haproxy
+    else
+        systemctl restart haproxy
+    fi
     sleep 1s
 
     if [[ $(systemctl is-active 'haproxy') != "active" ]]; then
@@ -1974,7 +2036,7 @@ EOF
 
     echo
     echo -e "${BLUE}------------------------------------------------ ${cRES}"
-    echo -e "${GREEN}TCP Port Forward Deployed Successfully!${cRES}"
+    echo -e "${GREEN}TCP Port Forward Rule Saved Successfully!${cRES}"
     echo
     echo -e "${BLUE}Address:       ${YELLOW}$domain:$localP${cRES}"
     echo -e "${BLUE}Target:        ${YELLOW}$upDomainP${cRES}"
@@ -1982,16 +2044,71 @@ EOF
     echo -e "${BLUE}------------------------------------------------ ${cRES}"
     echo
     read -p "Press Enter to return to menu..."
+
 elif [[ "$tcpPFsw" == "2" ]]; then
-    systemctl stop haproxy 2>/dev/null || true
-    systemctl disable haproxy 2>/dev/null || true
-    rm -f /etc/haproxy/haproxy.cfg
-    rm -f /etc/systemd/system/haproxy.service.d/override.conf
-    rm -f /etc/systemd/system/haproxy.service
-    systemctl daemon-reload >/dev/null 2>&1
+    if [[ $rCount -eq 0 ]]; then
+        echo -e "${YELLOW}No port forward rules configured.${cRES}"
+        sleep 1.5s
+        return 0
+    fi
     echo
-    echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}TCP Port Forward ${GREEN}Deleted & Stopped${cRES}"
+    echo -e "${BLUE}Select the rule number [1-${rCount}] or enter Local Port to delete (0 to cancel):${cRES}"
+    read -p "Choice: " delChoice
+    delChoice=$(echo "$delChoice" | tr -d ' ')
+    if [[ "$delChoice" == "0" || -z "$delChoice" ]]; then
+        return 0
+    fi
+
+    local delPort=""
+    if [[ "$delChoice" =~ ^[0-9]+$ ]] && [[ "$delChoice" -ge 1 && "$delChoice" -le "$rCount" ]]; then
+        local targetRule="${rules[$((delChoice - 1))]}"
+        delPort="${targetRule%%|*}"
+    else
+        for r in "${rules[@]}"; do
+            if [[ "${r%%|*}" == "$delChoice" ]]; then
+                delPort="$delChoice"
+                break
+            fi
+        done
+    fi
+
+    if [[ -z "$delPort" ]]; then
+        echo -e "${RED}Invalid rule choice or port: $delChoice${cRES}"
+        sleep 2s
+        return 1
+    fi
+
+    sed -i "/# BEGIN_RULE_${delPort}/,/# END_RULE_${delPort}/d" /etc/haproxy/haproxy.cfg
+
+    local remRules=($(getHaproxyRules))
+    if [[ ${#remRules[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}All rules deleted. Disabling HAProxy service...${cRES}"
+        systemctl stop haproxy 2>/dev/null || true
+        systemctl disable haproxy 2>/dev/null || true
+        rm -f /etc/haproxy/haproxy.cfg
+        rm -f /etc/systemd/system/haproxy.service.d/override.conf
+        systemctl daemon-reload >/dev/null 2>&1
+    else
+        systemctl reload haproxy 2>/dev/null || systemctl restart haproxy
+    fi
+    echo
+    echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}Rule for port ${YELLOW}:${delPort}${WHITE} ${GREEN}Deleted${cRES}"
     sleep 1.5s
+
+elif [[ "$tcpPFsw" == "3" ]]; then
+    echo
+    read -p "Are you sure you want to delete ALL rules and stop HAProxy? [y/N]: " confirmClear
+    if [[ "$confirmClear" == [yY] || "$confirmClear" == [yY][eE][sS] ]]; then
+        systemctl stop haproxy 2>/dev/null || true
+        systemctl disable haproxy 2>/dev/null || true
+        rm -f /etc/haproxy/haproxy.cfg
+        rm -f /etc/systemd/system/haproxy.service.d/override.conf
+        rm -f /etc/systemd/system/haproxy.service
+        systemctl daemon-reload >/dev/null 2>&1
+        echo
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\t${WHITE}All TCP Port Forward rules ${GREEN}Cleared & Stopped${cRES}"
+        sleep 1.5s
+    fi
 fi
 }
 
@@ -2010,20 +2127,22 @@ fi
 path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
-if [[ $(systemctl is-active 'haproxy' 2>/dev/null) == "active" && -f "/etc/haproxy/haproxy.cfg" ]]; then
+local haproxyRules=($(getHaproxyRules))
+if [[ $(systemctl is-active 'haproxy' 2>/dev/null) == "active" && ${#haproxyRules[@]} -gt 0 ]]; then
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 echo -e "${GREEN}HAProxy TCP Port Forward${cRES}"
 echo
-awk '/frontend/' /etc/haproxy/haproxy.cfg 2>/dev/null | while read -r line; do
-upDomain=$(echo "$line" | awk '{print $2}')
-[[ -z "$upDomain" ]] && continue
-localPort=$(awk -v fn="$upDomain" '$1=="frontend" && $2==fn {getline; print $2}' /etc/haproxy/haproxy.cfg 2>/dev/null | tr -d ': ')
-upDomainP=$(awk -v fn="$upDomain" '$1=="backend" && $2==fn {getline; print $3}' /etc/haproxy/haproxy.cfg 2>/dev/null)
-
-echo -e "${BLUE}Address:       ${YELLOW}$vpsdomain:$localPort${cRES}"
-echo -e "${BLUE}Target:        ${YELLOW}$upDomainP${cRES}"
-echo -e "${BLUE}tls:           ${YELLOW}$upDomain${cRES}"
-echo
+local idx=1
+for r in "${haproxyRules[@]}"; do
+    local p="${r%%|*}"
+    local tgt="${r##*|}"
+    local upD="${tgt%%:*}"
+    echo -e "${BLUE}Rule ${idx}:${cRES}"
+    echo -e "  ${BLUE}Address:       ${YELLOW}$vpsdomain:$p${cRES}"
+    echo -e "  ${BLUE}Target:        ${YELLOW}$tgt${cRES}"
+    echo -e "  ${BLUE}TLS SNI:       ${YELLOW}$upD${cRES}"
+    echo
+    ((idx++))
 done
 fi
 
