@@ -25,7 +25,7 @@ cRES='\E[0m'
 chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
-TTYD_Ver="1.7.3"
+TTYD_Ver="1.7.7"
 branch="main"
 
 
@@ -47,7 +47,7 @@ gh_download(){
   local proxies=("" "https://ghproxy.net/" "https://mirror.ghproxy.com/")
   for p in "${proxies[@]}"; do
     rm -f "$target"
-    wget --no-check-certificate --timeout=15 --tries=2 -qO "$target" "${p}${url}" 2>/dev/null
+    wget -4 --no-check-certificate --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --timeout=15 --tries=2 -qO "$target" "${p}${url}" 2>/dev/null
     if [[ -s "$target" ]]; then
       local sz=$(du -sk "$target" 2>/dev/null | awk '{print $1}')
       if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
