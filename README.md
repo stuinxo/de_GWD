@@ -10,7 +10,6 @@
 
 ## Server (amd64 & arm64) support kvm xen openvz lxc and so on:
 ```
-apt install -y wget
 bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinxo/de_GWD/main/server)
 ```
 > 安装完成后，随时可在终端输入 `de_GWD` 打开管理菜单。
@@ -19,7 +18,6 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinx
 
 ## Client (amd64 & arm64):
 ```
-apt install -y wget
 bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/client)
 ```
 或
