@@ -144,8 +144,8 @@ fi
 
 installZabbly(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}\r\c"
-if [[ $architecture != "amd64" ]] && [[ $architecture != "arm64" ]]; then
-  echo -e "${RED}only work on x86_64 or arm64${cRES}"
+if [[ $architecture != "amd64" ]]; then
+  echo -e "${RED}only work on x86_64${cRES}"
 else
 mkdir -p /etc/apt/keyrings
 curl -fsSL --connect-timeout 5 --max-time 15 https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc 2>/dev/null
@@ -250,11 +250,14 @@ get_cpu_arch_level() {
 
 
 installXanMod(){
-echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}XanMod kernel${cRES}\r\c"
+echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}XanMod LTS kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
 get_cpu_arch_level
+mkdir -p /etc/apt/keyrings
+curl -fsSL --connect-timeout 5 --max-time 15 https://dl.xanmod.org/archive.key -o /tmp/xanmod.gpg.key 2>/dev/null
+if [[ ! -s /tmp/xanmod.gpg.key ]]; then
 cat << EOF >/tmp/xanmod.gpg.key
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 Version: GnuPG v2
@@ -287,27 +290,30 @@ ukDDFZMifwa03yTHD/a57O4dFOnzsEVojBnbzQ7W7w==
 =HKlF
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-cat /tmp/xanmod.gpg.key | gpg --dearmor >/etc/apt/keyrings/xanmod.gpg
-echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
+fi
+cat /tmp/xanmod.gpg.key | gpg --batch --yes --dearmor -o /etc/apt/keyrings/xanmod.gpg 2>/dev/null
+rm -f /tmp/xanmod.gpg.key
+echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] https://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-apt update && apt install linux-xanmod-x64$CPU_LEVEL
+apt update && apt install -y linux-xanmod-lts-x64$CPU_LEVEL
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   # 清理旧内核
   cleanOldKernels "xanmod"
 
-  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel${cRES}"
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod LTS kernel${cRES}"
   reboot
   exit
 else
-  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}Install Failed${cRES}"
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod LTS kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep xanmod | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
   rm -rf /etc/apt/keyrings/xanmod.gpg
+  rm -f /tmp/xanmod.gpg.key
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
   exit
 fi
@@ -321,11 +327,21 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
-curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
-cat /tmp/liquorix.gpg.key | gpg --dearmor >/etc/apt/keyrings/liquorix.gpg
-echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(get_debian_codename) main" >/etc/apt/sources.list.d/liquorix-kernel.list
+mkdir -p /etc/apt/keyrings
+curl -fsSL --connect-timeout 5 --max-time 15 https://liquorix.net/liquorix-keyring.gpg -o /tmp/liquorix.gpg.key 2>/dev/null
+if [[ -s /tmp/liquorix.gpg.key ]]; then
+  if ! gpg --batch --yes --dearmor -o /etc/apt/keyrings/liquorix.gpg /tmp/liquorix.gpg.key 2>/dev/null || [[ ! -s /etc/apt/keyrings/liquorix.gpg ]]; then
+    cp -f /tmp/liquorix.gpg.key /etc/apt/keyrings/liquorix.gpg
+  fi
+  rm -f /tmp/liquorix.gpg.key
+fi
 
-apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
+debian_codename=$(get_debian_codename)
+[[ -z "$debian_codename" ]] && debian_codename="bookworm"
+
+echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] https://liquorix.net/debian ${debian_codename} main" >/etc/apt/sources.list.d/liquorix-kernel.list
+
+apt update && apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"
@@ -337,11 +353,12 @@ else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep liquorix | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
   rm -rf /etc/apt/keyrings/liquorix.gpg
+  rm -f /tmp/liquorix.gpg.key
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
   exit
 fi
@@ -352,7 +369,7 @@ fi
 
 echo -e "${GREEN}======================================== ${cRES}"
 echo -e "${GREEN}[1]: Install Zabbly kernel and reboot ${cRES}"
-echo -e "${GREEN}[2]: Install XanMod kernel and reboot ${cRES}"
+echo -e "${GREEN}[2]: Install XanMod LTS kernel and reboot ${cRES}"
 echo -e "${GREEN}[3]: Install Liquorix kernel and reboot ${cRES}"
 echo -e "${GREEN}======================================== ${cRES}"
 read -s -n 1 kernelSwitch
