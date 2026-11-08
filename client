@@ -27,6 +27,24 @@ elif [[ $architecture = "amd64" ]]; then
 chnAPTsource="mirrors.aliyun.com"
 fi
 
+gh_download(){
+  local target="$1"
+  local url="$2"
+  local min_kb="${3:-10}"
+  local proxies=("" "https://ghproxy.net/" "https://mirror.ghproxy.com/")
+  for p in "${proxies[@]}"; do
+    rm -f "$target"
+    wget --no-check-certificate --timeout=15 --tries=2 -qO "$target" "${p}${url}" 2>/dev/null
+    if [[ -s "$target" ]]; then
+      local sz=$(du -sk "$target" 2>/dev/null | awk '{print $1}')
+      if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
 pkgDEP1(){
 if [[ $architecture = "arm64" ]];then
 unset Freeze_Package
@@ -67,7 +85,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt install -y -q $(echo ${aptPKG[@]})
 }
 
 pkgDEP2(){
@@ -93,7 +111,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt update -q && apt install -y -q $(echo ${aptPKG[@]})
 }
 
 checkSum(){
@@ -169,18 +187,22 @@ wget --show-progress -cqO /tmp/nginxConf.zip https://raw.githubusercontent.com/j
 fi
 
 if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
-wget --show-progress -cqO /tmp/ttyd https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)
-[[ $? -ne 0 ]] && echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
-[[ $(du -sk /tmp/ttyd 2>/dev/null | awk '{print$1}') -gt 1000 ]] && mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
+  if [[ -f "./resource/client/ttyd" ]]; then
+    cp -f ./resource/client/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
+  elif gh_download /tmp/ttyd "https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)" 1000; then
+    mv -f /tmp/ttyd /usr/bin/ttyd && chmod +x /usr/bin/ttyd && TTYD_UPDATE="true"
+  else
+    echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
+  fi
 fi
 
 if [[ -f "./resource/client/Archive.zip" ]]; then
-cp -f ./resource/client/Archive.zip /opt/de_GWD/.repo/client.zip
+  cp -f ./resource/client/Archive.zip /opt/de_GWD/.repo/client.zip
 elif [[ $(checkSum /opt/de_GWD/.repo/client.zip $sha256sum_client) = "false" ]]; then
-rm -rf /tmp/client.zip
-wget --show-progress -cqO /tmp/client.zip https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip
-[[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
-[[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
+  rm -rf /tmp/client.zip
+  gh_download /tmp/client.zip "https://raw.githubusercontent.com/jacyl4/de_GWD/$branch/resource/client/Archive.zip" 100
+  [[ $(checkSum /tmp/client.zip $sha256sum_client) = "false" ]] && echo -e "${WHITE}Client Zip${RED} Download Failed${cRES}" && exit
+  [[ $(checkSum /tmp/client.zip $sha256sum_client) = "true" ]] && mv -f /tmp/client.zip /opt/de_GWD/.repo/client.zip
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
@@ -872,7 +894,13 @@ mkdir -p /etc/docker/
 systemctl stop docker docker.socket containerd
 cat << EOF >/etc/docker/daemon.json
 {
-  "iptables": false
+  "iptables": false,
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.net",
+    "https://hub-mirror.c.163.com",
+    "https://mirror.baidubce.com"
+  ]
 }
 EOF
 systemctl restart docker
@@ -1764,8 +1792,7 @@ apt-key del 95BD4743 >/dev/null 2>&1
 curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
 [[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update -q
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
 }
@@ -2532,8 +2559,7 @@ nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update -q
 
 preInstall
 

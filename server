@@ -59,7 +59,7 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^unbound$') ]] && aptPKG+=(unbound)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+[[ -n $aptPKG ]] && apt install -y -q $(echo ${aptPKG[@]})
 }
 
 
@@ -337,9 +337,6 @@ rm -f /var/lib/apt/lists/lock
 rm -f /var/lib/dpkg/lock
 rm -f /var/lib/dpkg/lock-frontend
 dpkg --configure -a
-
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
 pkgDEP
 
@@ -1068,7 +1065,6 @@ crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
-rm -rf "/root/.acme.sh"
 
 export CF_Key="$CFapikey"
 export CF_Email="$CFemail"
@@ -1091,10 +1087,11 @@ rm -rf /var/www/ssl/*.cer
 rm -rf /var/www/ssl/*.key
 find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
 
-curl https://get.acme.sh | sh -s email=$CFemail
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
+if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
+  curl -fsSL https://get.acme.sh | sh -s email=$CFemail
+fi
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue --dns dns_cf -d $topDomain -d *.$topDomain -k ec-256
+"/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 10 -d $topDomain -d *.$topDomain -k ec-256
 "/root/.acme.sh"/acme.sh --installcert -d $topDomain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
