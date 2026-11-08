@@ -38,11 +38,15 @@ bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/0xberx
 EOF
 `
 
-if [[ $architecture = "arm64" ]];then
-chnAPTsource="mirrors.tuna.tsinghua.edu.cn"
-elif [[ $architecture = "amd64" ]]; then
-chnAPTsource="mirrors.aliyun.com"
-fi
+is_china_network() {
+    if command -v curl >/dev/null 2>&1; then
+        ! curl -s --connect-timeout 2 -m 3 https://www.google.com/generate_204 >/dev/null 2>&1
+    elif command -v wget >/dev/null 2>&1; then
+        ! wget -q --spider --timeout=2 --tries=1 https://www.google.com/generate_204 >/dev/null 2>&1
+    else
+        return 0
+    fi
+}
 
 pkgDEP1(){
 if [[ $architecture = "arm64" ]];then
@@ -90,9 +94,16 @@ pkgDEP2(){
 debian_codename=$(get_debian_codename)
 mkdir -p /etc/apt/keyrings
 rm -rf /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/docker.asc /usr/share/keyrings/docker-archive-keyring.gpg
-curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+if is_china_network; then
+    curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+    if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.aliyun.com/docker-ce/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+    fi
+else
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || curl -fsSL https://mirrors.aliyun.com/docker-ce/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+    if [[ -f /etc/apt/keyrings/docker.gpg ]]; then
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${debian_codename} stable" >/etc/apt/sources.list.d/docker.list
+    fi
 fi
 
 unset aptPKG
@@ -1790,22 +1801,6 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
 debian_codename=$(get_debian_codename)
 rm -rf /etc/apt/sources.list.d/php.list
 
-if [[ -n "$chnAPTsource" ]]; then
-cat << EOF >/etc/apt/sources.list
-deb http://$chnAPTsource/debian ${debian_codename} main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian ${debian_codename}-updates main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian ${debian_codename}-backports main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
-EOF
-else
-cat << EOF >/etc/apt/sources.list
-deb http://deb.debian.org/debian ${debian_codename} main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${debian_codename}-updates main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${debian_codename}-backports main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
-EOF
-fi
-
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
@@ -2597,22 +2592,6 @@ EOF
 
 debian_codename=$(get_debian_codename)
 rm -rf /etc/apt/sources.list.d/php.list
-
-if [[ -n "$chnAPTsource" ]]; then
-cat << EOF >/etc/apt/sources.list
-deb http://$chnAPTsource/debian ${debian_codename} main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian ${debian_codename}-updates main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian ${debian_codename}-backports main contrib non-free non-free-firmware
-deb http://$chnAPTsource/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
-EOF
-else
-cat << EOF >/etc/apt/sources.list
-deb http://deb.debian.org/debian ${debian_codename} main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${debian_codename}-updates main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${debian_codename}-backports main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security ${debian_codename}-security main contrib non-free non-free-firmware
-EOF
-fi
 
 sed -i "s/ buster / ${debian_codename} /g" /etc/apt/sources.list.d/* >/dev/null 2>&1
 sed -i "s/ bullseye / ${debian_codename} /g" /etc/apt/sources.list.d/* >/dev/null 2>&1

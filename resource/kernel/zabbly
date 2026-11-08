@@ -18,6 +18,7 @@ EOF
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
 
 unset aptPKG
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
@@ -31,8 +32,9 @@ rm -f /var/lib/dpkg/lock
 rm -f /var/lib/dpkg/lock-frontend
 dpkg --configure -a
 
-
-
+mkdir -p /etc/apt/keyrings
+curl -fsSL --connect-timeout 5 --max-time 15 https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc 2>/dev/null
+if [[ ! -s /etc/apt/keyrings/zabbly.asc ]]; then
 cat << EOF >/etc/apt/keyrings/zabbly.asc
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -76,14 +78,15 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
+fi
 debian_codename="bookworm"
 if [[ -f /etc/os-release ]]; then
     debian_codename=$(grep -oP '(?<=^VERSION_CODENAME=)[a-zA-Z0-9]+' /etc/os-release 2>/dev/null || grep -oP '(?<=^VERSION=)[^"]*' /etc/os-release 2>/dev/null | grep -Po '(?<=\()[a-z]+(?=\))')
 fi
 [[ -z "$debian_codename" ]] && debian_codename="bookworm"
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable ${debian_codename} main" >/etc/apt/sources.list.d/zabbly-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable ${debian_codename} main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-apt update && apt install linux-zabbly
+apt update && apt install -y linux-zabbly
 
 dpkg --list | awk '{print $2}' | grep 'linux-image' | sed "/zabbly/d" | while read line; do
 apt autoremove --purge -y $line

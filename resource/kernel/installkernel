@@ -53,6 +53,7 @@ rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge os-prober
 
 unset aptPKG
+[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
@@ -115,12 +116,12 @@ if [[ $kernel_type == "zabbly" ]]; then
   rm -rf /etc/apt/keyrings/liquorix.gpg
 elif [[ $kernel_type == "xanmod" ]]; then
   rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
+  rm -rf /etc/apt/keyrings/zabbly.gpg /etc/apt/keyrings/zabbly.asc
   rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
   rm -rf /etc/apt/keyrings/liquorix.gpg
 elif [[ $kernel_type == "liquorix" ]]; then
   rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
+  rm -rf /etc/apt/keyrings/zabbly.gpg /etc/apt/keyrings/zabbly.asc
   rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
   rm -rf /etc/apt/keyrings/xanmod.gpg
 fi
@@ -143,9 +144,12 @@ fi
 
 installZabbly(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}\r\c"
-if [[ $architecture != "amd64" ]]; then
-  echo -e "${RED}only work on x86_64${cRES}"
-elif [[ $architecture == "amd64" ]]; then
+if [[ $architecture != "amd64" ]] && [[ $architecture != "arm64" ]]; then
+  echo -e "${RED}only work on x86_64 or arm64${cRES}"
+else
+mkdir -p /etc/apt/keyrings
+curl -fsSL --connect-timeout 5 --max-time 15 https://pkgs.zabbly.com/key.asc -o /etc/apt/keyrings/zabbly.asc 2>/dev/null
+if [[ ! -s /etc/apt/keyrings/zabbly.asc ]]; then
 cat << EOF >/etc/apt/keyrings/zabbly.asc
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -189,9 +193,14 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] http://pkgs.zabbly.com/kernel/stable $(get_debian_codename) main" >/etc/apt/sources.list.d/zabbly-kernel.list
+fi
 
-apt update && apt install linux-zabbly
+debian_codename=$(get_debian_codename)
+[[ -z "$debian_codename" ]] && debian_codename="bookworm"
+
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable ${debian_codename} main" >/etc/apt/sources.list.d/zabbly-kernel.list
+
+apt update && apt install -y linux-zabbly
 
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
@@ -203,11 +212,11 @@ else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${RED}Install Failed${cRES}"
 
   dpkg --list | awk '{print $2}' | grep zabbly | while read line; do
-  apt autoremove --purge $line
+  apt autoremove --purge -y $line
   done
 
   rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
-  rm -rf /etc/apt/keyrings/zabbly.gpg
+  rm -rf /etc/apt/keyrings/zabbly.asc /etc/apt/keyrings/zabbly.gpg
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
   exit
 fi
