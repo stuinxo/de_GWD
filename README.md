@@ -12,7 +12,7 @@
 ```
 bash <(wget --no-check-certificate -qO- https://raw.githubusercontent.com/stuinxo/de_GWD/v2/server)
 ```
-> 安装完成后，随时可在终端输入 `de_GWD` 打开管理菜单。
+> 安装完成后，随时可在终端输入 `dex` 打开管理菜单（兼容 `de_GWD`）。
 
 ![de_GWD 0](https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/screenshot/0.png)
 
@@ -27,7 +27,7 @@ bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubus
 chmod +x client
 ./client
 ```
-> 安装完成后，随时可在终端输入 `de_GWD` 打开管理菜单。
+> 安装完成后，随时可在终端输入 `dex` 打开管理菜单（兼容 `de_GWD`）。
 
 ![de_GWD 1](https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/screenshot/1.png)
 ![de_GWD 2](https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/screenshot/2.png)

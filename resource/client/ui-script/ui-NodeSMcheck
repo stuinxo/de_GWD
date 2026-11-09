@@ -1,191 +1,69 @@
 #!/bin/bash
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMyoutube") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMyoutube") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+# ui-NodeSMcheck: Check current node assignment for Predefined Services in JSON format
 
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
+SERVICES=("openai" "claude" "gemini" "grok" "youtube" "netflix" "hdh" "bahamut" "tvb" "telegram" "twitter" "discord" "reddit" "github" "wikipedia")
+
+JSON_RESULT="{"
+
+for svc in "${SERVICES[@]}"; do
+  tag="nodeSM${svc}"
+  domain=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+  port=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+
+  num=0
+  name="-none-"
+
+  if [[ -n "$domain" ]]; then
+    if [[ "$port" == "443" || -z "$port" ]]; then
+      nodecheck="$domain"
+    else
+      nodecheck="$domain:$port"
+    fi
+
+    checkNum=$(jq -r --arg nodecheck "$nodecheck" '.v2node | to_entries[]? | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf 2>/dev/null)
+    checkName=$(jq -r --arg nodecheck "$nodecheck" '.v2node[]? | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf 2>/dev/null)
+
+    if [[ -n "$checkNum" && "$checkNum" != "null" ]]; then
+      num=$((checkNum + 1))
+      name="${checkName:-$nodecheck}"
+    fi
+  fi
+
+  JSON_RESULT+="\"$svc\":{\"num\":$num,\"name\":$(echo "$name" | jq -R .)},"
+done
+
+# Check Apple
+apple_domain=$(jq -r '.outbounds[]? | select(.tag == "nodeSMapple") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+apple_port=$(jq -r '.outbounds[]? | select(.tag == "nodeSMapple") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+apple_num=0
+apple_name="直连"
+
+if [[ -n "$apple_domain" ]]; then
+  if [[ "$apple_port" == "443" || -z "$apple_port" ]]; then
+    apple_check="$apple_domain"
+  else
+    apple_check="$apple_domain:$apple_port"
+  fi
+  cNum=$(jq -r --arg nodecheck "$apple_check" '.v2node | to_entries[]? | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf 2>/dev/null)
+  cName=$(jq -r --arg nodecheck "$apple_check" '.v2node[]? | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf 2>/dev/null)
+  if [[ -n "$cNum" && "$cNum" != "null" ]]; then
+    apple_num=$((cNum + 1))
+    apple_name="${cName:-$apple_check}"
+  fi
 fi
+JSON_RESULT+="\"apple\":{\"num\":$apple_num,\"name\":$(echo "$apple_name" | jq -R .)},"
 
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
+# Check Steam
+steam_status=$(jq -r '.v2nodeDIV.nodeSM.steam' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+if [[ "$steam_status" == "proxy" ]]; then
+  steam_num=1
+  steam_name="默认代理"
 else
-echo $((checkNum+=1))
+  steam_num=0
+  steam_name="直连"
 fi
+JSON_RESULT+="\"steam\":{\"num\":$steam_num,\"name\":$(echo "$steam_name" | jq -R .)}"
 
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
+JSON_RESULT+="}"
 
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMnetflix") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMnetflix") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMhdh") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMhdh") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMtvb") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMtvb") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMbahamut") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMbahamut") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMopenai") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMopenai") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-domain=$(jq -r '.outbounds[] | select(.tag == "nodeSMapple") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[] | select(.tag == "nodeSMapple") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-if [[ $port = "443" ]]; then
-nodecheck=$domain
-else
-nodecheck="$domain:$port"
-fi
-
-checkNum=$(jq -r --arg nodecheck $nodecheck '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf)
-checkName=$(jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf)
-
-if [[ -z $checkNum ]]; then
-echo "0"
-else
-echo $((checkNum+=1))
-fi
-
-if [[ -z $checkName ]]; then
-echo "-none-"
-else
-echo $checkName
-fi
-
-
-
-if [[ -z $(jq -r '.v2nodeDIV.nodeSM.steam' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
-echo "0"
-echo "-none-"
-else
-echo "1"
-echo "默认代理"
-fi
+echo "$JSON_RESULT"
