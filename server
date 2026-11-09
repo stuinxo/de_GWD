@@ -1184,7 +1184,13 @@ elif [[ -n "$CFapikey" ]]; then
     unset CF_Token
 fi
 
+local mainDomain="$domain"
 local domainArgs=("-d" "$domain" "-d" "*.$domain")
+if [[ "$domain" == *.*.* ]]; then
+    local parentDomain=$(echo "$domain" | cut -d. -f2-)
+    mainDomain="$parentDomain"
+    domainArgs=("-d" "$parentDomain" "-d" "*.$parentDomain" "-d" "*.$domain")
+fi
 
 if [[ $(systemctl is-active 'nginx') != "active" ]]; then
   systemctl restart nginx
@@ -1213,7 +1219,7 @@ if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
 fi
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
 "/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 45 "${domainArgs[@]}" -k ec-256
-"/root/.acme.sh"/acme.sh --installcert -d "$domain" \
+"/root/.acme.sh"/acme.sh --installcert -d "$mainDomain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --reloadcmd     "systemctl force-reload nginx" \
