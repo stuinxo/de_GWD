@@ -2199,14 +2199,25 @@ getInternalPort() {
     echo "$intPort"
 }
 
+getNginxConfName() {
+    local tag="$1"
+    case "$tag" in
+        "inbound-vmess-ws") echo "vmess-ws" ;;
+        "inbound-vless-ws") echo "vless-ws" ;;
+        "inbound-vless-xhttp") echo "vless-xhttp" ;;
+        *) echo "${tag#inbound-}" ;;
+    esac
+}
+
 setupNginxWebProxy() {
     local tag="$1"
     local pubPort="$2"
     local domain="$3"
     local intPort="$4"
     local path="$5"
+    local confName=$(getNginxConfName "$tag")
 
-    cat << EOF > "/etc/nginx/conf.d/v2_${tag}.conf"
+    cat << EOF > "/etc/nginx/conf.d/${confName}.conf"
 server {
     listen ${pubPort} ssl;
     listen [::]:${pubPort} ssl;
@@ -2215,6 +2226,17 @@ server {
     root /var/www/html;
     index index.html index.htm;
     include /etc/nginx/conf.d/.ssl_certs;
+
+    location /dq {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:9853/dq;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_read_timeout 600s;
+    }
 
     location ${path} {
         proxy_redirect off;
@@ -2225,18 +2247,23 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_connect_timeout 600s;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_buffering off;
+        chunked_transfer_encoding off;
     }
 }
 EOF
+    rm -f "/etc/nginx/conf.d/v2_${tag}.conf" 2>/dev/null || true
     nginx -t >/dev/null 2>&1 && systemctl reload nginx
 }
 
 removeNginxWebProxy() {
     local tag="$1"
-    if [[ -f "/etc/nginx/conf.d/v2_${tag}.conf" ]]; then
-        rm -f "/etc/nginx/conf.d/v2_${tag}.conf"
-        nginx -t >/dev/null 2>&1 && systemctl reload nginx
-    fi
+    local confName=$(getNginxConfName "$tag")
+    rm -f "/etc/nginx/conf.d/${confName}.conf" "/etc/nginx/conf.d/v2_${tag}.conf" 2>/dev/null || true
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx
 }
 
 hasXrayInbound() {
@@ -2418,7 +2445,8 @@ showXHTTPNode() {
     echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
     echo -e "${BLUE}Network:     ${YELLOW}xhttp${cRES}"
     echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
-    echo -e "${BLUE}SNI:         ${YELLOW}$vpsdomain${cRES}"
+    echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
+    echo -e "${BLUE}DoH Server:  ${YELLOW}$vpsdomain:$p/dq${cRES}"
     echo
     local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${path}&mode=packet-up&sni=${vpsdomain}#${vpsdomain}-XHTTP"
     echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
@@ -2448,6 +2476,7 @@ showVlessWSNode() {
     echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
     echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
     echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
+    echo -e "${BLUE}DoH Server:  ${YELLOW}$vpsdomain:$p/dq${cRES}"
     echo
     local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=ws&path=${path}&host=${vpsdomain}&sni=${vpsdomain}#${vpsdomain}-VLESS-WS"
     echo -e "${BLUE}Direct Link: ${YELLOW}${link}${cRES}"
@@ -2477,6 +2506,7 @@ showVMessWSNode() {
     echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
     echo -e "${BLUE}Path:        ${YELLOW}$path${cRES}"
     echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
+    echo -e "${BLUE}DoH Server:  ${YELLOW}$vpsdomain:$p/dq${cRES}"
     echo
     local vmessJson="{\"v\":\"2\",\"ps\":\"${vpsdomain}-VMess-WS\",\"add\":\"${vpsdomain}\",\"port\":\"${p}\",\"id\":\"${uuid}\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"${vpsdomain}\",\"path\":\"${path}\",\"tls\":\"tls\",\"sni\":\"${vpsdomain}\"}"
     local b64=$(echo -n "$vmessJson" | base64 -w 0 2>/dev/null || echo -n "$vmessJson" | base64 | tr -d '\r\n')
