@@ -1306,7 +1306,7 @@ cat << EOF >/etc/nginx/conf.d/.ssl_certs
 ssl_certificate /var/www/ssl/de_GWD.cer;
 ssl_certificate_key /var/www/ssl/de_GWD.key;
 ssl_dhparam /var/www/ssl/dhparam.pem;
-ssl_protocols TLSv1.3;
+ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers on;
 ssl_ecdh_curve X25519:secp384r1;
 ssl_conf_command Options KTLS;
@@ -2169,6 +2169,76 @@ getXrayInboundPort() {
     jq -r --arg tag "$tag" '.inbounds[] | select(.tag == $tag) | .port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$' | head -n1
 }
 
+getInboundPort() {
+    local in_tag="$1"
+    local p=""
+    if [[ -f /opt/de_GWD/extra_ports.json ]]; then
+        p=$(jq -r --arg tag "$in_tag" '.[$tag] // empty' /opt/de_GWD/extra_ports.json 2>/dev/null)
+    fi
+    if [[ -z "$p" ]]; then
+        p=$(getXrayInboundPort "$in_tag")
+    fi
+    echo "$p"
+}
+
+setInboundPort() {
+    local in_tag="$1"
+    local p="$2"
+    mkdir -p /opt/de_GWD
+    [[ ! -f /opt/de_GWD/extra_ports.json ]] && echo '{}' > /opt/de_GWD/extra_ports.json
+    jq --arg tag "$in_tag" --argjson p "$p" '.[$tag] = $p' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json
+    chmod 666 /opt/de_GWD/extra_ports.json 2>/dev/null || true
+}
+
+getInternalPort() {
+    local pubPort="$1"
+    local intPort=$((pubPort + 10000))
+    if [ "$intPort" -gt 65000 ]; then
+        intPort=$((10000 + (pubPort % 10000)))
+    fi
+    echo "$intPort"
+}
+
+setupNginxWebProxy() {
+    local tag="$1"
+    local pubPort="$2"
+    local domain="$3"
+    local intPort="$4"
+    local path="$5"
+
+    cat << EOF > "/etc/nginx/conf.d/v2_${tag}.conf"
+server {
+    listen ${pubPort} ssl;
+    listen [::]:${pubPort} ssl;
+    http2 on;
+    server_name ${domain};
+    root /var/www/html;
+    index index.html index.htm;
+    include /etc/nginx/conf.d/.ssl_certs;
+
+    location ${path} {
+        proxy_redirect off;
+        proxy_pass http://127.0.0.1:${intPort};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+}
+EOF
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx
+}
+
+removeNginxWebProxy() {
+    local tag="$1"
+    if [[ -f "/etc/nginx/conf.d/v2_${tag}.conf" ]]; then
+        rm -f "/etc/nginx/conf.d/v2_${tag}.conf"
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    fi
+}
+
 hasXrayInbound() {
     local tag="$1"
     jq -e --arg tag "$tag" '.inbounds[] | select(.tag == $tag)' /opt/de_GWD/vtrui/config.json >/dev/null 2>&1
@@ -2258,6 +2328,10 @@ removeXrayInbound() {
     if [[ -f /opt/de_GWD/extra_domains.json ]]; then
         jq --arg tag "$tag" 'del(.[$tag])' /opt/de_GWD/extra_domains.json | sponge /opt/de_GWD/extra_domains.json 2>/dev/null || true
     fi
+    if [[ -f /opt/de_GWD/extra_ports.json ]]; then
+        jq --arg tag "$tag" 'del(.[$tag])' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json 2>/dev/null || true
+    fi
+    removeNginxWebProxy "$tag"
     if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
         systemctl restart vtrui
         rm -f /opt/de_GWD/vtrui/config.json.bak
@@ -2333,7 +2407,7 @@ showXHTTPNode() {
         return 1
     fi
     local vpsdomain=$(getInboundDomain "inbound-vless-xhttp")
-    local p=$(getXrayInboundPort "inbound-vless-xhttp")
+    local p=$(getInboundPort "inbound-vless-xhttp")
     local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-xhttp") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
     local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-xhttp") | .streamSettings.xhttpSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
 
@@ -2363,7 +2437,7 @@ showVlessWSNode() {
         return 1
     fi
     local vpsdomain=$(getInboundDomain "inbound-vless-ws")
-    local p=$(getXrayInboundPort "inbound-vless-ws")
+    local p=$(getInboundPort "inbound-vless-ws")
     local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-ws") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
     local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vless-ws") | .streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
 
@@ -2380,8 +2454,6 @@ showVlessWSNode() {
     echo
     echo -e "${BLUE}QR Code: ${cRES}"
     qrencode -t UTF8 -s 1 -m 3 "$link"
-    echo
-    echo -e "${CYAN}Tip: If reverse-proxying via 443 with a custom domain, proxy ${YELLOW}$path${CYAN} to ${YELLOW}http://127.0.0.1:$p${cRES}"
     echo -e "${BLUE}-------------------------------------------------- ${cRES}"
     if [[ "$1" == "wait" ]]; then
         read -p "Press Enter to return..."
@@ -2394,7 +2466,7 @@ showVMessWSNode() {
         return 1
     fi
     local vpsdomain=$(getInboundDomain "inbound-vmess-ws")
-    local p=$(getXrayInboundPort "inbound-vmess-ws")
+    local p=$(getInboundPort "inbound-vmess-ws")
     local uuid=$(jq -r '.inbounds[] | select(.tag=="inbound-vmess-ws") | .settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null)
     local path=$(jq -r '.inbounds[] | select(.tag=="inbound-vmess-ws") | .streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null)
 
@@ -2413,8 +2485,6 @@ showVMessWSNode() {
     echo
     echo -e "${BLUE}QR Code: ${cRES}"
     qrencode -t UTF8 -s 1 -m 3 "$link"
-    echo
-    echo -e "${CYAN}Tip: If reverse-proxying via 443 with a custom domain, proxy ${YELLOW}$path${CYAN} to ${YELLOW}http://127.0.0.1:$p${cRES}"
     echo -e "${BLUE}-------------------------------------------------- ${cRES}"
     if [[ "$1" == "wait" ]]; then
         read -p "Press Enter to return..."
@@ -2627,7 +2697,7 @@ setupVlessXHTTP() {
         read -p "Press Enter to return..."
         return 1
     fi
-    local curPort=$(getXrayInboundPort "inbound-vless-xhttp")
+    local curPort=$(getInboundPort "inbound-vless-xhttp")
     local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
 
     clear 2>/dev/null || true
@@ -2657,6 +2727,7 @@ setupVlessXHTTP() {
     parseDomainAndPort "inbound-vless-xhttp" "2083" "$curPort"
     local port="$target_port"
     local vpsdomain="$target_domain"
+    local internalPort=$(getInternalPort "$port")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -2667,8 +2738,8 @@ setupVlessXHTTP() {
     local inboundJson=$(cat << EOF
 {
   "tag": "inbound-vless-xhttp",
-  "listen": "0.0.0.0",
-  "port": $port,
+  "listen": "127.0.0.1",
+  "port": $internalPort,
   "protocol": "vless",
   "settings": {
     "clients": [
@@ -2680,15 +2751,7 @@ setupVlessXHTTP() {
   },
   "streamSettings": {
     "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "certificates": [
-        {
-          "certificateFile": "/var/www/ssl/de_GWD.cer",
-          "keyFile": "/var/www/ssl/de_GWD.key"
-        }
-      ]
-    },
+    "security": "none",
     "xhttpSettings": {
       "path": "$inputPath",
       "mode": "packet-up"
@@ -2707,6 +2770,8 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-xhttp"; then
+        setInboundPort "inbound-vless-xhttp" "$port"
+        setupNginxWebProxy "inbound-vless-xhttp" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + XHTTP + TLS successfully configured!${cRES}"
         echo
         showXHTTPNode "wait"
@@ -2719,7 +2784,7 @@ setupVlessWS() {
         read -p "Press Enter to return..."
         return 1
     fi
-    local curPort=$(getXrayInboundPort "inbound-vless-ws")
+    local curPort=$(getInboundPort "inbound-vless-ws")
     local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
     local nginxPort=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$' | head -n1)
 
@@ -2752,6 +2817,7 @@ setupVlessWS() {
     parseDomainAndPort "inbound-vless-ws" "$recPort" "$curPort"
     local port="$target_port"
     local vpsdomain="$target_domain"
+    local internalPort=$(getInternalPort "$port")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -2762,8 +2828,8 @@ setupVlessWS() {
     local inboundJson=$(cat << EOF
 {
   "tag": "inbound-vless-ws",
-  "listen": "0.0.0.0",
-  "port": $port,
+  "listen": "127.0.0.1",
+  "port": $internalPort,
   "protocol": "vless",
   "settings": {
     "clients": [
@@ -2775,15 +2841,7 @@ setupVlessWS() {
   },
   "streamSettings": {
     "network": "ws",
-    "security": "tls",
-    "tlsSettings": {
-      "certificates": [
-        {
-          "certificateFile": "/var/www/ssl/de_GWD.cer",
-          "keyFile": "/var/www/ssl/de_GWD.key"
-        }
-      ]
-    },
+    "security": "none",
     "wsSettings": {
       "path": "$inputPath"
     },
@@ -2801,6 +2859,8 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-ws"; then
+        setInboundPort "inbound-vless-ws" "$port"
+        setupNginxWebProxy "inbound-vless-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + WS + TLS successfully configured!${cRES}"
         echo
         showVlessWSNode "wait"
@@ -2813,7 +2873,7 @@ setupVMessWS() {
         read -p "Press Enter to return..."
         return 1
     fi
-    local curPort=$(getXrayInboundPort "inbound-vmess-ws")
+    local curPort=$(getInboundPort "inbound-vmess-ws")
     local vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
     local nginxPort=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf 2>/dev/null | grep '^[[:digit:]]*$' | head -n1)
 
@@ -2846,6 +2906,7 @@ setupVMessWS() {
     parseDomainAndPort "inbound-vmess-ws" "$recPort" "$curPort"
     local port="$target_port"
     local vpsdomain="$target_domain"
+    local internalPort=$(getInternalPort "$port")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -2856,8 +2917,8 @@ setupVMessWS() {
     local inboundJson=$(cat << EOF
 {
   "tag": "inbound-vmess-ws",
-  "listen": "0.0.0.0",
-  "port": $port,
+  "listen": "127.0.0.1",
+  "port": $internalPort,
   "protocol": "vmess",
   "settings": {
     "clients": [
@@ -2869,15 +2930,7 @@ setupVMessWS() {
   },
   "streamSettings": {
     "network": "ws",
-    "security": "tls",
-    "tlsSettings": {
-      "certificates": [
-        {
-          "certificateFile": "/var/www/ssl/de_GWD.cer",
-          "keyFile": "/var/www/ssl/de_GWD.key"
-        }
-      ]
-    },
+    "security": "none",
     "wsSettings": {
       "path": "$inputPath"
     },
@@ -2895,6 +2948,8 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vmess-ws"; then
+        setInboundPort "inbound-vmess-ws" "$port"
+        setupNginxWebProxy "inbound-vmess-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VMess + WS + TLS successfully configured!${cRES}"
         echo
         showVMessWSNode "wait"
@@ -3077,8 +3132,10 @@ disableAllExtraProtocols() {
             if hasXrayInbound "$t"; then
                 jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
             fi
+            removeNginxWebProxy "$t"
         done
         rm -f /opt/de_GWD/vtrui/reality.info
+        rm -f /opt/de_GWD/extra_domains.json /opt/de_GWD/extra_ports.json
         if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
             systemctl restart vtrui
             echo -e "${GREEN}All extra protocols disabled successfully.${cRES}"
@@ -3094,12 +3151,12 @@ manageProtocols() {
         echo -e "${GREEN}                   Manage Extra Protocols (Option 55)            ${cRES}"
         echo -e "${GREEN}================================================================ ${cRES}"
 
-        local pReality=$(getXrayInboundPort "inbound-vless-reality")
-        local pXhttp=$(getXrayInboundPort "inbound-vless-xhttp")
-        local pVlessWs=$(getXrayInboundPort "inbound-vless-ws")
-        local pVmessWs=$(getXrayInboundPort "inbound-vmess-ws")
-        local pSocks5=$(getXrayInboundPort "inbound-socks5")
-        local pDokodemo=$(getXrayInboundPort "inbound-dokodemo")
+        local pReality=$(getInboundPort "inbound-vless-reality")
+        local pXhttp=$(getInboundPort "inbound-vless-xhttp")
+        local pVlessWs=$(getInboundPort "inbound-vless-ws")
+        local pVmessWs=$(getInboundPort "inbound-vmess-ws")
+        local pSocks5=$(getInboundPort "inbound-socks5")
+        local pDokodemo=$(getInboundPort "inbound-dokodemo")
 
         local dReality=$(getInboundDomain "inbound-vless-reality")
         local dXhttp=$(getInboundDomain "inbound-vless-xhttp")
