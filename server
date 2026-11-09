@@ -1184,15 +1184,7 @@ elif [[ -n "$CFapikey" ]]; then
     unset CF_Token
 fi
 
-local parentDomain=""
-if [[ "$domain" == *.*.* ]]; then
-    parentDomain=$(echo "$domain" | cut -d. -f2-)
-fi
-
 local domainArgs=("-d" "$domain" "-d" "*.$domain")
-if [[ -n "$parentDomain" ]]; then
-    domainArgs+=("-d" "$parentDomain" "-d" "*.$parentDomain")
-fi
 
 if [[ $(systemctl is-active 'nginx') != "active" ]]; then
   systemctl restart nginx
