@@ -352,7 +352,13 @@ print <<<EOT
         <h5 class="modal-title mx-auto" >默认中转线二维码 - $FWD0mark</h5>
       </div>
       <div class="modal-body">
-        <div id="FWD0qrcode$FWD0num" class="text-center"></div>
+        <div id="FWD0qrcode$FWD0num" class="text-center mb-3"></div>
+        <div class="input-group">
+          <input type="text" id="FWD0link$FWD0num" class="form-control" readonly>
+          <div class="input-group-append">
+            <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('FWD0link$FWD0num', this)">复制</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -457,7 +463,13 @@ print <<<EOT
         <h5 class="modal-title mx-auto" >并行中转线二维码 - $FWD1mark</h5>
       </div>
       <div class="modal-body">
-        <div id="FWD1qrcode$FWD1num" class="text-center"></div>
+        <div id="FWD1qrcode$FWD1num" class="text-center mb-3"></div>
+        <div class="input-group">
+          <input type="text" id="FWD1link$FWD1num" class="form-control" readonly>
+          <div class="input-group-append">
+            <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('FWD1link$FWD1num', this)">复制</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -567,7 +579,13 @@ print <<<EOT
         <h5 class="modal-title mx-auto" >内网穿透 代理型 二维码 - $RproxyS0mark</h5>
       </div>
       <div class="modal-body">
-        <div id="RproxyS0qrcode$RproxyS0num" class="text-center"></div>
+        <div id="RproxyS0qrcode$RproxyS0num" class="text-center mb-3"></div>
+        <div class="input-group">
+          <input type="text" id="RproxyS0link$RproxyS0num" class="form-control" readonly>
+          <div class="input-group-append">
+            <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('RproxyS0link$RproxyS0num', this)">复制</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -776,14 +794,62 @@ $('#FWD0button').css('display', 'block');
 $('#FWD0body').css('display', 'block');
 }
 
+function copyNodeLink(elemId, btn) {
+  var copyText = document.getElementById(elemId);
+  if (!copyText) return;
+  copyText.select();
+  copyText.setSelectionRange(0, 99999);
+  var done = function() {
+    var $btn = $(btn);
+    var oldText = $btn.text();
+    $btn.text('已复制!').removeClass('btn-outline-primary').addClass('btn-success');
+    setTimeout(function() {
+      $btn.text(oldText).removeClass('btn-success').addClass('btn-outline-primary');
+    }, 1500);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(copyText.value).then(done).catch(function() {
+      document.execCommand('copy');
+      done();
+    });
+  } else {
+    document.execCommand('copy');
+    done();
+  }
+}
+
 function FWD0qr(FWD0qr){
 var FWD0obj = $(FWD0qr).parent().parent().parent().parent().find('.input-group')
 var FWD0objLine = $(FWD0qr).parent().parent().parent().find('div')
 var FWD0index = FWD0obj.index(FWD0objLine)+1
 $.get('./act/FWD0qr.php', {FWD0index:FWD0index}, function(data){
-$('#FWD0qrcode'+FWD0index).empty()
-$('#FWD0qrpop'+FWD0index).modal('show')
-$('#FWD0qrcode'+FWD0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+  if ($('#FWD0qrpop' + FWD0index).length === 0) {
+    var markVal = $('#FWD0mark' + FWD0index).val() || '';
+    $('body').append(`
+      <div id="FWD0qrpop${FWD0index}" class="modal fade" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title mx-auto">默认中转线二维码 - ${markVal}</h5>
+            </div>
+            <div class="modal-body">
+              <div id="FWD0qrcode${FWD0index}" class="text-center mb-3"></div>
+              <div class="input-group">
+                <input type="text" id="FWD0link${FWD0index}" class="form-control" readonly>
+                <div class="input-group-append">
+                  <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('FWD0link${FWD0index}', this)">复制</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+  $('#FWD0qrcode'+FWD0index).empty()
+  $('#FWD0link'+FWD0index).val(data)
+  $('#FWD0qrpop'+FWD0index).modal('show')
+  $('#FWD0qrcode'+FWD0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
 })
 }
 
@@ -798,9 +864,33 @@ var FWD1obj = $(FWD1qr).parent().parent().parent().parent().find('.input-group')
 var FWD1objLine = $(FWD1qr).parent().parent().parent().find('div')
 var FWD1index = FWD1obj.index(FWD1objLine)+1
 $.get('./act/FWD1qr.php', {FWD1index:FWD1index}, function(data){
-$('#FWD1qrcode'+FWD1index).empty()
-$('#FWD1qrpop'+FWD1index).modal('show')
-$('#FWD1qrcode'+FWD1index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+  if ($('#FWD1qrpop' + FWD1index).length === 0) {
+    var markVal = $('#FWD1mark' + FWD1index).val() || '';
+    $('body').append(`
+      <div id="FWD1qrpop${FWD1index}" class="modal fade" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title mx-auto">并行中转线二维码 - ${markVal}</h5>
+            </div>
+            <div class="modal-body">
+              <div id="FWD1qrcode${FWD1index}" class="text-center mb-3"></div>
+              <div class="input-group">
+                <input type="text" id="FWD1link${FWD1index}" class="form-control" readonly>
+                <div class="input-group-append">
+                  <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('FWD1link${FWD1index}', this)">复制</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+  $('#FWD1qrcode'+FWD1index).empty()
+  $('#FWD1link'+FWD1index).val(data)
+  $('#FWD1qrpop'+FWD1index).modal('show')
+  $('#FWD1qrcode'+FWD1index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
 })
 }
 
@@ -830,9 +920,33 @@ var RproxyS0obj = $(RproxyS0qr).parent().parent().parent().parent().find('.input
 var RproxyS0objLine = $(RproxyS0qr).parent().parent().parent().find('div')
 var RproxyS0index = RproxyS0obj.index(RproxyS0objLine)+1
 $.get('./act/RproxyS0qr.php', {RproxyS0index:RproxyS0index}, function(data){
-$('#RproxyS0qrcode'+RproxyS0index).empty()
-$('#RproxyS0qrpop'+RproxyS0index).modal('show')
-$('#RproxyS0qrcode'+RproxyS0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+  if ($('#RproxyS0qrpop' + RproxyS0index).length === 0) {
+    var markVal = $('#RproxyS0mark' + RproxyS0index).val() || '';
+    $('body').append(`
+      <div id="RproxyS0qrpop${RproxyS0index}" class="modal fade" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title mx-auto">内网穿透 代理型 二维码 - ${markVal}</h5>
+            </div>
+            <div class="modal-body">
+              <div id="RproxyS0qrcode${RproxyS0index}" class="text-center mb-3"></div>
+              <div class="input-group">
+                <input type="text" id="RproxyS0link${RproxyS0index}" class="form-control" readonly>
+                <div class="input-group-append">
+                  <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('RproxyS0link${RproxyS0index}', this)">复制</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+  $('#RproxyS0qrcode'+RproxyS0index).empty()
+  $('#RproxyS0link'+RproxyS0index).val(data)
+  $('#RproxyS0qrpop'+RproxyS0index).modal('show')
+  $('#RproxyS0qrcode'+RproxyS0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
 })
 }
 
