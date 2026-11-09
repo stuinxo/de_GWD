@@ -1,2 +1,4 @@
 
 .DS_Store
+*.ps1
+run_server.sh
