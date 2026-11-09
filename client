@@ -1918,14 +1918,6 @@ fi
 
 mkdir -p /etc/php/${PHP_VER}/mods-available /etc/php/${PHP_VER}/cli/conf.d /etc/php/${PHP_VER}/fpm/conf.d /run/php
 
-if [[ -d "/usr/local/ioncube" ]]; then
-    if [[ -f "/usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" ]]; then
-        echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" >/etc/php/${PHP_VER}/mods-available/ioncube.ini
-        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/fpm/conf.d/00-ioncube.ini
-        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/cli/conf.d/00-ioncube.ini
-    fi
-fi
-
 sed -i "/zend_extension/d" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
 sed -i "/zend_extension/d" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
 sed -i "s/^opcache/;&/" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null

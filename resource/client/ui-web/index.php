@@ -36,11 +36,8 @@
 <?php $DoG = $de_GWDconf->dns->dog ?? ''; ?>
 
 <?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
-<?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
 <?php $checkBitwarden = $de_GWDconf->app->bitwarden ?? ''; ?>
 
-<?php $FileRunWebConf = file_exists('/etc/nginx/conf.d/filerun.conf') ? file_get_contents('/etc/nginx/conf.d/filerun.conf') : ''; preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?? '' ?>
-<?php $WebConf = file_exists('/etc/nginx/conf.d/default.conf') ? file_get_contents('/etc/nginx/conf.d/default.conf') : ''; preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = isset($serverName[0][0]) ? rtrim($serverName[0][0],";") : 'de_GWD' ?>
 <?php $v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? $de_GWDconf->v2node : []; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
@@ -58,13 +55,6 @@
 
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkFileRun === true) echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(<?php if ($serverName != "de_GWD") echo "'https://$serverName:$FileRunPort'"; else echo "location.origin+':$FileRunPort'" ?>)">
-          <i class="fas fa-folder"></i>
-          <span>FileRun</span>
-        </a>
-      </li>
-
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
