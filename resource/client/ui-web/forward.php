@@ -210,16 +210,16 @@
 
               <div class="col-md-5 input-group my-2">
                 <div class="input-group-prepend">
-                  <span class="input-group-text justify-content-center" style="min-width: 120px;">CF API KEY</span>
+                  <span class="input-group-text justify-content-center" style="min-width: 120px;">CF Token / Key</span>
                 </div>
-                  <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->APIkey ?>">
+                  <input id="CFapikey" type="text" class="form-control" placeholder="Cloudflare API Token 或 Global Key" value="<?php echo $de_GWDconf->FORWARD->APIkey ?>">
               </div>
 
               <div class="col-md-4 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF E-mail</span>
                 </div>
-                  <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Email ?>">
+                  <input id="CFemail" type="text" class="form-control" placeholder="使用Token时可留空" value="<?php echo $de_GWDconf->FORWARD->Email ?>">
               </div>
             </div>
           </div>
