@@ -2613,12 +2613,11 @@ setupVlessXHTTP() {
         fi
     done
 
-    echo
-    read -p "Enter XHTTP Path [Default: /xhttp]: " inputPath
-    [[ -z "$inputPath" ]] && inputPath="/xhttp"
-    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
-
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+    local inputPath="/${uuid%%-*}"
+    echo
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$inputPath${cRES} (auto-generated from UUID)"
 
     local inboundJson=$(cat << EOF
 {
@@ -2723,12 +2722,11 @@ setupVlessWS() {
         fi
     done
 
-    echo
-    read -p "Enter WebSocket Path [Default: /vlessws]: " inputPath
-    [[ -z "$inputPath" ]] && inputPath="/vlessws"
-    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
-
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+    local inputPath="/${uuid%%-*}"
+    echo
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$inputPath${cRES} (auto-generated from UUID)"
 
     local inboundJson=$(cat << EOF
 {
@@ -2832,12 +2830,11 @@ setupVMessWS() {
         fi
     done
 
-    echo
-    read -p "Enter WebSocket Path [Default: /vmessws]: " inputPath
-    [[ -z "$inputPath" ]] && inputPath="/vmessws"
-    [[ "${inputPath:0:1}" != "/" ]] && inputPath="/$inputPath"
-
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
+    local inputPath="/${uuid%%-*}"
+    echo
+    echo -e "${BLUE}UUID:        ${YELLOW}$uuid${cRES}"
+    echo -e "${BLUE}Path:        ${YELLOW}$inputPath${cRES} (auto-generated from UUID)"
 
     local inboundJson=$(cat << EOF
 {
