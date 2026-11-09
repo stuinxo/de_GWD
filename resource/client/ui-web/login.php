@@ -34,7 +34,7 @@
 <form>
           <div class="form-group">
                 <div class="form-label-group">
-                  <input type="password" id="gwdpasswd" class="form-control" placeholder="密码" required="required" value="" autofocus="autofocus" onkeydown="keysubmitpw()">
+                  <input type="password" id="gwdpasswd" class="form-control" placeholder="密码" required="required" value="" autofocus="autofocus" onkeydown="keysubmitpw(event)">
                   <label for="gwdpasswd">密码</label>
                 </div>
           </div>
@@ -45,20 +45,19 @@
   </div>
 
 <script>
-function keysubmitpw(){
-    if(event.keyCode == 13) {
-event.preventDefault();
-gwdpasswdtext=$('#gwdpasswd').val();
-$.get('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; });
-};
-};
-
-
+function keysubmitpw(e){
+    var code = (e && e.keyCode) ? e.keyCode : (event ? event.keyCode : 0);
+    if(code == 13) {
+        if (e && e.preventDefault) e.preventDefault();
+        gwdpasswdtext=$('#gwdpasswd').val();
+        $.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; });
+    }
+}
 
 $(function(){
 $('#buttonSubmitpw').click(function(){
 gwdpasswdtext=$('#gwdpasswd').val()
-$.get('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; })
+$.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; })
 })
 })
 </script>

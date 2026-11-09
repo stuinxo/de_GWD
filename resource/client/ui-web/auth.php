@@ -1,9 +1,9 @@
 <?php
     session_start();
-    $PWDhash = json_decode(file_get_contents('/opt/de_GWD/0conf'))->address->PWD;
-    if(isset($PWDhash))
+    $conf = @json_decode(@file_get_contents('/opt/de_GWD/0conf'));
+    if (isset($conf->address->PWD) && $conf->address->PWD !== '')
     {
-        $GWDpwhash = $PWDhash;
+        $GWDpwhash = $conf->address->PWD;
     }
     else
     {
@@ -15,15 +15,17 @@
     {
         unset($_SESSION["GWDhash"]);
         setcookie('persistentlogin', '');
+        session_write_close();
         exit();
     }
     $auth = false;
 
 
-    if(isset($_GET['gwdpw']))
+    $pwInput = $_POST['gwdpw'] ?? $_GET['gwdpw'] ?? null;
+    if ($pwInput !== null)
     {
-        $logininput = hash('sha256',hash('sha256',$_GET['gwdpw']));
-        if( $GWDpwhash === $logininput )
+        $logininput = hash('sha256', hash('sha256', (string)$pwInput));
+        if (hash_equals($GWDpwhash, $logininput))
         {
             $_SESSION["GWDhash"] = $GWDpwhash;
             $auth = true;
@@ -35,7 +37,7 @@
     }
     else if (isset($_SESSION["GWDhash"]))
     {
-        if($_SESSION["GWDhash"] === $GWDpwhash)
+        if(hash_equals($GWDpwhash, (string)$_SESSION["GWDhash"]))
         {
             $auth = true;
         }
@@ -48,4 +50,5 @@
     {
         $auth = false;
     }
+    session_write_close();
 ?>

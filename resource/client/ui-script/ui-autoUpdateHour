@@ -17,7 +17,7 @@ echo $remoteVer >>/tmp/de_GWD_Ver
 VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
 
 if [[ $VerCP = $localVer ]]; then
-systemctl stop php7.4-fpm
+systemctl stop php-fpm 2>/dev/null
 
 rm -rf /tmp/autoUpdate
 wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinxo/de_GWD/main/client
@@ -30,7 +30,7 @@ chmod +x /tmp/autoUpdate
 rm -rf /tmp/autoUpdate
 fi
 
-systemctl restart php7.4-fpm
+systemctl restart php-fpm 2>/dev/null
 fi
 
 rm -rf /tmp/de_GWD_Ver

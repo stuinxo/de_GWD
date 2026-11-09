@@ -33,11 +33,11 @@ branch="main"
 
 
 pkgDEP(){
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge subversion
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge -y subversion
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -223,7 +223,7 @@ else
     rm -rf /tmp/version.php
     wget --show-progress -cqO /tmp/version.php https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php
     [[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit
-    [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
+    [[ -s /tmp/version.php ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
   fi
 fi
 
@@ -1165,9 +1165,16 @@ sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 
-export CF_Key="$CFapikey"
-export CF_Email="$CFemail"
-cfZone=$(curl -sX GET "https://api.cloudflare.com/client/v4/zones?per_page=50" -H "X-Auth-Email: $CFemail" -H "X-Auth-Key: $CFapikey" -H "Content-Type: application/json" | jq --arg d "$domain" -r '.result[].name | select($d == . or ($d | endswith("." + .)))' 2>/dev/null | head -n1)
+if [[ ${#CFapikey} -eq 37 && ! "$CFapikey" =~ [_-] ]]; then
+  export CF_Key="$CFapikey"
+  export CF_Email="$CFemail"
+  unset CF_Token
+  cfZone=$(curl -sX GET "https://api.cloudflare.com/client/v4/zones?per_page=50" -H "X-Auth-Email: $CFemail" -H "X-Auth-Key: $CFapikey" -H "Content-Type: application/json" | jq --arg d "$domain" -r '.result[].name | select($d == . or ($d | endswith("." + .)))' 2>/dev/null | head -n1)
+else
+  export CF_Token="$CFapikey"
+  unset CF_Key CF_Email
+  cfZone=$(curl -sX GET "https://api.cloudflare.com/client/v4/zones?per_page=50" -H "Authorization: Bearer $CFapikey" -H "Content-Type: application/json" | jq --arg d "$domain" -r '.result[].name | select($d == . or ($d | endswith("." + .)))' 2>/dev/null | head -n1)
+fi
 [[ -n $cfZone ]] && topDomain=$cfZone
 [[ "$domain" == *.*."$topDomain" ]] && topDomain=$(echo $domain | cut -d. -f2-)
 
@@ -1184,20 +1191,21 @@ fi
 
 rm -rf /var/www/ssl/*.cer
 rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+find /var/www/ssl/*.pem 2>/dev/null | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout /var/www/ssl/de_GWD.key -out /var/www/ssl/de_GWD.cer -subj "/CN=$domain" >/dev/null 2>&1
 
 if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
-  curl -fsSL https://get.acme.sh | sh -s email=$CFemail
+  curl -fsSL https://get.acme.sh | sh -s email="${CFemail:-admin@$topDomain}"
 fi
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
 "/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 10 -d $topDomain -d *.$topDomain -k ec-256
 "/root/.acme.sh"/acme.sh --installcert -d $topDomain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
+               --reloadcmd     "chmod 644 /var/www/ssl/*.key 2>/dev/null; systemctl force-reload nginx" \
                --ecc
 
-chmod 644 /var/www/ssl/*.key
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1235,7 +1243,8 @@ fi
 
 rm -rf /var/www/ssl/*.cer
 rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+find /var/www/ssl/*.pem 2>/dev/null | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 -keyout /var/www/ssl/de_GWD.key -out /var/www/ssl/de_GWD.cer -subj "/CN=$domain" >/dev/null 2>&1
 
 curl https://get.acme.sh | sh
 "/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
@@ -1244,10 +1253,10 @@ curl https://get.acme.sh | sh
 "/root/.acme.sh"/acme.sh --installcert -d $domain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
+               --reloadcmd     "chmod 644 /var/www/ssl/*.key 2>/dev/null; systemctl force-reload nginx" \
                --ecc
 
-chmod 644 /var/www/ssl/*.key
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1327,7 +1336,7 @@ server {
   index index.php index.html index.htm;
   error_page 497 https://\$host:$port\$request_uri;
 
-  add_header Alt-Svc 'h3=":443";ma=86400,quic=":443"; ma=2592000; v="46,43"';
+  add_header Alt-Svc 'h3=":$port";ma=86400,quic=":$port"; ma=2592000; v="46,43"';
 
   include /etc/nginx/conf.d/.HSTS;
 
@@ -1393,6 +1402,12 @@ EOF
 
 
 XrayInbound(){
+local extraInbounds="[]"
+if [[ -f /opt/de_GWD/vtrui/config.json ]]; then
+  extraInbounds=$(jq -c '[.inbounds[]? | select(.tag != null and (.tag | startswith("inbound-")))]' /opt/de_GWD/vtrui/config.json 2>/dev/null)
+  [[ -z "$extraInbounds" ]] && extraInbounds="[]"
+fi
+
 cat << EOF >/opt/de_GWD/vtrui/config.json
 {
   "log": {
@@ -1445,6 +1460,10 @@ for uuid in $uuids; do
 uuidStr='{"id": "'$uuid'", "alterId":0}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
+
+if [[ "$extraInbounds" != "[]" ]]; then
+  jq --argjson extra "$extraInbounds" '.inbounds += $extra' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+fi
 }
 
 
@@ -2474,8 +2493,8 @@ setupReality() {
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local keys=$(/opt/de_GWD/vtrui/vtrui x25519)
-    local priKey=$(echo "$keys" | awk -F': ' '/PrivateKey/ {print $2}' | tr -d '\r\n ')
-    local pubKey=$(echo "$keys" | awk -F': ' '/PublicKey/ {print $2}' | tr -d '\r\n ')
+    local priKey=$(echo "$keys" | awk -F': ' '/PrivateKey|Private key/ {print $2}' | tr -d '\r\n ')
+    local pubKey=$(echo "$keys" | awk -F': ' '/Password|PublicKey|Public key/ {print $2}' | head -n1 | tr -d '\r\n ')
     local shortId=$(openssl rand -hex 8)
 
     local inboundJson=$(cat << EOF
@@ -2502,8 +2521,7 @@ setupReality() {
       "xver": 0,
       "serverNames": ["$inputSni"],
       "privateKey": "$priKey",
-      "shortIds": ["$shortId"],
-      "publicKey": "$pubKey"
+      "shortIds": ["$shortId"]
     },
     "sockopt": {
       "tcpFastOpen": true,
@@ -3470,7 +3488,7 @@ if [[ $virt_type = "container" ]]; then
  echo -e "${GREEN}\__,_/\___/____\____/  |__/|__/_____/   ${cRES}"
  echo -e "${GREEN}         /_____/                        ${cRES}"
  echo
- echo -e "${GREEN}Require: Debian (amd64 && arm64) ${cRES}"
+ echo -e "${GREEN}Require: Debian 12 (amd64 && arm64) ${cRES}"
  echo -e "${GREEN}Author:  JacyL4${cRES}"
  echo -e "${GREEN}================================================================ ${cRES}"
  echo
@@ -3549,7 +3567,7 @@ else
  echo -e "${GREEN}\__,_/\___/____\____/  |__/|__/_____/   ${cRES}"
  echo -e "${GREEN}         /_____/                        ${cRES}"
  echo
- echo -e "${GREEN}Require: Debian (amd64 && arm64) ${cRES}"
+ echo -e "${GREEN}Require: Debian 12 (amd64 && arm64) ${cRES}"
  echo -e "${GREEN}Author:  JacyL4${cRES}"
  echo -e "${GREEN}================================================================ ${cRES}"
  echo

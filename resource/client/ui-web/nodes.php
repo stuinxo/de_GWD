@@ -32,12 +32,8 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
-<?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
-
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -54,21 +50,14 @@
 
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkFileRun === true) echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(<?php if ($serverName != "de_GWD") echo "'https://$serverName:$FileRunPort'"; else echo "location.origin+':$FileRunPort'" ?>)">
-          <i class="fas fa-folder"></i>
-          <span>FileRun</span>
-        </a>
-      </li>
-
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -148,7 +137,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -190,10 +179,11 @@
                 </thead>
                 <tbody id="nodeTable">
 <?php 
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+$v2nodeCount = isset($de_GWDconf->v2node) && is_countable($de_GWDconf->v2node) ? count($de_GWDconf->v2node) : 0;
+for( $i=0; $i<$v2nodeCount; $i++){
   $num = $i+1;
   $domain = $de_GWDconf->v2node[$i]->domain;
-  $tls = $de_GWDconf->v2node[$i]->tls;
+  $tls = isset($de_GWDconf->v2node[$i]->tls) ? $de_GWDconf->v2node[$i]->tls : '';
   $name = $de_GWDconf->v2node[$i]->name;
   $path = $de_GWDconf->v2node[$i]->path;
   $uuid = $de_GWDconf->v2node[$i]->uuid;

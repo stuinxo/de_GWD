@@ -94,13 +94,13 @@ Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
 echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
-apt update && apt install apparmor apparmor-utils google-perftools
+apt update && apt install -y apparmor apparmor-utils google-perftools
 fi
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge systemd-timesyncd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
 
 unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
@@ -144,12 +144,11 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-fpm$') ]] && aptPKG+=(php7.4-fpm)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-cgi$') ]] && aptPKG+=(php7.4-cgi)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-sqlite3$') ]] && aptPKG+=(php7.4-sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.2)?-fpm$') ]] && aptPKG+=(php-fpm)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.2)?-cgi$') ]] && aptPKG+=(php-cgi)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.2)?-sqlite3$') ]] && aptPKG+=(php-sqlite3)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.2)?-xml$') ]] && aptPKG+=(php-xml)
+[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.2)?-intl$') ]] && aptPKG+=(php-intl)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc2.0') ]] && aptPKG+=(libmimalloc2.0)
 [[ -n $aptPKG ]] && apt update -q && apt install -y -q $(echo ${aptPKG[@]})
@@ -389,25 +388,24 @@ if [[ -d "/opt/de_GWD/xDNSs" ]]; then
     jq 'del(.FORWARD.xDNSs)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 fi
 
-if [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php7.3-fpm" ]] || [[ `dpkg -l | grep php | grep fpm | awk '{print $2}'` = "php8.0-fpm" ]]; then
-    rm -rf /etc/php/7.3/
-    apt remove --purge '^php7.3.*'
-    rm -rf /etc/php/8.0/
-    apt remove --purge '^php8.0.*'
+if [[ -n $(dpkg -l | awk '{print $2}' | grep -E '^php(7\.|8\.0)') ]]; then
+    systemctl disable --now php7.4-fpm >/dev/null 2>&1 || true
+    rm -rf /etc/php/7.* /etc/php/8.0/ /etc/systemd/system/php7.4-fpm.service
+    apt remove --purge -y '^php7\..*' '^php8\.0.*'
 fi
 
 [[ -f "/etc/nginx/off" ]] && rm -rf /etc/nginx/off
 rm -rf /etc/dnsmasq.d/89-bogus-domains.china.conf
 rm -rf /etc/dnsmasq.d/89-bogus-nxdomains.china.conf
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^smartdns$') ]] && rm -rf /etc/smartdns && apt remove --purge smartdns
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^smartdns$') ]] && rm -rf /etc/smartdns && apt remove --purge -y smartdns
 [[ -n $(systemctl cat v2dns 2>/dev/null) ]] && systemctl disable --now v2dns >/dev/null 2>&1 && \
 rm -rf /lib/systemd/system/v2dns.service && \
 rm -rf /etc/systemd/system/v2dns.service && \
 rm -rf /opt/de_GWD/v2dns
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge subversion
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd$') ]] && apt remove --purge lighttpd
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd-mod-deflate$') ]] && apt remove --purge lighttpd-mod-deflate
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge -y subversion
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd$') ]] && apt remove --purge -y lighttpd
+[[ -n $(dpkg -l | awk '{print$2}' | grep '^lighttpd-mod-deflate$') ]] && apt remove --purge -y lighttpd-mod-deflate
 
 rm -rf /etc/pihole/migration_backup
 rm -rf /etc/dnsmasq.d/89-bogus-nxdomain.china.conf
@@ -1230,7 +1228,11 @@ doh1=${doh1#*//}
 echo -e "${WHITE}DNS over Https 1:\t${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh1Domain=$(echo $doh1 | cut -d/ -f1 | cut -d: -f1)
-doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+if [[ "$doh1Domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  doh1IP="$doh1Domain"
+else
+  doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+fi
 
 if [[ -n $doh1IP ]]; then
 doh1Port=$(echo $doh1 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
@@ -1256,7 +1258,11 @@ doh2=${doh2#*//}
 echo -e "${WHITE}DNS over Https 2: ${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh2Domain=$(echo $doh2 | cut -d/ -f1 | cut -d: -f1)
-doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+if [[ "$doh2Domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  doh2IP="$doh2Domain"
+else
+  doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+fi
 
 if [[ -n $doh2IP ]]; then
 doh2Port=$(echo $doh2 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
@@ -1350,7 +1356,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
       "listen":"127.0.0.1",
       "protocol":"dokodemo-door",
       "settings":{"network":"tcp,udp","followRedirect":true},
-      "streamSettings":{"sockopt":{"tproxy":"tproxy","mark":255,"tcpFastOpen":true,"tcpMptcp":true}}
+      "streamSettings":{"sockopt":{"tproxy":"tproxy","mark":255,"tcpFastOpen":false,"tcpMptcp":true}}
     }
   ],
   "outbounds":[
@@ -1853,11 +1859,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
 
-mkdir -p /etc/apt/keyrings
-echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
-apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
+rm -rf /etc/apt/sources.list.d/php.list
 
 apt update -q
 
@@ -1881,20 +1883,20 @@ DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 rm -rf /var/log/journal/*
 systemctl restart systemd-journald >/dev/null 2>&1
 
-if [[ -d "/usr/local/ioncube" ]]; then
-echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_7.4.so" >/etc/php/7.4/mods-available/ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/fpm/conf.d/00-ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/cli/conf.d/00-ioncube.ini
+PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null)
+if [[ -z "$PHP_VER" ]]; then
+  PHP_VER=$(ls /etc/php/ 2>/dev/null | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
 fi
+[[ -z "$PHP_VER" ]] && PHP_VER="8.2"
 
-sed -i "/zend_extension/d" /etc/php/7.4/cli/php.ini
-sed -i "/zend_extension/d" /etc/php/7.4/fpm/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/cli/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/fpm/php.ini
+sed -i "/zend_extension/d" /etc/php/$PHP_VER/cli/php.ini 2>/dev/null
+sed -i "/zend_extension/d" /etc/php/$PHP_VER/fpm/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/$PHP_VER/cli/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/$PHP_VER/fpm/php.ini 2>/dev/null
 
 cat << EOF >/etc/php/00-init.ini
 expose_php              = Off
-error_reporting         = E_ALL & ~E_NOTICE
+error_reporting         = E_ALL & ~E_NOTICE & ~E_DEPRECATED & ~E_WARNING
 display_errors          = Off
 display_startup_errors  = Off
 log_errors              = On
@@ -1903,7 +1905,6 @@ ignore_repeated_errors  = Off
 allow_url_fopen         = On
 allow_url_include       = Off
 variables_order         = "GPCS"
-allow_webdav_methods    = On
 memory_limit            = 128M
 max_execution_time      = 1200
 max_input_time          = 30
@@ -1912,9 +1913,6 @@ output_buffering        = Off
 output_handler          = ""
 zlib.output_compression = Off
 zlib.output_handler     = ""
-safe_mode               = Off
-register_globals        = Off
-magic_quotes_gpc        = Off
 date.timezone           = "Asia/Shanghai"
 
 file_uploads            = On
@@ -1922,7 +1920,6 @@ upload_tmp_dir          = "/tmp/"
 upload_max_filesize     = 20M
 post_max_size           = 20M
 
-engine                  = off
 enable_dl               = Off
 disable_functions       = ""
 disable_classes         = ""
@@ -1935,13 +1932,14 @@ session.cookie_lifetime  = 0
 session.cookie_httponly  = 1
 session.cookie_secure    = 1
 EOF
-ln -sf /etc/php/00-init.ini /etc/php/7.4/cli/conf.d/00-init.ini
-ln -sf /etc/php/00-init.ini /etc/php/7.4/fpm/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/$PHP_VER/cli/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/$PHP_VER/fpm/conf.d/00-init.ini
 
-rm -rf /etc/php/7.4/fpm/pool.d
-cat << EOF >/etc/php/7.4/fpm/php-fpm.conf
+mkdir -p /run/php
+rm -rf /etc/php/$PHP_VER/fpm/pool.d
+cat << EOF >/etc/php/$PHP_VER/fpm/php-fpm.conf
 [global]
-pid = /run/php/php7.4-fpm.pid
+pid = /run/php/php-fpm.pid
 error_log = /var/log/php.log
 
 [www]
@@ -1950,7 +1948,7 @@ group = www-data
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
-listen = /run/php/php7.4-fpm.sock
+listen = /run/php/php-fpm.sock
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
 
@@ -1970,7 +1968,7 @@ env[TEMP] = /tmp
 env[TMPDIR] = /tmp
 EOF
 
-cat << EOF >/etc/php/7.4/mods-available/opcache.ini
+cat << EOF >/etc/php/$PHP_VER/mods-available/opcache.ini
 ; configuration for php opcache module
 ; priority=10
 zend_extension=opcache.so
@@ -1983,23 +1981,24 @@ opcache.interned_strings_buffer=8
 opcache.max_accelerated_files=4000
 opcache.validate_timestamps=1
 opcache.revalidate_freq=60
-opcache.fast_shutdown=1
 opcache.save_comments=1
 EOF
 
 rm -rf /var/log/php.log
-rm -rf /run/php7.4-fpm.pid
-rm -rf /lib/systemd/system/php7.4-fpm.service
-cat << EOF >/etc/systemd/system/php7.4-fpm.service
+rm -rf /run/php/php-fpm.pid
+systemctl disable --now php$PHP_VER-fpm >/dev/null 2>&1 || true
+rm -rf /lib/systemd/system/php$PHP_VER-fpm.service /etc/systemd/system/php$PHP_VER-fpm.service
+cat << EOF >/etc/systemd/system/php-fpm.service
 [Unit]
-Description=The PHP 7.4 FastCGI Process Manager
+Description=The PHP $PHP_VER FastCGI Process Manager
 After=network.target
 
 [Service]
 Type=simple
-PIDFile=/run/php7.4-fpm.pid
+PIDFile=/run/php/php-fpm.pid
+RuntimeDirectory=php
 ExecStartPre=/usr/bin/touch /var/log/php.log
-ExecStart=/usr/sbin/php-fpm7.4 --nodaemonize --fpm-config /etc/php/7.4/fpm/php-fpm.conf
+ExecStart=/usr/sbin/php-fpm$PHP_VER --nodaemonize --fpm-config /etc/php/$PHP_VER/fpm/php-fpm.conf
 ExecReload=$(which kill) -USR2 \$MAINPID
 Restart=always
 RestartSec=2
@@ -2009,8 +2008,8 @@ TimeoutStopSec=5
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
-systemctl enable php7.4-fpm >/dev/null 2>&1
-systemctl restart php7.4-fpm
+systemctl enable php-fpm >/dev/null 2>&1
+systemctl restart php-fpm
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Dependencies${cRES}"
 }
@@ -2198,7 +2197,7 @@ location ~ [^/]\.php(/|$) {
 
   include               fastcgi_params;
   fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
-  fastcgi_pass          unix:/run/php/php7.4-fpm.sock;
+  fastcgi_pass          unix:/run/php/php-fpm.sock;
   fastcgi_index         index.php;
 }
 # PHP_END
@@ -2265,7 +2264,7 @@ After=network.target
 User=root
 Type=oneshot
 ExecStartPre=/usr/bin/chmod +x /opt/de_GWD/update
-ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update
+ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update
 KillMode=process
 
 [Install]
@@ -2547,7 +2546,7 @@ serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v
 nginxSet
 systemctl force-reload nginx >/dev/null
 
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
 
 jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
@@ -2696,7 +2695,7 @@ de_GWDconnect
 
 updateAPT
 
-apt --reinstall install ca-certificates
+apt --reinstall install -y ca-certificates
 
 installDep
 
@@ -2857,12 +2856,12 @@ else
   echo -e "${WHITE} Nginx          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(systemctl is-active 'php7.4-fpm') = "active" ]]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [ ! -f "/etc/php/7.4/fpm/php-fpm.conf" ]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
+if [[ $(systemctl is-active 'php-fpm') = "active" ]]; then
+  echo -e "${WHITE} php-FPM        \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
+elif [[ ! -f "/etc/systemd/system/php-fpm.service" ]]; then
+  echo -e "${WHITE} php-FPM        \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
+  echo -e "${WHITE} php-FPM        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
 if [[ -n $(crontab -l 2>&1 | grep "autoUpdate") ]] && [[ -f "/opt/de_GWD/autoUpdate" ]]; then
@@ -2912,7 +2911,7 @@ serverStatus
  echo -e "${GREEN}\__,_/\___/____\____/  |__/|__/_____/   ${cRES}"
  echo -e "${GREEN}         /_____/                        ${cRES}"
  echo
- echo -e "${GREEN}Require: Debian (amd64 && arm64) ${cRES}"
+ echo -e "${GREEN}Require: Debian 12 (amd64 && arm64) ${cRES}"
  echo -e "${GREEN}Author:  JacyL4${cRES}"
  echo -e "${GREEN}================================================================ ${cRES}"
  echo

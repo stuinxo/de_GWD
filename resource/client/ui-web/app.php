@@ -32,16 +32,11 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
-<?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkMariaDB = file_exists('/usr/bin/mariadb'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
 <?php $checkNFS = file_exists('/etc/auto.nfs'); ?>
 <?php $checkDocker = file_exists('/usr/bin/docker') ?>
-
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -58,21 +53,14 @@
 
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkFileRun === true) echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(<?php if ($serverName != "de_GWD") echo "'https://$serverName:$FileRunPort'"; else echo "location.origin+':$FileRunPort'" ?>)">
-          <i class="fas fa-folder"></i>
-          <span>FileRun</span>
-        </a>
-      </li>
-
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -153,18 +141,13 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
       </div>
     </div>
   </div>
-</div>
-
-<div class="row col-md-12">
-<button id="installMariaDB" type="button" class="btn <?php if ($checkMariaDB === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm ml-4 mb-3" style="border-Radius: 0px;">MariaDB</button>
-<button id="installFileRun" type="button" class="btn <?php if ($checkFileRun === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm ml-4 mb-3" style="border-Radius: 0px;">FileRun</button>
 </div>
 
         <!-- Page Content -->   
@@ -185,9 +168,9 @@
 
           <div class="card-body" id="NFSbody" style="display:<?php if ($checkNFS === true) echo 'block'; else echo 'none';?>">
 <?php
-$arrayNFS=shell_exec("sudo nfsstat -m | sed '/Flags/d' | sed '/^\s*$/d'");
-$arrayNFS=explode("\n", $arrayNFS);
-$NFSnum=count($arrayNFS)-1;
+$rawNFS = shell_exec("sudo nfsstat -m | sed '/Flags/d' | sed '/^\s*$/d'");
+$arrayNFS = !empty($rawNFS) ? explode("\n", trim($rawNFS)) : [];
+$NFSnum = count($arrayNFS);
 for( $i=0; $i<$NFSnum; $i++){
   $NFSstr1 = explode(" ",$arrayNFS[$i]);
   $NFSstr2 = explode(":",$NFSstr1[2]);
@@ -255,7 +238,7 @@ EOT;
     <div class="form-row">
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
+          <button id="buttonBWinstall" type="button" class="btn <?php if ($checkBitwarden === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === 'installed') echo 'Bitwarden'; else echo 'install Bitwarden';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="bitwardenBackup" type="button" class="btn btn-outline-secondary">
@@ -277,7 +260,7 @@ EOT;
 
       <div class="col-md-6 input-group my-2">
         <div class="input-group-prepend">
-          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === installed) echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkBitwarden === installed) echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
+          <button id="buttonJFinstall" type="button" class="btn <?php if ($checkJellyfin === 'installed') echo 'btn-success'; else echo 'btn-outline-secondary'; ?>"><?php if ($checkJellyfin === 'installed') echo 'Jellyfin'; else echo 'install Jellyfin';?></button>
         </div>
         <div class="input-group-prepend">
           <button id="JellyfinBackup" type="button" class="btn btn-outline-secondary">
@@ -339,28 +322,6 @@ $.get('auth.php', {logout:'true'}, function(result){window.location.href="index.
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
 $.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
-})
-
-$('#installFileRun').click(function(){
-$.get('./act/installFileRun.php', function(){});
-var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
-var timer = setInterval(function() { 
-    if(win.closed) {
-        clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
-    }
-}, 300);
-})
-
-$('#installMariaDB').click(function(){
-$.get('./act/installMariaDB.php', function(){});
-var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
-var timer = setInterval(function() { 
-    if(win.closed) {
-        clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
-    }
-}, 300);
 })
 
 $('#buttonNFSinstall').click(function(){
