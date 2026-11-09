@@ -15,12 +15,18 @@ $hostsCustomize = preg_replace("/\s(?=\s)/", "\\1", $hostsCustomize);
 $hostsCustomize = str_replace(" ", ",", $hostsCustomize);
 $arr = explode("\n",$hostsCustomize);
 $arr = array_filter(array_map('trim', $arr));
+$hosts = array();
 foreach($arr as $k=>$v){
-        $arr = explode(',',$v);
-        $hosts[$arr[1]] = $arr[0];
+        $parts = explode(',',$v);
+        if (isset($parts[1])) {
+            $hosts[$parts[1]] = $parts[0];
+        }
 }
 
 $DOHarray = array();
+if (empty($DoH2) && !empty($DoH1)) {
+    $DoH2 = $DoH1;
+}
 array_push($DOHarray, "$DoH1", "$DoH2");
 $conf['dns']['dog'] = $DoGc;
 $conf['dns']['doh'] = $DOHarray;

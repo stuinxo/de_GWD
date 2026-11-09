@@ -95,7 +95,7 @@ branch="${BRANCH:-v2}"
 
 geosite_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" | awk '{print$1}')
 geoip_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum" | awk '{print$1}')
-IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute.sha256sum" | awk '{print$1}')
+IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute.sha256sum" | awk '{print$1}')
 [[ -z "$IPchnroute_sha256sum" ]] && IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum" | awk '{print$1}')
 
 DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
@@ -131,7 +131,7 @@ if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat "$geoip_sha256sum") = "false" ]]; t
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute "$IPchnroute_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute" "$IPchnroute_sha256sum" 50 && \
+  if ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute" "$IPchnroute_sha256sum" 50 && \
      ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" "$IPchnroute_sha256sum" 50; then
     if [[ -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}IPchnroute retained existing${cRES}"
@@ -142,7 +142,7 @@ if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute "$IPchnroute_sha256sum") = "false"
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt "$DomainsChn_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10 && \
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10 && \
      ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10; then
     if [[ -s "/opt/de_GWD/.repo/Domains.chn.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.chn.txt retained existing${cRES}"
@@ -153,7 +153,7 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt "$DomainsChn_sha256sum") = "f
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt "$DomainsApple_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5 && \
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5 && \
      ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5; then
     if [[ -s "/opt/de_GWD/.repo/Domains.apple.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.apple.txt retained existing${cRES}"
@@ -164,7 +164,7 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt "$DomainsApple_sha256sum") 
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt "$DomainsGames_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5 && \
+  if ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5 && \
      ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5; then
     if [[ -s "/opt/de_GWD/.repo/Domains.games.txt" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.games.txt retained existing${cRES}"
@@ -175,7 +175,7 @@ if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt "$DomainsGames_sha256sum") 
 fi
 
 if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf "$bogusNxdomain_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1 && \
+  if ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1 && \
      ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1; then
     if [[ -s "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]]; then
       echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}bogus-nxdomain retained existing${cRES}"
@@ -197,9 +197,10 @@ if [[ -f "/opt/de_GWD/.repo/geoip.dat" ]]; then
   cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
 fi
 
-if [[ -f "/opt/de_GWD/.repo/IPchnroute" ]]; then
+if [[ -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
 cp -f /opt/de_GWD/.repo/IPchnroute /opt/de_GWD/nftables/IP_CHNROUTE
 sed -i '/^\s*$/d' /opt/de_GWD/nftables/IP_CHNROUTE
+if [[ -s "/opt/de_GWD/nftables/IP_CHNROUTE" ]]; then
 sed -i 's/$/,/g' /opt/de_GWD/nftables/IP_CHNROUTE
 nft flush set ip de_GWD CHNROUTE 2>/dev/null
 cat << EOF >/opt/de_GWD/nftables/SET_CHNROUTE.nft
@@ -215,6 +216,7 @@ table ip de_GWD {
 EOF
 chmod +x /opt/de_GWD/nftables/SET_CHNROUTE.nft
 /opt/de_GWD/nftables/SET_CHNROUTE.nft
+fi
 fi
 
 if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then

@@ -169,8 +169,9 @@ build_vless_xhttp_uri() {
         path=$(uuid_to_path "$uuid")
     fi
     [[ "${path:0:1}" != "/" ]] && path="/$path"
+    local enc_path="%2F${path#/}"
     [[ -z "$name" ]] && name="${domain}:${port}"
 
     printf 'vless://%s@%s:%s?encryption=none&security=tls&sni=%s&type=xhttp&path=%s&mode=packet-up#%s\n' \
-        "$uuid" "$domain" "$port" "$sni" "$path" "$name"
+        "$uuid" "$domain" "$port" "$sni" "$enc_path" "$name"
 }

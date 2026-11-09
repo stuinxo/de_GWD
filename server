@@ -1222,7 +1222,8 @@ fi
                --reloadcmd     "systemctl force-reload nginx" \
                --ecc
 
-chmod 644 /var/www/ssl/*.key
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1272,7 +1273,8 @@ curl https://get.acme.sh | sh
                --reloadcmd     "systemctl force-reload nginx" \
                --ecc
 
-chmod 644 /var/www/ssl/*.key
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1413,6 +1415,12 @@ XrayInbound(){
 [[ -z "$path" ]] && path="/${uuids%%-*}"
 [[ "${path:0:1}" != "/" ]] && path="/$path"
 
+local extraInbounds="[]"
+if [[ -s /opt/de_GWD/vtrui/config.json ]]; then
+  extraInbounds=$(jq -c '[.inbounds[]? | select(.tag != null and (.tag | startswith("inbound-")))]' /opt/de_GWD/vtrui/config.json 2>/dev/null || echo "[]")
+  [[ -z "$extraInbounds" ]] && extraInbounds="[]"
+fi
+
 cat << EOF >/opt/de_GWD/vtrui/config.json
 {
   "log": {
@@ -1467,6 +1475,10 @@ for uuid in $uuids; do
 uuidStr='{"id": "'$uuid'"}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 done
+
+if [[ "$extraInbounds" != "[]" ]]; then
+  jq --argjson extra "$extraInbounds" '.inbounds += $extra' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+fi
 }
 
 
@@ -1544,7 +1556,8 @@ sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
 cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
 cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
 
-chmod 644 /var/www/ssl/*.key
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -2207,15 +2220,21 @@ setInboundPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_ports.json ]] && echo '{}' > /opt/de_GWD/extra_ports.json
     jq --arg tag "$in_tag" --argjson p "$p" '.[$tag] = $p' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json
-    chmod 666 /opt/de_GWD/extra_ports.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_ports.json 2>/dev/null || true
 }
 
 getInternalPort() {
     local pubPort="$1"
+    local curTag="${2:-}"
     local intPort=$((pubPort + 10000))
     if [ "$intPort" -gt 65000 ]; then
         intPort=$((10000 + (pubPort % 10000)))
     fi
+    while jq -e --arg tag "$curTag" --argjson p "$intPort" '.inbounds[]? | select(.tag != $tag and .port == $p)' /opt/de_GWD/vtrui/config.json >/dev/null 2>&1 || \
+          ss -tln 2>/dev/null | grep -qE "127\.0\.0\.1:${intPort}[ \t]"; do
+        intPort=$((intPort + 1))
+        [[ "$intPort" -gt 65000 ]] && intPort=10001
+    done
     echo "$intPort"
 }
 
@@ -2271,6 +2290,8 @@ server {
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
         proxy_buffering off;
+        proxy_request_buffering off;
+        client_max_body_size 0;
         chunked_transfer_encoding off;
     }
 }
@@ -2368,7 +2389,7 @@ parseDomainAndPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_domains.json ]] && echo '{}' > /opt/de_GWD/extra_domains.json
     jq --arg tag "$in_tag" --arg dom "$target_domain" '.[$tag] = $dom' /opt/de_GWD/extra_domains.json | sponge /opt/de_GWD/extra_domains.json
-    chmod 666 /opt/de_GWD/extra_domains.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_domains.json 2>/dev/null || true
 }
 
 removeXrayInbound() {
@@ -2474,7 +2495,8 @@ showXHTTPNode() {
     echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
     echo -e "${BLUE}DoH Server:  ${YELLOW}$vpsdomain:$p/dq${cRES}"
     echo
-    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${path}&mode=packet-up&sni=${vpsdomain}#${vpsdomain}-XHTTP"
+    local encPath="%2F${path#/}"
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=xhttp&path=${encPath}&mode=packet-up&sni=${vpsdomain}#${vpsdomain}-XHTTP"
     echo -e "${BLUE}Link:        ${YELLOW}${link}${cRES}"
     echo
     echo -e "${BLUE}QR Code: ${cRES}"
@@ -2504,7 +2526,8 @@ showVlessWSNode() {
     echo -e "${BLUE}SNI / Host:  ${YELLOW}$vpsdomain${cRES}"
     echo -e "${BLUE}DoH Server:  ${YELLOW}$vpsdomain:$p/dq${cRES}"
     echo
-    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=ws&path=${path}&host=${vpsdomain}&sni=${vpsdomain}#${vpsdomain}-VLESS-WS"
+    local encPath="%2F${path#/}"
+    local link="vless://${uuid}@${vpsdomain}:${p}?encryption=none&security=tls&type=ws&path=${encPath}&host=${vpsdomain}&sni=${vpsdomain}#${vpsdomain}-VLESS-WS"
     echo -e "${BLUE}Direct Link: ${YELLOW}${link}${cRES}"
     echo
     echo -e "${BLUE}QR Code: ${cRES}"
@@ -2686,9 +2709,10 @@ setupReality() {
     [[ -z "$inputDest" ]] && inputDest="$recDest"
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
-    local keys=$(/opt/de_GWD/vtrui/vtrui x25519)
-    local priKey=$(echo "$keys" | awk -F': ' '/PrivateKey/ {print $2}' | tr -d '\r\n ')
-    local pubKey=$(echo "$keys" | awk -F': ' '/PublicKey/ {print $2}' | tr -d '\r\n ')
+    local keys=$(/opt/de_GWD/vtrui/vtrui x25519 2>/dev/null)
+    local priKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Private key|PrivateKey):/ {print $2; exit}' | tr -d '\r\n ')
+    local pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)): / {print $2; exit}' | tr -d '\r\n ')
+    [[ -z "$pubKey" ]] && pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)):/ {print $2; exit}' | tr -d '\r\n ')
     local shortId=$(openssl rand -hex 8)
 
     local inboundJson=$(cat << EOF
@@ -2783,7 +2807,7 @@ setupVlessXHTTP() {
     parseDomainAndPort "inbound-vless-xhttp" "2083" "$curPort" "true"
     local port="$target_port"
     local vpsdomain="$target_domain"
-    local internalPort=$(getInternalPort "$port")
+    local internalPort=$(getInternalPort "$port" "inbound-vless-xhttp")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -2873,7 +2897,7 @@ setupVlessWS() {
     parseDomainAndPort "inbound-vless-ws" "$recPort" "$curPort" "true"
     local port="$target_port"
     local vpsdomain="$target_domain"
-    local internalPort=$(getInternalPort "$port")
+    local internalPort=$(getInternalPort "$port" "inbound-vless-ws")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -2962,7 +2986,7 @@ setupVMessWS() {
     parseDomainAndPort "inbound-vmess-ws" "$recPort" "$curPort" "true"
     local port="$target_port"
     local vpsdomain="$target_domain"
-    local internalPort=$(getInternalPort "$port")
+    local internalPort=$(getInternalPort "$port" "inbound-vmess-ws")
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
     local inputPath="/${uuid%%-*}"
@@ -3332,8 +3356,9 @@ echo -e "${BLUE}Path:      ${YELLOW}$path${cRES}"
 echo
 echo -e "${BLUE}QR code: ${cRES}"
 subAddr=$(echo -n "$(jq -r '.inbounds[0].settings.clients[0].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')@$vpsdomain:$port")
-subUrl="vless://${subAddr}?encryption=none&security=tls&sni=${vpsdomain}&type=xhttp&path=${path}&mode=packet-up#${vpsdomain}:${port}"
-qrencode -t UTF8 -s 1 -m 3 $subUrl
+local encPath="%2F${path#/}"
+subUrl="vless://${subAddr}?encryption=none&security=tls&sni=${vpsdomain}&type=xhttp&path=${encPath}&mode=packet-up#${vpsdomain}:${port}"
+qrencode -t UTF8 -s 1 -m 3 "$subUrl"
 echo
 echo -e "${BLUE}Link:        ${YELLOW}${subUrl}${cRES}"
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"

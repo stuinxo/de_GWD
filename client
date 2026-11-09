@@ -165,11 +165,11 @@ if apt-cache show php7.4-fpm >/dev/null 2>&1; then
     [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
     [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
 else
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-fpm$') ]] && aptPKG+=(php-fpm)
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-cgi$') ]] && aptPKG+=(php-cgi)
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-sqlite3$') ]] && aptPKG+=(php-sqlite3)
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-xml$') ]] && aptPKG+=(php-xml)
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-intl$') ]] && aptPKG+=(php-intl)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php([0-9.]+)?-fpm$') ]] && aptPKG+=(php-fpm)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php([0-9.]+)?-cgi$') ]] && aptPKG+=(php-cgi)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php([0-9.]+)?-sqlite3$') ]] && aptPKG+=(php-sqlite3)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php([0-9.]+)?-xml$') ]] && aptPKG+=(php-xml)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php([0-9.]+)?-intl$') ]] && aptPKG+=(php-intl)
 fi
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 mimalloc_pkg="libmimalloc2.0"
@@ -1293,8 +1293,10 @@ else
 fi
 
 cat << EOF >>/opt/de_GWD/smartdns/smartdns.conf
-server-https https://$doh1Str -host-name $doh1Domain -no-check-certificate -group DNS_global
+server-https https://$doh1Str -host-name $doh1Domain -http-host $doh1Domain -tls-host-verify $doh1Domain -group DNS_global
 EOF
+systemctl restart smartdns
+sleep 2
 fi
 
 echo -e "${WHITE}Domain: ${YELLOW}$doh1Domain\c" && echo -e "\t${WHITE}IP: ${YELLOW}$doh1IP${cRES}"
@@ -1319,7 +1321,7 @@ else
 fi
 
 cat << EOF >>/opt/de_GWD/smartdns/smartdns.conf
-server-https https://$doh2Str -host-name $doh2Domain -no-check-certificate -group DNS_global
+server-https https://$doh2Str -host-name $doh2Domain -http-host $doh2Domain -tls-host-verify $doh2Domain -group DNS_global
 EOF
 fi
 
@@ -1836,10 +1838,10 @@ rm -rf /lib/systemd/system/nftables.service
 cat << EOF >/etc/systemd/system/nftables.service
 [Unit]
 Description=nftables
-Wants=network-pre.target
-Before=network-pre.target shutdown.target
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+Before=shutdown.target
 Conflicts=shutdown.target
-DefaultDependencies=no
 
 [Service]
 Type=oneshot
@@ -1847,13 +1849,18 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh' ; /usr/sbin/nft -f /opt/de_GWD/nftables/nftables ; $(which ip) route add local default dev lo scope host table 220 ; $(which ip) rule add fwmark 0x9 table 220 prio 100
-ExecStop=/usr/sbin/nft flush ruleset ; $(which ip) rule del table 220 ; $(which ip) route del local default dev lo table 220
+ExecStart=/bin/bash -c '/etc/rc_online.local'
+ExecStart=/bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh'
+ExecStart=/usr/sbin/nft -f /opt/de_GWD/nftables/nftables
+ExecStart=/usr/sbin/ip route replace local default dev lo scope host table 220
+ExecStart=/bin/bash -c '/usr/sbin/ip rule add fwmark 0x9 table 220 priority 100 2>/dev/null || /usr/sbin/ip rule list priority 100 | grep -Fq "fwmark 0x9 lookup 220"'
+ExecStop=/bin/bash -c '/usr/sbin/nft flush ruleset; /usr/sbin/ip rule del fwmark 0x9 table 220 priority 100 2>/dev/null || true; /usr/sbin/ip route del local default dev lo table 220 2>/dev/null || true; /usr/sbin/ip route flush cache 2>/dev/null || true'
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
+systemctl disable nftables >/dev/null 2>&1 || true
 systemctl enable nftables >/dev/null 2>&1
 systemctl restart nftables
 
@@ -1872,13 +1879,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
-
-mkdir -p /etc/apt/keyrings
-echo "deb [signed-by=/etc/apt/keyrings/deb.sury.org.gpg] https://packages.sury.org/php/ $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/php.list
-apt-key del 95BD4743 >/dev/null 2>&1
-curl -sSLo /etc/apt/keyrings/deb.sury.org.gpg https://packages.sury.org/php/apt.gpg
-[[ $? -ne 0 ]] && echo -e "${WHITE}PHP apt key${RED} Download Failed${cRES}"
-
+rm -rf /etc/apt/sources.list.d/php.list
 apt update -q
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
@@ -1901,16 +1902,26 @@ DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 rm -rf /var/log/journal/*
 systemctl restart systemd-journald >/dev/null 2>&1
 
+PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null)
+if [[ -z "$PHP_VER" ]]; then
+    PHP_VER=$(ls -d /etc/php/*.* 2>/dev/null | sort -V | tail -n1 | xargs -n1 basename 2>/dev/null)
+fi
+[[ -z "$PHP_VER" ]] && PHP_VER="8.2"
+
+mkdir -p /etc/php/${PHP_VER}/mods-available /etc/php/${PHP_VER}/cli/conf.d /etc/php/${PHP_VER}/fpm/conf.d /run/php
+
 if [[ -d "/usr/local/ioncube" ]]; then
-echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_7.4.so" >/etc/php/7.4/mods-available/ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/fpm/conf.d/00-ioncube.ini
-ln -sf /etc/php/7.4/mods-available/ioncube.ini /etc/php/7.4/cli/conf.d/00-ioncube.ini
+    if [[ -f "/usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" ]]; then
+        echo "zend_extension = /usr/local/ioncube/ioncube_loader_lin_${PHP_VER}.so" >/etc/php/${PHP_VER}/mods-available/ioncube.ini
+        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/fpm/conf.d/00-ioncube.ini
+        ln -sf /etc/php/${PHP_VER}/mods-available/ioncube.ini /etc/php/${PHP_VER}/cli/conf.d/00-ioncube.ini
+    fi
 fi
 
-sed -i "/zend_extension/d" /etc/php/7.4/cli/php.ini
-sed -i "/zend_extension/d" /etc/php/7.4/fpm/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/cli/php.ini
-sed -i "s/^opcache/;&/" /etc/php/7.4/fpm/php.ini
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
+sed -i "/zend_extension/d" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/${PHP_VER}/cli/php.ini 2>/dev/null
+sed -i "s/^opcache/;&/" /etc/php/${PHP_VER}/fpm/php.ini 2>/dev/null
 
 cat << EOF >/etc/php/00-init.ini
 expose_php              = Off
@@ -1955,22 +1966,17 @@ session.cookie_lifetime  = 0
 session.cookie_httponly  = 1
 session.cookie_secure    = 1
 EOF
-php_fpm_bin=$(ls /usr/sbin/php-fpm* 2>/dev/null | head -n1)
-php_fpm_ver=$(echo "$php_fpm_bin" | grep -oP '[0-9]+\.[0-9]+' || echo "7.4")
-[[ -z "$php_fpm_ver" ]] && php_fpm_ver="7.4"
-[[ -z "$php_fpm_bin" ]] && php_fpm_bin="/usr/sbin/php-fpm${php_fpm_ver}"
-
-mkdir -p /etc/php/${php_fpm_ver}/cli/conf.d /etc/php/${php_fpm_ver}/fpm/conf.d /etc/php/${php_fpm_ver}/mods-available /run/php
-ln -sf /etc/php/00-init.ini /etc/php/${php_fpm_ver}/cli/conf.d/00-init.ini
-ln -sf /etc/php/00-init.ini /etc/php/${php_fpm_ver}/fpm/conf.d/00-init.ini
-if [[ "$php_fpm_ver" != "7.4" ]]; then
-    ln -sf /etc/php/${php_fpm_ver} /etc/php/7.4 2>/dev/null || true
+ln -sf /etc/php/00-init.ini /etc/php/${PHP_VER}/cli/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/${PHP_VER}/fpm/conf.d/00-init.ini
+if [[ "$PHP_VER" != "7.4" ]]; then
+    ln -sf /etc/php/${PHP_VER} /etc/php/7.4 2>/dev/null || true
 fi
 
-rm -rf /etc/php/${php_fpm_ver}/fpm/pool.d
-cat << EOF >/etc/php/${php_fpm_ver}/fpm/php-fpm.conf
+rm -rf /etc/php/${PHP_VER}/fpm/pool.d
+mkdir -p /etc/php/${PHP_VER}/fpm
+cat << EOF >/etc/php/${PHP_VER}/fpm/php-fpm.conf
 [global]
-pid = /run/php/php${php_fpm_ver}-fpm.pid
+pid = /run/php/php-fpm.pid
 error_log = /var/log/php.log
 
 [www]
@@ -1979,7 +1985,7 @@ group = www-data
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
-listen = /run/php/php${php_fpm_ver}-fpm.sock
+listen = /run/php/php-fpm.sock
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
 
@@ -1999,7 +2005,7 @@ env[TEMP] = /tmp
 env[TMPDIR] = /tmp
 EOF
 
-cat << EOF >/etc/php/${php_fpm_ver}/mods-available/opcache.ini
+cat << EOF >/etc/php/${PHP_VER}/mods-available/opcache.ini
 ; configuration for php opcache module
 ; priority=10
 zend_extension=opcache.so
@@ -2017,18 +2023,26 @@ opcache.save_comments=1
 EOF
 
 rm -rf /var/log/php.log
-rm -rf /run/php${php_fpm_ver}-fpm.pid /run/php7.4-fpm.pid
-rm -rf /lib/systemd/system/php${php_fpm_ver}-fpm.service /lib/systemd/system/php7.4-fpm.service
-cat << EOF >/etc/systemd/system/php${php_fpm_ver}-fpm.service
+rm -rf /run/php/php-fpm.pid
+rm -rf /run/php/php7.4-fpm.pid
+rm -rf /lib/systemd/system/php7.4-fpm.service /etc/systemd/system/php7.4-fpm.service
+systemctl stop php${PHP_VER}-fpm 2>/dev/null
+systemctl disable php${PHP_VER}-fpm 2>/dev/null
+killall -9 php-fpm php-fpm${PHP_VER} php-fpm7.4 php-fpm8.2 php-fpm8.4 2>/dev/null
+rm -f /run/php/*.sock
+
+PHP_FPM_BIN=$(which php-fpm${PHP_VER} 2>/dev/null || which php-fpm 2>/dev/null || echo "/usr/sbin/php-fpm${PHP_VER}")
+
+cat << EOF >/etc/systemd/system/php-fpm.service
 [Unit]
-Description=The PHP ${php_fpm_ver} FastCGI Process Manager
+Description=The PHP FastCGI Process Manager
 After=network.target
 
 [Service]
 Type=simple
-PIDFile=/run/php/php${php_fpm_ver}-fpm.pid
+PIDFile=/run/php/php-fpm.pid
 ExecStartPre=/usr/bin/touch /var/log/php.log
-ExecStart=${php_fpm_bin} --nodaemonize --fpm-config /etc/php/${php_fpm_ver}/fpm/php-fpm.conf
+ExecStart=${PHP_FPM_BIN} --nodaemonize --fpm-config /etc/php/${PHP_VER}/fpm/php-fpm.conf
 ExecReload=$(which kill) -USR2 \$MAINPID
 Restart=always
 RestartSec=2
@@ -2038,9 +2052,11 @@ TimeoutStopSec=5
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
-systemctl enable php${php_fpm_ver}-fpm >/dev/null 2>&1 || systemctl enable php-fpm >/dev/null 2>&1
-systemctl restart php${php_fpm_ver}-fpm 2>/dev/null || systemctl restart php-fpm 2>/dev/null
-ln -sf /run/php/php${php_fpm_ver}-fpm.sock /run/php/php7.4-fpm.sock 2>/dev/null || true
+systemctl enable php-fpm >/dev/null 2>&1
+systemctl restart php-fpm
+
+ln -sf /run/php/php-fpm.sock /run/php/php7.4-fpm.sock
+ln -sf /run/php/php-fpm.sock /run/php/php${PHP_VER}-fpm.sock
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Dependencies${cRES}"
 }
@@ -2228,7 +2244,7 @@ location ~ [^/]\.php(/|$) {
 
   include               fastcgi_params;
   fastcgi_param         SCRIPT_FILENAME   \$document_root\$fastcgi_script_name;
-  fastcgi_pass          unix:/run/php/php7.4-fpm.sock;
+  fastcgi_pass          unix:/run/php/php-fpm.sock;
   fastcgi_index         index.php;
 }
 # PHP_END
@@ -2550,7 +2566,7 @@ fi
 
 
 
-clear 2>/dev/null || truePihole(){
+clearPihole(){
 rm -rf /opt/de_GWD/pihole/listsCache/*
 >/opt/de_GWD/pihole/adlists.list
 sqlite3 /opt/de_GWD/pihole/gravity.db "DELETE FROM adlist"
@@ -2891,9 +2907,9 @@ else
   echo -e "${WHITE} Nginx          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(systemctl is-active 'php7.4-fpm' 2>/dev/null) = "active" || $(systemctl is-active 'php-fpm' 2>/dev/null) = "active" || -n $(systemctl list-units --type=service 2>/dev/null | grep -E 'php[0-9.]*-fpm.*running') ]]; then
+if [[ $(systemctl is-active 'php-fpm' 2>/dev/null) = "active" || $(systemctl is-active 'php7.4-fpm' 2>/dev/null) = "active" || -n $(systemctl list-units --type=service 2>/dev/null | grep -E 'php[0-9.]*-fpm.*running') ]]; then
   echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [ ! -e "/run/php/php7.4-fpm.sock" ]; then
+elif [[ -z "$(which php 2>/dev/null)" ]]; then
   echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
   echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
@@ -2969,7 +2985,7 @@ read -p "Select:" num || exit
     start_menu
     ;;
     3)
-    clear 2>/dev/null || truePihole
+    clearPihole
     start_menu
     ;;
     8)

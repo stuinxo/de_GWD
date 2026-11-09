@@ -1,69 +1,38 @@
 #!/bin/bash
 # ui-NodeSMcheck: Check current node assignment for Predefined Services in JSON format
 
-SERVICES=("openai" "claude" "gemini" "grok" "youtube" "netflix" "hdh" "bahamut" "tvb" "telegram" "twitter" "discord" "reddit" "github" "wikipedia")
-
-JSON_RESULT="{"
-
-for svc in "${SERVICES[@]}"; do
-  tag="nodeSM${svc}"
-  domain=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-  port=$(jq -r --arg tag "$tag" '.outbounds[]? | select(.tag == $tag) | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-
-  num=0
-  name="-none-"
-
-  if [[ -n "$domain" ]]; then
-    if [[ "$port" == "443" || -z "$port" ]]; then
-      nodecheck="$domain"
+jq -nc --slurpfile conf /opt/de_GWD/0conf --slurpfile xray /opt/de_GWD/vtrui/config.json '
+  ($conf[0] // {}) as $c |
+  ($xray[0] // {}) as $x |
+  ($c.v2node // []) as $nodes |
+  def find_outbound($tag):
+    [$x.outbounds[]? | select(.tag == $tag)][0];
+  def node_addr($ob):
+    if ($ob == null) then ""
     else
-      nodecheck="$domain:$port"
-    fi
-
-    checkNum=$(jq -r --arg nodecheck "$nodecheck" '.v2node | to_entries[]? | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf 2>/dev/null)
-    checkName=$(jq -r --arg nodecheck "$nodecheck" '.v2node[]? | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf 2>/dev/null)
-
-    if [[ -n "$checkNum" && "$checkNum" != "null" ]]; then
-      num=$((checkNum + 1))
-      name="${checkName:-$nodecheck}"
-    fi
-  fi
-
-  JSON_RESULT+="\"$svc\":{\"num\":$num,\"name\":$(echo "$name" | jq -R .)},"
-done
-
-# Check Apple
-apple_domain=$(jq -r '.outbounds[]? | select(.tag == "nodeSMapple") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-apple_port=$(jq -r '.outbounds[]? | select(.tag == "nodeSMapple") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-apple_num=0
-apple_name="直连"
-
-if [[ -n "$apple_domain" ]]; then
-  if [[ "$apple_port" == "443" || -z "$apple_port" ]]; then
-    apple_check="$apple_domain"
-  else
-    apple_check="$apple_domain:$apple_port"
-  fi
-  cNum=$(jq -r --arg nodecheck "$apple_check" '.v2node | to_entries[]? | select(.value.domain == $nodecheck) | .key' /opt/de_GWD/0conf 2>/dev/null)
-  cName=$(jq -r --arg nodecheck "$apple_check" '.v2node[]? | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf 2>/dev/null)
-  if [[ -n "$cNum" && "$cNum" != "null" ]]; then
-    apple_num=$((cNum + 1))
-    apple_name="${cName:-$apple_check}"
-  fi
-fi
-JSON_RESULT+="\"apple\":{\"num\":$apple_num,\"name\":$(echo "$apple_name" | jq -R .)},"
-
-# Check Steam
-steam_status=$(jq -r '.v2nodeDIV.nodeSM.steam' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-if [[ "$steam_status" == "proxy" ]]; then
-  steam_num=1
-  steam_name="默认代理"
-else
-  steam_num=0
-  steam_name="直连"
-fi
-JSON_RESULT+="\"steam\":{\"num\":$steam_num,\"name\":$(echo "$steam_name" | jq -R .)}"
-
-JSON_RESULT+="}"
-
-echo "$JSON_RESULT"
+      ($ob.settings.vnext[0].address // "") as $d |
+      ($ob.settings.vnext[0].port // 443 | tostring) as $p |
+      if $d == "" then ""
+      elif ($p == "443" or $p == "") then $d
+      else "\($d):\($p)"
+      end
+    end;
+  def match_node($ob; $default_name):
+    node_addr($ob) as $addr |
+    if $addr == "" then {num: 0, name: $default_name}
+    else
+      ($ob.settings.vnext[0].users[0].id // "") as $uuid |
+      ([ $nodes | to_entries[]? | select(.value.domain == $addr and ($uuid == "" or .value.uuid == $uuid)) ][0]
+       // [ $nodes | to_entries[]? | select(.value.domain == $addr) ][0]) as $m |
+      if $m == null then {num: 0, name: $default_name}
+      else {num: ($m.key + 1), name: (if ($m.value.name // "") != "" then $m.value.name else $addr end)}
+      end
+    end;
+  (["openai","claude","gemini","grok","youtube","netflix","hdh","bahamut","tvb","telegram","twitter","discord","reddit","github","wikipedia"]
+   | map({ (.): match_node(find_outbound("nodeSM" + .); "-none-") })
+   | add)
+  + {
+    apple: match_node(find_outbound("nodeSMapple"); "直连"),
+    steam: (if ($c.v2nodeDIV.nodeSM.steam // "") == "proxy" then {num: 1, name: "默认代理"} else {num: 0, name: "直连"} end)
+  }
+' 2>/dev/null || echo '{"openai":{"num":0,"name":"-none-"},"claude":{"num":0,"name":"-none-"},"gemini":{"num":0,"name":"-none-"},"grok":{"num":0,"name":"-none-"},"youtube":{"num":0,"name":"-none-"},"netflix":{"num":0,"name":"-none-"},"hdh":{"num":0,"name":"-none-"},"bahamut":{"num":0,"name":"-none-"},"tvb":{"num":0,"name":"-none-"},"telegram":{"num":0,"name":"-none-"},"twitter":{"num":0,"name":"-none-"},"discord":{"num":0,"name":"-none-"},"reddit":{"num":0,"name":"-none-"},"github":{"num":0,"name":"-none-"},"wikipedia":{"num":0,"name":"-none-"},"apple":{"num":0,"name":"直连"},"steam":{"num":0,"name":"直连"}}'

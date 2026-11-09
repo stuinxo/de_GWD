@@ -1,4 +1,4 @@
-﻿<?php require_once('auth.php'); ?>
+<?php require_once('auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <!DOCTYPE html>
 <html>
@@ -33,14 +33,15 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $DoG = $de_GWDconf->dns->dog; ?>
+<?php $DoG = $de_GWDconf->dns->dog ?? ''; ?>
 
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = $de_GWDconf->app->bitwarden ?? ''; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php $FileRunWebConf = file_exists('/etc/nginx/conf.d/filerun.conf') ? file_get_contents('/etc/nginx/conf.d/filerun.conf') : ''; preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?? '' ?>
+<?php $WebConf = file_exists('/etc/nginx/conf.d/default.conf') ? file_get_contents('/etc/nginx/conf.d/default.conf') : ''; preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = isset($serverName[0][0]) ? rtrim($serverName[0][0],";") : 'de_GWD' ?>
+<?php $v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? $de_GWDconf->v2node : []; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -217,7 +218,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?? ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -258,8 +259,8 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
-                $nname = $de_GWDconf->v2node[$i]->name;
+              for ($i = 0; $i < count($v2nodes); $i++) {
+                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
               }
@@ -289,8 +290,8 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
-                $nname = $de_GWDconf->v2node[$i]->name;
+              for ($i = 0; $i < count($v2nodes); $i++) {
+                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
               }
@@ -324,8 +325,8 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
-                $nname = $de_GWDconf->v2node[$i]->name;
+              for ($i = 0; $i < count($v2nodes); $i++) {
+                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
               }
@@ -346,8 +347,8 @@
                 <div id="nodeSMlist_apple" class="dropdown-menu w-100">
                   <a class="dropdown-item" href="javascript:void(0);" onclick="selectNodeSM('apple', 0, ' 直连 ')"> 直连 </a>
                   <?php
-                  for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
-                    $nname = $de_GWDconf->v2node[$i]->name;
+                  for ($i = 0; $i < count($v2nodes); $i++) {
+                    $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
                     $num = $i + 1;
                     echo "<a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('apple', {$num}, '{$nname}')\">{$nname}</a>\n";
                   }
@@ -395,21 +396,21 @@
   <div class="input-group-prepend">
     <span class="input-group-text">大陆白名单代理</span>
   </div>
-   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo "$v ";} } ?>">
 </div>
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
     <span class="input-group-text">全局代理</span>
   </div>
-   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo "$v ";} } ?>">
 </div>
 
 <div class="input-group input-group-sm">
   <div class="input-group-prepend">
     <span class="input-group-text">全局直连</span>
   </div>
-   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo "$v ";} ?>">
+   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo "$v ";} } ?>">
 </div>
 
       </div>
@@ -427,7 +428,7 @@
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body">
-        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} ?></textarea>
+        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain ?? []; if (is_array($customDomainList)) { foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} } ?></textarea>
         <div class="alert-light mb-4" role="alert">
         纯字符串: google.com<br>
         子域名: domain:google.com<br>
@@ -436,7 +437,7 @@
         预定义域名列表: geosite:google<br>
         </div>
 
-        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP; foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} ?></textarea>
+        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP ?? []; if (is_array($customDomainList)) { foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} } ?></textarea>
         <div class="alert-light" role="alert">
         使用非内网IP，非专用网络IP<br>
         IP: 104.24.0.0<br>
@@ -470,16 +471,16 @@
         <div class="input-group-prepend ">
           <span class="input-group-text">地址</span>
         </div>
-          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress; ?>">
+          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''; ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort; ?>">
+          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort ?? ''; ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">加密方式</span>
         </div>
         <div class="input-group-prepend input-group-append">
-          <button id="ssMethod" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod; ?>"><?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod; ?></button>
+          <button id="ssMethod" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''; ?>"><?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''; ?></button>
           <div class="dropdown-menu">
             <a class='dropdown-item' href='#' id="ssAES256">AES-256-GCM</a>
             <a class='dropdown-item' href='#' id="ssAES128">AES-128-GCM</a>
@@ -489,7 +490,7 @@
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">密码</span>
         </div>
-          <input id="ssSecure" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSecure; ?>">
+          <input id="ssSecure" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSecure ?? ''; ?>">
       </div>
       </div>
       <div class="modal-footer">
@@ -515,14 +516,14 @@
                 <div class="card-header">
                   <span>黑名单域名：</span>
                 </div>
-                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php foreach($de_GWDconf->dns->listB as $v) {echo "$v\n";} ?></textarea>
+                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php if (!empty($de_GWDconf->dns->listB)) { foreach($de_GWDconf->dns->listB as $v) {echo "$v\n";} } ?></textarea>
               </div>
 
               <div class="card mt-3">
                 <div class="card-header">
                   <span>白名单域名：</span>
                 </div>
-                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php foreach($de_GWDconf->dns->listW as $v) {echo "$v\n";} ?></textarea>
+                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php if (!empty($de_GWDconf->dns->listW)) { foreach($de_GWDconf->dns->listW as $v) {echo "$v\n";} } ?></textarea>
               </div>
       </div>
       <div class="modal-footer">
@@ -584,8 +585,8 @@
     <button id="nodeDTshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeDT" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
+for( $i=0; $i<count($v2nodes); $i++){
+  $name = $v2nodes[$i]->name ?? '';
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
 EOT;
@@ -614,8 +615,8 @@ EOT;
     <button id="nodeCUshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeCU" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
-  $name = $de_GWDconf->v2node[$i]->name;
+for( $i=0; $i<count($v2nodes); $i++){
+  $name = $v2nodes[$i]->name ?? '';
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
 EOT;
@@ -652,19 +653,19 @@ EOT;
                 <tbody id="nodeTable">
 <?php
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
-for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
+for( $i=0; $i<count($v2nodes); $i++){
   $nodeNUM = $i+1;
-  $domain = $de_GWDconf->v2node[$i]->domain;
-  $name = $de_GWDconf->v2node[$i]->name;
+  $domain = $v2nodes[$i]->domain ?? '';
+  $name = $v2nodes[$i]->name ?? '';
   if ( $checkNode != null && $checkNode == $i) $checkStatus = "btn-success"; else $checkStatus = "btn-outline-secondary";
 print <<<EOT
                   <tr> 
                     <td class="align-middle">$nodeNUM</td>
-                    <td class="align-middle"><span id="nodeDomain${i}">${domain}</span></td>
-                    <td class="text-left"><span id="nodeshow${i}">${name}</span></td>
-                    <td class="align-middle"><span id="ping${i}" class='text-success'></span></td>
-                    <td class="align-middle"><span id="speed${i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
-                    <td class="align-middle"><button id="switch${i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
+                    <td class="align-middle"><span id="nodeDomain{$i}">{$domain}</span></td>
+                    <td class="text-left"><span id="nodeshow{$i}">{$name}</span></td>
+                    <td class="align-middle"><span id="ping{$i}" class='text-success'></span></td>
+                    <td class="align-middle"><span id="speed{$i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
+                    <td class="align-middle"><button id="switch{$i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
                   </tr>
 EOT;
 }
@@ -701,7 +702,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 1</span>
                 </div>
-                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[0];?>">
+                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[0] ?? '';?>">
                 <div class="input-group-append">
                   <span id="pingDOH1" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -711,7 +712,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 2</span>
                 </div>
-                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[1];?>">
+                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[1] ?? '';?>">
                 <div class="input-group-append">
                   <span id="pingDOH2" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -742,15 +743,15 @@ EOT;
                   </span>
                 </div>
                   <textarea id="dnsChina" class="form-control" aria-label="dnsChina" rows="6"><?php
-$smartdnsConf = file_get_contents('/opt/de_GWD/smartdns/smartdns.conf');
+$smartdnsConf = file_exists('/opt/de_GWD/smartdns/smartdns.conf') ? file_get_contents('/opt/de_GWD/smartdns/smartdns.conf') : '';
 preg_match_all('/(?<=\bserver )\S+/is', $smartdnsConf, $dnsClist);
-if(($index = array_search('1.1.1.1',$dnsClist[0]))){
+if(($index = array_search('1.1.1.1',$dnsClist[0])) !== false){
 unset($dnsClist[0][$index]);
 }
-if(($index = array_search('8.8.8.8',$dnsClist[0]))){
+if(($index = array_search('8.8.8.8',$dnsClist[0])) !== false){
 unset($dnsClist[0][$index]);
 }
-if(($index = array_search('127.0.0.1:5333',$dnsClist[0]))){
+if(($index = array_search('127.0.0.1:5333',$dnsClist[0])) !== false){
 unset($dnsClist[0][$index]);
 }
 foreach(array_unique($dnsClist[0]) as $k => $v){
@@ -792,7 +793,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 <div class="form-row">
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo $de_GWDconf->address->localIP; ?>">
+                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo $de_GWDconf->address->localIP ?? ''; ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">本机</span>
                 </div>
@@ -800,7 +801,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 </div>
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo $de_GWDconf->address->upstreamIP; ?>">
+                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo $de_GWDconf->address->upstreamIP ?? ''; ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">上级</span>
                 </div>

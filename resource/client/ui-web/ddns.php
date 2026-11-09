@@ -1,4 +1,4 @@
-﻿<?php require_once('auth.php'); ?>
+<?php require_once('auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <!DOCTYPE html>
 <html>
@@ -34,12 +34,24 @@
 
 <body id="page-top" class="sidebar-toggled">
 <?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin; ?>
+<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkFileRun = file_exists('/var/www/html/filerun'); ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden; ?>
+<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
-<?php $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf'); preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $FileRunPort); $FileRunPort = $FileRunPort[0][0] ?>
-<?php $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf'); preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $serverName); $serverName = rtrim($serverName[0][0],";") ?>
+<?php
+$FileRunPort = null;
+if (file_exists('/etc/nginx/conf.d/filerun.conf')) {
+    $FileRunWebConf = file_get_contents ('/etc/nginx/conf.d/filerun.conf');
+    preg_match_all('/(?<=\blisten )\S+/is', $FileRunWebConf, $matches);
+    $FileRunPort = isset($matches[0][0]) ? $matches[0][0] : null;
+}
+$serverName = 'de_GWD';
+if (file_exists('/etc/nginx/conf.d/default.conf')) {
+    $WebConf = file_get_contents ('/etc/nginx/conf.d/default.conf');
+    preg_match_all('/(?<=\bserver_name )\S+/is', $WebConf, $matches);
+    $serverName = isset($matches[0][0]) ? rtrim($matches[0][0], ";") : 'de_GWD';
+}
+?>
 
 <?php $checkWGinstall = exec('sudo dpkg -l | grep " wireguard-tools "')?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
@@ -152,7 +164,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -204,21 +216,21 @@
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="f3322domain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->domain ?>">
+          <input id="f3322domain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->domain) ? $de_GWDconf->ddns->ddns3322->domain : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">用户名</span>
         </div>
-          <input id="f3322usr" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->user ?>">
+          <input id="f3322usr" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->user) ? $de_GWDconf->ddns->ddns3322->user : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">密码</span>
         </div>
-          <input id="f3322pwd" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddns3322->pwd ?>">
+          <input id="f3322pwd" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->pwd) ? $de_GWDconf->ddns->ddns3322->pwd : ''; ?>">
       </div>
     </div>
           </div>
@@ -252,21 +264,21 @@
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfDomain ?>">
+          <input id="CFdomain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfDomain) ? $de_GWDconf->ddns->ddnsCF->cfDomain : ''; ?>">
       </div>
 
       <div class="col-md-5 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF API KEY</span>
         </div>
-          <input id="CFapikey" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfAPIkey ?>">
+          <input id="CFapikey" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfAPIkey) ? $de_GWDconf->ddns->ddnsCF->cfAPIkey : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF E-mail</span>
         </div>
-          <input id="CFemail" type="text" class="form-control" value="<?php echo $de_GWDconf->ddns->ddnsCF->cfEmail ?>">
+          <input id="CFemail" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfEmail) ? $de_GWDconf->ddns->ddnsCF->cfEmail : ''; ?>">
       </div>
     </div>
           </div>
@@ -302,10 +314,10 @@
           </div>
           <div id="WGbody" class="card-body" style="display:none">
 <?php
-  $sprivatekey = $de_GWDconf->wireguard->server->sprivatekey;
-  $spublickey = $de_GWDconf->wireguard->server->spublickey;
-  $WGaddress = $de_GWDconf->wireguard->server->WGaddress;
-  $WGport = $de_GWDconf->wireguard->server->WGport;
+  $sprivatekey = isset($de_GWDconf->wireguard->server->sprivatekey) ? $de_GWDconf->wireguard->server->sprivatekey : '';
+  $spublickey = isset($de_GWDconf->wireguard->server->spublickey) ? $de_GWDconf->wireguard->server->spublickey : '';
+  $WGaddress = isset($de_GWDconf->wireguard->server->WGaddress) ? $de_GWDconf->wireguard->server->WGaddress : '';
+  $WGport = isset($de_GWDconf->wireguard->server->WGport) ? $de_GWDconf->wireguard->server->WGport : '';
 
   if ($sprivatekey == null || $sprivatekey == '')
   {
@@ -339,7 +351,8 @@ EOT;
 
 <div id="WGclients" class="form-row mb-1">
 <?php
-for( $i=0; $i<count($de_GWDconf->wireguard->clients ?? []); $i++){
+$wgClientsCount = isset($de_GWDconf->wireguard->clients) && is_countable($de_GWDconf->wireguard->clients) ? count($de_GWDconf->wireguard->clients) : 0;
+for( $i=0; $i<$wgClientsCount; $i++){
   $nodeNUM = $i+1;
   $cprivatekey = $de_GWDconf->wireguard->clients[$i]->cprivatekey;
   $cpublickey = $de_GWDconf->wireguard->clients[$i]->cpublickey;
@@ -360,29 +373,29 @@ print <<<EOT
       <div class="input-group mb-2 col-md-6">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 90px;">节点$nodeNUM</span>
-          <button id="buttonWGgenCKey${i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
-          <input id="cprivatekey${i}" type="hidden" value="$cprivatekey">
-          <input id="cpublickey${i}" type="hidden" value="$cpublickey">
+          <button id="buttonWGgenCKey{$i}" type="button" class="btn $buttonWGgenCKeyClass btn-sm" style="min-width: 150px; border-Radius: 0px;" onclick="WGgenCkey(this)">$buttonWGgenCKeyHtml</button>
+          <input id="cprivatekey{$i}" type="hidden" value="$cprivatekey">
+          <input id="cpublickey{$i}" type="hidden" value="$cpublickey">
           <span class="input-group-text">备注</span>
         </div>
-          <input id="WGmark${i}" type="text" class="form-control" value="$mark">
+          <input id="WGmark{$i}" type="text" class="form-control" value="$mark">
         <div class="input-group-prepend input-group-append">
-          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop${i}" onclick="WGqr(this)">显示二维码</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop{$i}" onclick="WGqr(this)">显示二维码</button>
         </div>
         <div class="input-group-append">
           <button type="button" class="btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="WGclear(this)">清空</button>
         </div>
       </div>
 
-<div id="wgqrpop${i}" class="modal fade" role="dialog" aria-hidden="true">
+<div id="wgqrpop{$i}" class="modal fade" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title mx-auto" >WireGuard客户端$nodeNUM</h5>
       </div>
       <div class="modal-body">
-        <div id="qrcode${i}" class="text-center"></div>
-        <textarea id="qrstr${i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
+        <div id="qrcode{$i}" class="text-center"></div>
+        <textarea id="qrstr{$i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
       </div>
     </div>
   </div>

@@ -57,10 +57,10 @@ for svc in "${!SERVICE_DOMAINS[@]}"; do
     val="${PARAM_MAP[$svc]}"
     if [[ "$val" != "0" ]]; then
       node_idx=$((val - 1))
-      address=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.domain' /opt/de_GWD/0conf 2>/dev/null)
-      tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.tls' /opt/de_GWD/0conf 2>/dev/null)
-      uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null)
-      path=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf 2>/dev/null)
+      address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' /opt/de_GWD/0conf 2>/dev/null)
+      tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
+      uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
+      path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
 
       if [[ -n "$address" && "$address" != "null" ]]; then
         jq --arg address "$address" ".v2nodeDIV.nodeSM.${svc}=\$address" /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
@@ -72,11 +72,11 @@ for svc in "${!SERVICE_DOMAINS[@]}"; do
     fi
   else
     # Restore from 0conf if already configured
-    address=$(jq -r ".v2nodeDIV.nodeSM.${svc}" /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+    address=$(jq -r ".v2nodeDIV.nodeSM.${svc} // empty" /opt/de_GWD/0conf 2>/dev/null)
     if [[ -n "$address" ]]; then
-      tls=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.tls' /opt/de_GWD/0conf 2>/dev/null)
-      uuid=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null)
-      path=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf 2>/dev/null)
+      tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
+      uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
+      path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
 
       if [[ -n "$tls" && -n "$uuid" ]]; then
         /opt/de_GWD/ui-V2routingDomain "$tag" "$routingDomain"
@@ -92,10 +92,10 @@ if [[ -n "${PARAM_MAP[apple]}" ]]; then
   val="${PARAM_MAP[apple]}"
   if [[ "$val" != "0" ]]; then
     node_idx=$((val - 1))
-    address=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.domain' /opt/de_GWD/0conf 2>/dev/null)
-    tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.tls' /opt/de_GWD/0conf 2>/dev/null)
-    uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null)
-    path=$(jq -r --argjson nodecheck "$node_idx" '.v2node | to_entries[] | select(.key == $nodecheck) | .value.path' /opt/de_GWD/0conf 2>/dev/null)
+    address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' /opt/de_GWD/0conf 2>/dev/null)
+    tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
+    uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
+    path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
 
     if [[ -n "$address" && "$address" != "null" ]]; then
       jq --arg address "$address" '.v2nodeDIV.nodeSM.apple=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
@@ -107,11 +107,11 @@ if [[ -n "${PARAM_MAP[apple]}" ]]; then
     /opt/de_GWD/ui-V2routingDomain 'direct' "$apple_domains"
   fi
 else
-  address=$(jq -r '.v2nodeDIV.nodeSM.apple' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+  address=$(jq -r '.v2nodeDIV.nodeSM.apple // empty' /opt/de_GWD/0conf 2>/dev/null)
   if [[ -n "$address" ]]; then
-    tls=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.tls' /opt/de_GWD/0conf 2>/dev/null)
-    uuid=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null)
-    path=$(jq -r --arg nodecheck "$address" '.v2node | to_entries[] | select(.value.domain == $nodecheck) | .value.path' /opt/de_GWD/0conf 2>/dev/null)
+    tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
+    uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
+    path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
     if [[ -n "$tls" && -n "$uuid" ]]; then
       /opt/de_GWD/ui-V2routingDomain "nodeSMapple" "$apple_domains"
       /opt/de_GWD/ui-V2outbound "nodeSMapple" "$address" "$tls" "$uuid" "$path"
