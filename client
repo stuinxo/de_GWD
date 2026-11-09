@@ -155,6 +155,13 @@ mimalloc_pkg="libmimalloc2.0"
 apt-cache show libmimalloc3 >/dev/null 2>&1 && mimalloc_pkg="libmimalloc3"
 [[ -z $(dpkg -l | awk '{print$2}' | grep -E '^libmimalloc(2\.0|3)$') ]] && aptPKG+=($mimalloc_pkg)
 [[ -n $aptPKG ]] && apt update -q && apt install -y -q $(echo ${aptPKG[@]})
+for m3 in /usr/lib/*/libmimalloc.so.3 /usr/lib/libmimalloc.so.3; do
+    if [[ -f "$m3" ]]; then
+        m2="${m3%.3}.2"
+        [[ ! -f "$m2" ]] && ln -sf "$m3" "$m2"
+    fi
+done
+ldconfig 2>/dev/null || true
 }
 
 checkSum(){
