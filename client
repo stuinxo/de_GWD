@@ -231,6 +231,28 @@ fi
 
 [[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip 2>/dev/null | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
 
+if [[ -f "./resource/geodata/geodata.zip" ]]; then
+    cp -f ./resource/geodata/geodata.zip /opt/de_GWD/.repo/geodata.zip
+elif [[ -f "./geodata.zip" ]]; then
+    cp -f ./geodata.zip /opt/de_GWD/.repo/geodata.zip
+elif [[ ! -s "/opt/de_GWD/.repo/geodata.zip" ]] || ! unzip -tq /opt/de_GWD/.repo/geodata.zip >/dev/null 2>&1; then
+    sha256sum_geodata=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip.sha256sum")
+    rm -rf /tmp/geodata.zip
+    if gh_download /tmp/geodata.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip" 5000; then
+        if [[ -n "$sha256sum_geodata" && $(checkSum /tmp/geodata.zip $sha256sum_geodata) = "false" ]]; then
+            echo -e "${WHITE}Geodata Zip${RED} Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/geodata.zip /opt/de_GWD/.repo/geodata.zip
+    fi
+fi
+
+if [[ -f "/opt/de_GWD/.repo/geodata.zip" ]]; then
+    unzip -oq /opt/de_GWD/.repo/geodata.zip -d /opt/de_GWD/.repo/ 2>/dev/null || true
+    mkdir -p /opt/de_GWD/vtrui
+    [[ -f /opt/de_GWD/.repo/geoip.dat ]] && cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui/geoip.dat
+    [[ -f /opt/de_GWD/.repo/geosite.dat ]] && cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui/geosite.dat
+fi
+
 if [[ ! -s "/opt/de_GWD/.repo/geoip.dat" ]] || [[ $(du -sk /opt/de_GWD/.repo/geoip.dat 2>/dev/null | awk '{print$1}') -lt 4000 ]]; then
     rm -rf /tmp/geoip.dat
     if gh_download /tmp/geoip.dat "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat" 4000 || \
