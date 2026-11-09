@@ -355,7 +355,7 @@ mkdir -p /opt/de_GWD/.repo
 cat << "EOF" >/opt/de_GWD/tcpTime
 date -s "$(wget -qSO- --max-redirect=0 whatismyip.akamai.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
 [[ $? -ne "0" ]]&& date -s "$(curl -sI cloudflare.com| grep -i '^date:'|cut -d' ' -f2-)"
-hwclock -w
+command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/tcpTime
 [[ $virt_type != "container" ]] && /opt/de_GWD/tcpTime
@@ -554,7 +554,7 @@ nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
 fi
-sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
+[[ -f /etc/network/interfaces ]] && sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
 resolvconf -u 2>/dev/null || true
 if [[ ! -s /etc/resolv.conf ]]; then
 cat << EOF >/etc/resolv.conf
@@ -1152,7 +1152,7 @@ sed -i '/Nice=/d' /etc/systemd/system/nginx.service
 fi
 systemctl daemon-reload >/dev/null
 
-[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -out /var/www/ssl/dhparam.pem 2048
+[[ ! -f "/var/www/ssl/dhparam.pem" ]] && (openssl dhparam -dsaparam -out /var/www/ssl/dhparam.pem 2048 2>/dev/null || openssl dhparam -out /var/www/ssl/dhparam.pem 2048)
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NGINX${cRES}"
 }
@@ -1809,7 +1809,7 @@ net.ipv4.conf.default.forwarding = 1' /etc/sysctl.conf
 sysctl -p >/dev/null 2>&1
 
 rm -rf /run/resolvconf/interface
-sed -i '/dns-nameservers /d' /etc/network/interfaces
+[[ -f /etc/network/interfaces ]] && sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
 resolvconf -u
 
 /etc/rc_online.local
@@ -1839,7 +1839,7 @@ systemctl stop wg-quick@wgcf
 systemctl disable wg-quick@wgcf
 
 rm -rf /run/resolvconf/interface
-sed -i '/dns-nameservers /d' /etc/network/interfaces
+[[ -f /etc/network/interfaces ]] && sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
 resolvconf -u
 
 /etc/rc_online.local

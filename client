@@ -183,15 +183,18 @@ if [[ -f "./resource/chnroute/IPchnroute" ]]; then
     cp -f ./resource/chnroute/IPchnroute /opt/de_GWD/.repo/IPchnroute
 elif [[ -f "./IPchnroute" ]]; then
     cp -f ./IPchnroute /opt/de_GWD/.repo/IPchnroute
-else
-    sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute.sha256sum 2>/dev/null)
-    [[ -z "$sha256sum_IPchnroute" ]] && sha256sum_IPchnroute=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum 2>/dev/null)
-    if [[ -n $sha256sum_IPchnroute ]] && [[ $(checkSum /opt/de_GWD/.repo/IPchnroute $sha256sum_IPchnroute) = "false" ]] ; then
+elif [[ ! -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
+    sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute.sha256sum")
+    [[ -z "$sha256sum_IPchnroute" ]] && sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum")
     rm -rf /tmp/IPchnroute
-    wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute 2>/dev/null || \
-    wget --no-check-certificate --show-progress -cqO /tmp/IPchnroute https://ghproxy.net/https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute
-    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]] && echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit
-    [[ $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "true" ]] && mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+    if gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute" 100 || \
+       gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" 100; then
+        if [[ -n "$sha256sum_IPchnroute" && $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]]; then
+            echo -e "${WHITE}IPchnroute${RED} Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+    else
+        echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit 1
     fi
 fi
 
@@ -199,25 +202,27 @@ if [[ -f "./de_GWD_$architecture.zip" ]]; then
     cp -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 elif [[ -f "./resource/de_GWD_$architecture.zip" ]]; then
     cp -f ./resource/de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
-else
-    sha256sum_de_GWD=$(curl -fsSLo- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/de_GWD_"$architecture".zip.sha256sum)
-    if [[ -n $sha256sum_de_GWD ]] && [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
+elif [[ ! -f "/opt/de_GWD/.repo/de_GWD.zip" ]] || ! unzip -tq /opt/de_GWD/.repo/de_GWD.zip >/dev/null 2>&1; then
+    sha256sum_de_GWD=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip.sha256sum")
     rm -rf /tmp/de_GWD.zip
-    wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/de_GWD_"$architecture".zip
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && rm -rf /tmp/de_GWD.zip && wget --no-check-certificate --show-progress -cqO /tmp/de_GWD.zip https://de-gwd.accxio.workers.dev/de_GWD_"$architecture".zip
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
-    [[ $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "true" ]] && mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+    if gh_download /tmp/de_GWD.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip" 10000; then
+        if [[ -n "$sha256sum_de_GWD" && $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
+            echo -e "${WHITE}de_GWD Zip${RED} Checksum Failed${cRES}" && exit 1
+        fi
+        mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
+    else
+        echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
     fi
 fi
 
-[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit
+[[ -z $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip 2>/dev/null | grep "No errors detected in compressed data") ]] && echo -e "${WHITE}de_GWD Zip${RED} Download Failed${cRES}" && exit 1
 
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
 echo
 date -s "$(curl -sI aliyun.com| grep -i '^date:'|cut -d' ' -f2-)"
 [[ $? -ne "0" ]] && date -s "$(wget -qSO- --max-redirect=0 --dns-timeout=3 baidu.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
-hwclock -w
+command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true
 echo
 EOF
 chmod +x /opt/de_GWD/tcpTime
@@ -1199,7 +1204,7 @@ ln -sf /etc/resolvconf/run/resolv.conf /etc/resolv.conf
 elif [[ -f "/run/resolvconf/resolv.conf" ]]; then
 ln -sf /run/resolvconf/resolv.conf /etc/resolv.conf
 fi
-sed -i '/dns-nameservers /d' /etc/network/interfaces
+[[ -f /etc/network/interfaces ]] && sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
 resolvconf -u
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy SmartDNS${cRES}"
 
@@ -2019,7 +2024,7 @@ printf "[Service]\nExecStartPost=/bin/sleep 0.1\n" >/etc/systemd/system/nginx.se
 systemctl daemon-reload >/dev/null
 systemctl enable nginx >/dev/null 2>&1
 
-[[ ! -f "/var/www/ssl/dhparam.pem" ]] && openssl dhparam -out /var/www/ssl/dhparam.pem 2048
+[[ ! -f "/var/www/ssl/dhparam.pem" ]] && (openssl dhparam -dsaparam -out /var/www/ssl/dhparam.pem 2048 2>/dev/null || openssl dhparam -out /var/www/ssl/dhparam.pem 2048)
 }
 
 

@@ -423,4 +423,4 @@ rm -rf /tmp/now.cron
 
 date -s "$(wget -qSO- --max-redirect=0 aliyun.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z" | grep -v ' 08:00:00 '
 [[ $? -ne "0" ]] && date -s "$(wget -qSO- --max-redirect=0 baidu.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
-hwclock -w
+command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true

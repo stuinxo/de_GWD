@@ -31,13 +31,22 @@ fi
 fetch_text(){
   local url="$1"
   local content=""
-  local proxies=("https://ghproxy.net/" "https://mirror.ghproxy.com/" "")
-  for p in "${proxies[@]}"; do
-    content=$(curl -fsSL --connect-timeout 6 -m 12 "${p}${url}" 2>/dev/null)
-    if [[ -n "$content" ]]; then
-      echo "$content"
-      return 0
-    fi
+  local jsd_url=""
+  if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
+    jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+  fi
+  local urls=("$url")
+  [[ -n "$jsd_url" ]] && urls=("$jsd_url" "$url")
+  local proxies=("" "https://ghproxy.net/" "https://mirror.ghproxy.com/")
+  for u in "${urls[@]}"; do
+    for p in "${proxies[@]}"; do
+      [[ "$u" =~ jsdelivr && -n "$p" ]] && continue
+      content=$(curl -fsSL --connect-timeout 6 -m 12 "${p}${u}" 2>/dev/null)
+      if [[ -n "$content" ]]; then
+        echo "$content"
+        return 0
+      fi
+    done
   done
   return 1
 }
@@ -48,11 +57,39 @@ fetch_rule(){
   local expected_sha="$3"
   local min_kb="${4:-10}"
   local tmp="/tmp/dl_$(basename "$target")"
-  local proxies=("https://ghproxy.net/" "https://mirror.ghproxy.com/" "")
+  local jsd_url=""
+  if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
+    jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+  fi
+  local urls=("$url")
+  [[ -n "$jsd_url" ]] && urls=("$jsd_url" "$url")
+  local proxies=("" "https://ghproxy.net/" "https://mirror.ghproxy.com/")
 
-  for p in "${proxies[@]}"; do
-    rm -f "$tmp"
-    curl -fsSL --connect-timeout 8 -m 60 --retry 2 -o "$tmp" "${p}${url}" 2>/dev/null
+  for u in "${urls[@]}"; do
+    for p in "${proxies[@]}"; do
+      [[ "$u" =~ jsdelivr && -n "$p" ]] && continue
+      rm -f "$tmp"
+      curl -fsSL --connect-timeout 8 --speed-limit 50000 --speed-time 8 -m 60 --retry 1 -o "$tmp" "${p}${u}" 2>/dev/null
+      if [[ -s "$tmp" ]]; then
+        local sz=$(du -sk "$tmp" 2>/dev/null | awk '{print $1}')
+        if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
+          if [[ -n "$expected_sha" ]]; then
+            local cur_sha=$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')
+            if [[ "$cur_sha" = "$expected_sha" ]]; then
+              mv -f "$tmp" "$target"
+              return 0
+            fi
+          else
+            mv -f "$tmp" "$target"
+            return 0
+          fi
+        fi
+      fi
+    done
+  done
+  rm -f "$tmp"
+  return 1
+}
     if [[ -s "$tmp" ]]; then
       local sz=$(du -sk "$tmp" 2>/dev/null | awk '{print $1}')
       if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
