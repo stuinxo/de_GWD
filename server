@@ -1356,7 +1356,7 @@ server {
   index index.php index.html index.htm;
   error_page 497 https://\$host:$port\$request_uri;
 
-  add_header Alt-Svc 'h3=":'$port'";ma=86400,quic=":'$port'"; ma=2592000; v="46,43"';
+  add_header Alt-Svc 'h3=":$port";ma=86400,quic=":$port"; ma=2592000; v="46,43"';
 
   include /etc/nginx/conf.d/.HSTS;
 
