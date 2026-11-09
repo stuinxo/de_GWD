@@ -671,11 +671,11 @@ for( $i=0; $i<count($v2nodeList); $i++){
 print <<<EOT
                   <tr> 
                     <td class="align-middle">$nodeNUM</td>
-                    <td class="align-middle"><span id="nodeDomain${i}">${domain}</span></td>
-                    <td class="text-left"><span id="nodeshow${i}">${name}</span></td>
-                    <td class="align-middle"><span id="ping${i}" class='text-success'></span></td>
-                    <td class="align-middle"><span id="speed${i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
-                    <td class="align-middle"><button id="switch${i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
+                    <td class="align-middle"><span id="nodeDomain{$i}">{$domain}</span></td>
+                    <td class="text-left"><span id="nodeshow{$i}">{$name}</span></td>
+                    <td class="align-middle"><span id="ping{$i}" class='text-success'></span></td>
+                    <td class="align-middle"><span id="speed{$i}" class='text-success'><a href="javascript:void(0)" class="text-success" onclick="buttonSpeed(this)"><i class="far fa-play-circle fa-lg"></i></a></span></td>
+                    <td class="align-middle"><button id="switch{$i}" type="button" class="btn $checkStatus btn-sm" onclick="buttonSwitch(this)">切换</button></td>
                   </tr>
 EOT;
 }
