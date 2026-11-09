@@ -269,16 +269,16 @@ if (file_exists('/etc/nginx/conf.d/default.conf')) {
 
       <div class="col-md-5 input-group my-2">
         <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">CF API KEY</span>
+          <span class="input-group-text" style="min-width: 120px;">CF Token / Key</span>
         </div>
-          <input id="CFapikey" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfAPIkey) ? $de_GWDconf->ddns->ddnsCF->cfAPIkey : ''; ?>">
+          <input id="CFapikey" type="text" class="form-control" placeholder="Cloudflare API Token 或 Global Key" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfAPIkey) ? $de_GWDconf->ddns->ddnsCF->cfAPIkey : ''; ?>">
       </div>
 
       <div class="col-md-4 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF E-mail</span>
         </div>
-          <input id="CFemail" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfEmail) ? $de_GWDconf->ddns->ddnsCF->cfEmail : ''; ?>">
+          <input id="CFemail" type="text" class="form-control" placeholder="使用Token时可留空" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfEmail) ? $de_GWDconf->ddns->ddnsCF->cfEmail : ''; ?>">
       </div>
     </div>
           </div>
@@ -597,12 +597,26 @@ $.get('./act/WGgenCkey.php', {WGnum:i}, function(data){
         </div>
           <input id="WGmark${i}" type="text" class="form-control" value="">
         <div class="input-group-prepend input-group-append">
-          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop" onclick="WGqr(this)">显示二维码</button>
+          <button type="button" class="btn btn-secondary btn-sm" style="min-width: 120px; border-Radius: 0px;" data-toggle="modal" data-target="#wgqrpop${i}" onclick="WGqr(this)">显示二维码</button>
         </div>
         <div class="input-group-append">
           <button type="button" class="btn btn-outline-secondary btn-sm" style="border-Radius: 0px;" onclick="WGclear(this)">清空</button>
         </div>
       </div>
+
+<div id="wgqrpop${i}" class="modal fade" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title mx-auto" >WireGuard客户端${i+1}</h5>
+      </div>
+      <div class="modal-body">
+        <div id="qrcode${i}" class="text-center"></div>
+        <textarea id="qrstr${i}" class="mx-auto mt-3 col-12 small" rows="8" readonly></textarea>
+      </div>
+    </div>
+  </div>
+</div>
                           `)
 })
 })

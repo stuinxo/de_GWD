@@ -34,7 +34,7 @@
 <form>
           <div class="form-group">
                 <div class="form-label-group">
-                  <input type="password" id="gwdpasswd" class="form-control" placeholder="密码" required="required" value="" autofocus="autofocus" onkeydown="keysubmitpw()">
+                  <input type="password" id="gwdpasswd" class="form-control" placeholder="密码" required="required" value="" autofocus="autofocus" onkeydown="keysubmitpw(event)">
                   <label for="gwdpasswd">密码</label>
                 </div>
           </div>

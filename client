@@ -1297,7 +1297,7 @@ else
 fi
 
 cat << EOF >>/opt/de_GWD/smartdns/smartdns.conf
-server-https https://$doh1Str -host-name $doh1Domain -http-host $doh1Domain -tls-host-verify $doh1Domain -group DNS_global
+server-https https://$doh1Str -host-name $doh1Domain -no-check-certificate -group DNS_global
 EOF
 systemctl restart smartdns
 sleep 2
@@ -1329,7 +1329,7 @@ else
 fi
 
 cat << EOF >>/opt/de_GWD/smartdns/smartdns.conf
-server-https https://$doh2Str -host-name $doh2Domain -http-host $doh2Domain -tls-host-verify $doh2Domain -group DNS_global
+server-https https://$doh2Str -host-name $doh2Domain -no-check-certificate -group DNS_global
 EOF
 fi
 

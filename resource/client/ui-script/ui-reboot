@@ -1,5 +1,4 @@
 #!/bin/bash
-#!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 ethernetnum=$(ip link show | grep -v "lo" | awk '{print$2;exit}' | cut -d':' -f1 | cut -d'@' -f1)

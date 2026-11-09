@@ -49,11 +49,10 @@ fi
 "/root/.acme.sh"/acme.sh --force --installcert -d "$domain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "chown root:www-data /var/www/ssl/*.key 2>/dev/null; chmod 640 /var/www/ssl/*.key 2>/dev/null; systemctl force-reload nginx" \
+               --reloadcmd     "chmod 644 /var/www/ssl/*.key 2>/dev/null; systemctl force-reload nginx" \
                --ecc
 
-chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
-chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 
 [[ -d "/opt/de_GWD/vtrui" ]] && systemctl restart vtrui
 [[ -d "/opt/de_GWD/vtrui1" ]] && systemctl restart vtrui1
@@ -79,8 +78,7 @@ openssl req -x509 -nodes -days 3650 \
   -keyout /var/www/ssl/de_GWD.key \
   -out /var/www/ssl/de_GWD.cer
 
-chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
-chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+chmod 644 /var/www/ssl/de_GWD.key 2>/dev/null || true
 chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
 
 crontab -l 2>/dev/null >/tmp/now.cron

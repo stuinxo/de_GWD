@@ -244,7 +244,7 @@ else
     rm -rf /tmp/version.php
     wget --show-progress -cqO /tmp/version.php "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php"
     [[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit
-    [[ $(du -sk /tmp/version.php 2>/dev/null | awk '{print$1}') -ge 4 ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
+    [[ -s /tmp/version.php ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
   fi
 fi
 
@@ -1215,8 +1215,7 @@ if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
     -newkey rsa:2048 \
     -keyout /var/www/ssl/de_GWD.key \
     -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
-  chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
-  chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 644 /var/www/ssl/de_GWD.key 2>/dev/null || true
 fi
 
 if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
@@ -1230,8 +1229,7 @@ fi
                --reloadcmd     "systemctl force-reload nginx" \
                --ecc
 
-chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
-chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1275,8 +1273,7 @@ if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
     -newkey rsa:2048 \
     -keyout /var/www/ssl/de_GWD.key \
     -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
-  chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
-  chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 644 /var/www/ssl/de_GWD.key 2>/dev/null || true
 fi
 
 curl https://get.acme.sh | sh
@@ -1289,8 +1286,7 @@ curl https://get.acme.sh | sh
                --reloadcmd     "systemctl force-reload nginx" \
                --ecc
 
-chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
-chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 }
 
 
@@ -1572,8 +1568,7 @@ sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
 cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
 cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
 
-chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
-chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -2236,7 +2231,7 @@ setInboundPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_ports.json ]] && echo '{}' > /opt/de_GWD/extra_ports.json
     jq --arg tag "$in_tag" --argjson p "$p" '.[$tag] = $p' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json
-    chmod 600 /opt/de_GWD/extra_ports.json 2>/dev/null || true
+    chmod 666 /opt/de_GWD/extra_ports.json 2>/dev/null || true
 }
 
 getInternalPort() {
@@ -2405,7 +2400,7 @@ parseDomainAndPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_domains.json ]] && echo '{}' > /opt/de_GWD/extra_domains.json
     jq --arg tag "$in_tag" --arg dom "$target_domain" '.[$tag] = $dom' /opt/de_GWD/extra_domains.json | sponge /opt/de_GWD/extra_domains.json
-    chmod 600 /opt/de_GWD/extra_domains.json 2>/dev/null || true
+    chmod 666 /opt/de_GWD/extra_domains.json 2>/dev/null || true
 }
 
 removeXrayInbound() {

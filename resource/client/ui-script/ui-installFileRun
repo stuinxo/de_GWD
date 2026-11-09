@@ -38,7 +38,7 @@ echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 
 else
 echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}FileRun${RED} Download Failed${cRES}"
-break
+return 1
 fi
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install FileRun${cRES}"
 }
@@ -47,17 +47,29 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install FileRu
 
 filerunDep(){
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mysql$') ]] && aptPKG+=(php7.4-mysql)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mbstring$') ]] && aptPKG+=(php7.4-mbstring)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-curl$') ]] && aptPKG+=(php7.4-curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-zip$') ]] && aptPKG+=(php7.4-zip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-gd$') ]] && aptPKG+=(php7.4-gd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-ldap$') ]] && aptPKG+=(php7.4-ldap)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-opcache$') ]] && aptPKG+=(php7.4-opcache)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-imagick$') ]] && aptPKG+=(php7.4-imagick)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-memcached$') ]] && aptPKG+=(php7.4-memcached)
+if apt-cache show php7.4-fpm >/dev/null 2>&1; then
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mysql$') ]] && aptPKG+=(php7.4-mysql)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-mbstring$') ]] && aptPKG+=(php7.4-mbstring)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-curl$') ]] && aptPKG+=(php7.4-curl)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-zip$') ]] && aptPKG+=(php7.4-zip)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-gd$') ]] && aptPKG+=(php7.4-gd)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-ldap$') ]] && aptPKG+=(php7.4-ldap)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-opcache$') ]] && aptPKG+=(php7.4-opcache)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-imagick$') ]] && aptPKG+=(php7.4-imagick)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-memcached$') ]] && aptPKG+=(php7.4-memcached)
+else
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-mysql$') ]] && aptPKG+=(php-mysql)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-mbstring$') ]] && aptPKG+=(php-mbstring)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-curl$') ]] && aptPKG+=(php-curl)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-zip$') ]] && aptPKG+=(php-zip)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-gd$') ]] && aptPKG+=(php-gd)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-ldap$') ]] && aptPKG+=(php-ldap)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-xml$') ]] && aptPKG+=(php-xml)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-imagick$') ]] && aptPKG+=(php-imagick)
+  [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-memcached$') ]] && aptPKG+=(php-memcached)
+fi
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^imagemagick$') ]] && aptPKG+=(imagemagick)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^memcached$') ]] && aptPKG+=(memcached)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^libmemcached-tools$') ]] && aptPKG+=(libmemcached-tools)
