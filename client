@@ -1280,7 +1280,11 @@ doh1=${doh1#*//}
 echo -e "${WHITE}DNS over Https 1:\t${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh1Domain=$(echo $doh1 | cut -d/ -f1 | cut -d: -f1)
-doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+if [[ "$doh1Domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    doh1IP="$doh1Domain"
+else
+    doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+fi
 
 if [[ -n $doh1IP ]]; then
 doh1Port=$(echo $doh1 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
@@ -1308,7 +1312,11 @@ doh2=${doh2#*//}
 echo -e "${WHITE}DNS over Https 2: ${cRES}"
 echo -e "${WHITE}Domain: \c" && echo -e "\t${WHITE}IP: ${cRES}\r\c"
 doh2Domain=$(echo $doh2 | cut -d/ -f1 | cut -d: -f1)
-doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+if [[ "$doh2Domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    doh2IP="$doh2Domain"
+else
+    doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+fi
 
 if [[ -n $doh2IP ]]; then
 doh2Port=$(echo $doh2 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -45,20 +45,19 @@
   </div>
 
 <script>
-function keysubmitpw(){
-    if(event.keyCode == 13) {
-event.preventDefault();
-gwdpasswdtext=$('#gwdpasswd').val();
-$.get('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; });
-};
-};
-
-
+function keysubmitpw(e){
+    var code = (e && e.keyCode) ? e.keyCode : (event ? event.keyCode : 0);
+    if(code == 13) {
+        if (e && e.preventDefault) e.preventDefault();
+        gwdpasswdtext=$('#gwdpasswd').val();
+        $.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; });
+    }
+}
 
 $(function(){
 $('#buttonSubmitpw').click(function(){
 gwdpasswdtext=$('#gwdpasswd').val()
-$.get('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; })
+$.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; })
 })
 })
 </script>

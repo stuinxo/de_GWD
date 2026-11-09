@@ -1207,9 +1207,17 @@ else
 systemctl force-reload nginx
 fi
 
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {} 2>/dev/null || true
+if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
+  mkdir -p /var/www/ssl
+  openssl req -x509 -nodes -days 365 \
+    -subj "/C=CA/ST=QC/O=Company, Inc./CN=$domain" \
+    -newkey rsa:2048 \
+    -keyout /var/www/ssl/de_GWD.key \
+    -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
+  chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+fi
 
 if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
   curl -fsSL https://get.acme.sh | sh -s email="${CFemail:-admin@example.com}"
@@ -1259,9 +1267,17 @@ else
 systemctl force-reload nginx
 fi
 
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {}
+find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {} 2>/dev/null || true
+if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
+  mkdir -p /var/www/ssl
+  openssl req -x509 -nodes -days 365 \
+    -subj "/C=CA/ST=QC/O=Company, Inc./CN=$domain" \
+    -newkey rsa:2048 \
+    -keyout /var/www/ssl/de_GWD.key \
+    -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
+  chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+fi
 
 curl https://get.acme.sh | sh
 "/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
@@ -1354,7 +1370,7 @@ server {
   index index.php index.html index.htm;
   error_page 497 https://\$host:$port\$request_uri;
 
-  add_header Alt-Svc 'h3=":443";ma=86400,quic=":443"; ma=2592000; v="46,43"';
+  add_header Alt-Svc 'h3=":'$port'";ma=86400,quic=":'$port'"; ma=2592000; v="46,43"';
 
   include /etc/nginx/conf.d/.HSTS;
 

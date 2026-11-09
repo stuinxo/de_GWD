@@ -49,8 +49,11 @@ fi
 "/root/.acme.sh"/acme.sh --force --installcert -d "$domain" \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "chmod 644 /var/www/ssl/*.key && systemctl force-reload nginx" \
+               --reloadcmd     "chown root:www-data /var/www/ssl/*.key 2>/dev/null; chmod 640 /var/www/ssl/*.key 2>/dev/null; systemctl force-reload nginx" \
                --ecc
+
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 
 [[ -d "/opt/de_GWD/vtrui" ]] && systemctl restart vtrui
 [[ -d "/opt/de_GWD/vtrui1" ]] && systemctl restart vtrui1
@@ -65,18 +68,20 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Generate & Dep
 resetCER(){
 mkdir -p /var/www/ssl && cd /var/www/ssl
 
+rm -rf /var/www/ssl/*.pem
+rm -rf /var/www/ssl/ocsp.resp
+
 openssl req -x509 -nodes -days 3650 \
   -subj "/C=CA/ST=QC/O=Company, Inc./CN=localhost.com" \
   -config <(cat /etc/ssl/openssl.cnf \
     <(printf '[SAN]\nsubjectAltName=DNS:localhost')) \
   -newkey rsa:2048 \
-  -keyout de_GWD.key \
-  -out de_GWD.cer
-  
-rm -rf /var/www/ssl/*.cer
-rm -rf /var/www/ssl/*.key
-rm -rf /var/www/ssl/*.pem
-rm -rf /var/www/ssl/ocsp.resp
+  -keyout /var/www/ssl/de_GWD.key \
+  -out /var/www/ssl/de_GWD.cer
+
+chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
+chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
 
 crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/acme.sh/d' /tmp/now.cron

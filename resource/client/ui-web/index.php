@@ -857,11 +857,12 @@ $('#testYoutue').text("✗ 国外线路不通")
 })
 
 $.get("./act/version.php", function(data){
-var currentvernum = data.split("-")[0]
-var remotevernum = data.split("-")[1]
-var vera = $.trim(currentvernum)
-var verb = $.trim(remotevernum)
-$('#currentver').attr('class','btn btn-light').html(currentvernum+'本机')
+var parts = (data || '').split("-");
+var currentvernum = $.trim(parts[0]) || '未知';
+var remotevernum = parts.length > 1 && $.trim(parts[1]) !== '' ? $.trim(parts[1]) : currentvernum;
+var vera = currentvernum;
+var verb = remotevernum;
+$('#currentver').attr('class','btn btn-light').html(currentvernum+' 本机')
 $('#remotever').attr('class','btn btn-light').html(remotevernum+' 发布')
 if (vera != verb) {
 $('#remotever').attr('class','btn btn-warning')

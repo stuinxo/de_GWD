@@ -1,4 +1,4 @@
-﻿<?php
+<?php
     session_start();
     $conf = @json_decode(@file_get_contents('/opt/de_GWD/0conf'));
     if (isset($conf->address->PWD) && $conf->address->PWD !== '')
@@ -21,10 +21,11 @@
     $auth = false;
 
 
-    if(isset($_GET['gwdpw']))
+    $pwInput = $_POST['gwdpw'] ?? $_GET['gwdpw'] ?? null;
+    if ($pwInput !== null)
     {
-        $logininput = hash('sha256',hash('sha256',$_GET['gwdpw']));
-        if( hash_equals($GWDpwhash, $logininput) )
+        $logininput = hash('sha256', hash('sha256', (string)$pwInput));
+        if (hash_equals($GWDpwhash, $logininput))
         {
             $_SESSION["GWDhash"] = $GWDpwhash;
             $auth = true;
