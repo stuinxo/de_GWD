@@ -26,7 +26,7 @@ chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.7"
-branch="${BRANCH:-dev}"
+branch="${BRANCH:-v2}"
 
 
 installCMD=`cat << EOF
@@ -288,10 +288,10 @@ localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
 if [[ -f "./version.php" ]]; then
   cp -f ./version.php /opt/de_GWD/.repo/version.php
 else
-  remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php 2>/dev/null | head -n 1)
+  remoteVer=$(curl -fsSLo- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null | head -n 1)
   if [[ -n "$remoteVer" ]] && [[ $localVer != $remoteVer || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
     rm -rf /opt/de_GWD/.repo/version.php
-    wget --show-progress -cqO /opt/de_GWD/.repo/version.php https://raw.githubusercontent.com/stuinxo/de_GWD/main/version.php
+    wget --show-progress -cqO /opt/de_GWD/.repo/version.php "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php"
   fi
 fi
 
@@ -2471,7 +2471,7 @@ installkernel(){
 if [[ -f "./resource/kernel/installkernel" ]]; then
   chmod +x ./resource/kernel/installkernel && ./resource/kernel/installkernel
 else
-  bash <(wget --show-progress -cqO- https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/kernel/installkernel)
+  bash <(wget --show-progress -cqO- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/kernel/installkernel")
 fi
 }
 
