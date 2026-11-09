@@ -90,41 +90,24 @@ fetch_rule(){
   rm -f "$tmp"
   return 1
 }
-    if [[ -s "$tmp" ]]; then
-      local sz=$(du -sk "$tmp" 2>/dev/null | awk '{print $1}')
-      if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
-        if [[ -n "$expected_sha" ]]; then
-          local cur_sha=$(sha256sum "$tmp" 2>/dev/null | awk '{print $1}')
-          if [[ "$cur_sha" = "$expected_sha" ]]; then
-            mv -f "$tmp" "$target"
-            return 0
-          fi
-        else
-          mv -f "$tmp" "$target"
-          return 0
-        fi
-      fi
-    fi
-  done
-  rm -f "$tmp"
-  return 1
-}
+
+branch="${BRANCH:-v2}"
 
 geosite_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" | awk '{print$1}')
 geoip_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum" | awk '{print$1}')
 IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/IPchnroute.sha256sum" | awk '{print$1}')
 [[ -z "$IPchnroute_sha256sum" ]] && IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum" | awk '{print$1}')
 
-DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
+DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
 [[ -z "$DomainsChn_sha256sum" ]] && DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
 
-DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
+DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
 [[ -z "$DomainsApple_sha256sum" ]] && DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
 
-DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
+DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
 [[ -z "$DomainsGames_sha256sum" ]] && DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
 
-bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/main/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
+bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
 [[ -z "$bogusNxdomain_sha256sum" ]] && bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
 
 if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat "$geosite_sha256sum") = "false" ]]; then

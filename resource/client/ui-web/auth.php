@@ -1,4 +1,4 @@
-<?php
+﻿<?php
     session_start();
     $PWDhash = json_decode(file_get_contents('/opt/de_GWD/0conf'))->address->PWD;
     if(isset($PWDhash))

@@ -1,4 +1,4 @@
-<?php require_once('auth.php'); ?>
+﻿<?php require_once('auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <!DOCTYPE html>
 <html>
@@ -64,14 +64,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -258,7 +258,7 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node); $i++) {
+              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
                 $nname = $de_GWDconf->v2node[$i]->name;
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
@@ -289,7 +289,7 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node); $i++) {
+              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
                 $nname = $de_GWDconf->v2node[$i]->name;
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
@@ -324,7 +324,7 @@
               echo "    <button id='nodeSMshow_{$svc}' class='btn btn-outline-secondary dropdown-toggle border-left-0 w-100 text-truncate text-left' type='button' data-toggle='dropdown' value='0'> 默认代理 </button>\n";
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
-              for ($i = 0; $i < count($de_GWDconf->v2node); $i++) {
+              for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
                 $nname = $de_GWDconf->v2node[$i]->name;
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
@@ -346,7 +346,7 @@
                 <div id="nodeSMlist_apple" class="dropdown-menu w-100">
                   <a class="dropdown-item" href="javascript:void(0);" onclick="selectNodeSM('apple', 0, ' 直连 ')"> 直连 </a>
                   <?php
-                  for ($i = 0; $i < count($de_GWDconf->v2node); $i++) {
+                  for ($i = 0; $i < count($de_GWDconf->v2node ?? []); $i++) {
                     $nname = $de_GWDconf->v2node[$i]->name;
                     $num = $i + 1;
                     echo "<a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('apple', {$num}, '{$nname}')\">{$nname}</a>\n";
@@ -584,7 +584,7 @@
     <button id="nodeDTshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeDT" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
@@ -614,7 +614,7 @@ EOT;
     <button id="nodeCUshow" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown"></button>
     <div id="nodeCU" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
@@ -652,7 +652,7 @@ EOT;
                 <tbody id="nodeTable">
 <?php
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
   $nodeNUM = $i+1;
   $domain = $de_GWDconf->v2node[$i]->domain;
   $name = $de_GWDconf->v2node[$i]->name;

@@ -1,4 +1,4 @@
-<?php require_once('auth.php'); ?>
+﻿<?php require_once('auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <!DOCTYPE html>
 <html>
@@ -64,14 +64,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -213,7 +213,7 @@
                 </div>
               <div class="btn-group btn-group-sm">
                 <button id="autoUpdateHourShow" class="btn <?php if ($checkAutoUpdateStatus === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> mt-1 dropdown-toggle dropdown-toggle-split" type="button" data-toggle="dropdown" style="border-radius: 0px;">
-                  <?php if ($checkAutoUpdateHour === off || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
+                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
                 </button>
 <div class="dropdown-menu dropdown-menu-sm">
 <a class="dropdown-item text-center" href="#" onclick="autoUpdateHour(this)">关闭</a>

@@ -1,4 +1,4 @@
-<?php require_once('auth.php'); ?>
+﻿<?php require_once('auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <!DOCTYPE html>
 <html>
@@ -84,14 +84,14 @@
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
-      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === installed) echo 'block'; else echo 'none';?>">
+      <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
         <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
@@ -237,7 +237,7 @@
   <span id="buttonDoGsStopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonDoGsSave" type="button" class="btn <?php if ($DoGsConf !== false && $checkcoredns === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonDoGsSave" type="button" class="btn <?php if ($DoGsConf !== false && $checkcoredns === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonDoGsSaveLoading"></span>
   <span>应用</span>
 </button>
@@ -277,7 +277,7 @@
   <span id="buttonBlock53offLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonBlock53on" type="button" class="btn <?php if ($checkBlock53 === on) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonBlock53on" type="button" class="btn <?php if ($checkBlock53 === 'on') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonBlock53onLoading"></span>
   <span>不对外开放53端口</span>
 </button>
@@ -292,7 +292,7 @@
   <span id="buttonFWD0stopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonFWD0save" type="button" class="btn <?php if ($checkFWD0 === false && $checkVtrui === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonFWD0save" type="button" class="btn <?php if ($checkFWD0 === false && $checkVtrui === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonFWD0saveLoading"></span>
   <span>应用</span>
 </button>
@@ -325,7 +325,7 @@
 
               <div id="FWD0List" class="col-md-7">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->FWD0->uuid); $i++){
+for( $i=0; $i<count($de_GWDconf->FORWARD->FWD0->uuid ?? []); $i++){
   $FWD0num = $i + 1;
   $FWD0uuid = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0uuid;
   $FWD0mark = $de_GWDconf->FORWARD->FWD0->uuid[$i]->FWD0mark;
@@ -386,7 +386,7 @@ EOT;
   <span id="buttonFWD1stopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonFWD1save" type="button" class="btn <?php if ($checkFWD1 === true && $checkVtrui1 === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonFWD1save" type="button" class="btn <?php if ($checkFWD1 === true && $checkVtrui1 === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonFWD1saveLoading"></span>
   <span>应用</span>
 </button>
@@ -421,7 +421,7 @@ EOT;
   <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $checkFWD1OB[1] ?>"><?php echo $checkFWD1OB[0] ?></button>
   <div id="FWD1upstreamDrop" class="dropdown-menu">
 <?php
-for( $i=0; $i<count($de_GWDconf->v2node); $i++){
+for( $i=0; $i<count($de_GWDconf->v2node ?? []); $i++){
   $address = $de_GWDconf->v2node[$i]->domain;
   $name = $de_GWDconf->v2node[$i]->name;
 print <<<EOT
@@ -435,7 +435,7 @@ EOT;
 
               <div id="FWD1List" class="col-md-7">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->FWD1->uuid); $i++){
+for( $i=0; $i<count($de_GWDconf->FORWARD->FWD1->uuid ?? []); $i++){
   $FWD1num = $i + 1;
   $FWD1uuid = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1uuid;
   $FWD1mark = $de_GWDconf->FORWARD->FWD1->uuid[$i]->FWD1mark;
@@ -493,7 +493,7 @@ EOT;
   <span id="buttonRproxySstopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonRproxySsave" type="button" class="btn <?php if (empty($RproxySconf) === false && $checkRproxyS === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonRproxySsave" type="button" class="btn <?php if (empty($RproxySconf) === false && $checkRproxyS === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonRproxySsaveLoading"></span>
   <span>应用</span>
 </button>
@@ -530,15 +530,15 @@ EOT;
             <div class="card mb-3 mt-2">
               <div class="card-header">
                 代理型
-<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'block'; else echo 'none';?>">
 <button id="buttonRproxyS0Add" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">添加 UUID</button>
 <button id="buttonRproxyS0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
 </span>
-<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'none'; else echo 'block';?>">
+<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'none'; else echo 'block';?>">
 <button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyS0Switch()">展开</button>
 </span>
               </div>
-              <div id="RproxyS0Body" class="card-body" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === on) echo 'block'; else echo 'none';?>">
+              <div id="RproxyS0Body" class="card-body" style="display:<?php if ($de_GWDconf->FORWARD->Rproxy->server->inStatus === 'on') echo 'block'; else echo 'none';?>">
                 <div class="form-row">
                   <div class="col-md-3">
                   <div class="input-group my-2">
@@ -551,7 +551,7 @@ EOT;
 
                   <div id="RproxyS0List" class="col-md-9">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->inUUID); $i++){
+for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->inUUID ?? []); $i++){
   $RproxyS0num = $i + 1;
   $RproxyS0uuid = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0uuid;
   $RproxyS0mark = $de_GWDconf->FORWARD->Rproxy->server->inUUID[$i]->RproxyS0mark;
@@ -613,7 +613,7 @@ EOT;
               <div id="RproxyS1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxySconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyS1List" class="form-row">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->mapping); $i++){
+for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->server->mapping ?? []); $i++){
   $RproxyS1Port = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->port;
   $RproxyS1Protocol = $de_GWDconf->FORWARD->Rproxy->server->mapping[$i]->protocol;
 print <<<EOT
@@ -653,7 +653,7 @@ EOT;
   <span id="buttonRproxyCstopLoading"></span>
   <span>关闭</span>
 </button>
-<button id="buttonRproxyCsave" type="button" class="btn <?php if (empty($RproxyCconf) === false && $checkRproxyC === active) echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
+<button id="buttonRproxyCsave" type="button" class="btn <?php if (empty($RproxyCconf) === false && $checkRproxyC === 'active') echo 'btn-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">
   <span id="buttonRproxyCsaveLoading"></span>
   <span>应用</span>
 </button>
@@ -716,7 +716,7 @@ EOT;
               <div id="RproxyC1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxyCconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyC1List" class="form-row">
 <?php 
-for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->client->mapping); $i++){
+for( $i=0; $i<count($de_GWDconf->FORWARD->Rproxy->client->mapping ?? []); $i++){
   $RproxyC1extPort = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extPort;
   $RproxyC1extProtocol = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->extProtocol;
   $RproxyC1intIP = $de_GWDconf->FORWARD->Rproxy->client->mapping[$i]->intIP;

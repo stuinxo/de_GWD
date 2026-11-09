@@ -30,7 +30,7 @@ branch="${BRANCH:-v2}"
 
 
 installCMD=`cat << EOF
-bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/main/client)
+bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/${branch:-v2}/client)
 EOF
 `
 
@@ -157,12 +157,20 @@ unset aptPKG
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-fpm$') ]] && aptPKG+=(php7.4-fpm)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-cgi$') ]] && aptPKG+=(php7.4-cgi)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-sqlite3$') ]] && aptPKG+=(php7.4-sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+if apt-cache show php7.4-fpm >/dev/null 2>&1; then
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-fpm$') ]] && aptPKG+=(php7.4-fpm)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-cgi$') ]] && aptPKG+=(php7.4-cgi)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-sqlite3$') ]] && aptPKG+=(php7.4-sqlite3)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-xml$') ]] && aptPKG+=(php7.4-xml)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-intl$') ]] && aptPKG+=(php7.4-intl)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php7.4-json$') ]] && aptPKG+=(php7.4-json)
+else
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-fpm$') ]] && aptPKG+=(php-fpm)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-cgi$') ]] && aptPKG+=(php-cgi)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-sqlite3$') ]] && aptPKG+=(php-sqlite3)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-xml$') ]] && aptPKG+=(php-xml)
+    [[ -z $(dpkg -l | awk '{print$2}' | grep '^php-intl$') ]] && aptPKG+=(php-intl)
+fi
 [[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
 mimalloc_pkg="libmimalloc2.0"
 apt-cache show libmimalloc3 >/dev/null 2>&1 && mimalloc_pkg="libmimalloc3"
@@ -498,7 +506,7 @@ rm -rf /opt/de_GWD/IPlistWlanSET
 rm -rf /opt/de_GWD/IPlistWSET
 rm -rf /opt/de_GWD/IPv2nodeSET
 rm -rf /opt/de_GWD/__MACOSX
-rm -rf /opt/de_GWD/clear 2>/dev/null || trueKernel
+rm -rf /opt/de_GWD/clearKernel
 rm -rf /var/www/html/__MACOSX
 rm -rf /var/log/smartdns.log
 rm -rf /etc/dnsmasq.d/00-wg.conf
@@ -1392,7 +1400,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
       "listen":"127.0.0.1",
       "protocol":"dokodemo-door",
       "settings":{"network":"tcp,udp","followRedirect":true},
-      "streamSettings":{"sockopt":{"tproxy":"tproxy","mark":255,"tcpFastOpen":true,"tcpMptcp":true}}
+      "streamSettings":{"sockopt":{"tproxy":"tproxy","mark":255,"tcpFastOpen":false,"tcpMptcp":true}}
     }
   ],
   "outbounds":[
@@ -1947,13 +1955,22 @@ session.cookie_lifetime  = 0
 session.cookie_httponly  = 1
 session.cookie_secure    = 1
 EOF
-ln -sf /etc/php/00-init.ini /etc/php/7.4/cli/conf.d/00-init.ini
-ln -sf /etc/php/00-init.ini /etc/php/7.4/fpm/conf.d/00-init.ini
+php_fpm_bin=$(ls /usr/sbin/php-fpm* 2>/dev/null | head -n1)
+php_fpm_ver=$(echo "$php_fpm_bin" | grep -oP '[0-9]+\.[0-9]+' || echo "7.4")
+[[ -z "$php_fpm_ver" ]] && php_fpm_ver="7.4"
+[[ -z "$php_fpm_bin" ]] && php_fpm_bin="/usr/sbin/php-fpm${php_fpm_ver}"
 
-rm -rf /etc/php/7.4/fpm/pool.d
-cat << EOF >/etc/php/7.4/fpm/php-fpm.conf
+mkdir -p /etc/php/${php_fpm_ver}/cli/conf.d /etc/php/${php_fpm_ver}/fpm/conf.d /etc/php/${php_fpm_ver}/mods-available /run/php
+ln -sf /etc/php/00-init.ini /etc/php/${php_fpm_ver}/cli/conf.d/00-init.ini
+ln -sf /etc/php/00-init.ini /etc/php/${php_fpm_ver}/fpm/conf.d/00-init.ini
+if [[ "$php_fpm_ver" != "7.4" ]]; then
+    ln -sf /etc/php/${php_fpm_ver} /etc/php/7.4 2>/dev/null || true
+fi
+
+rm -rf /etc/php/${php_fpm_ver}/fpm/pool.d
+cat << EOF >/etc/php/${php_fpm_ver}/fpm/php-fpm.conf
 [global]
-pid = /run/php/php7.4-fpm.pid
+pid = /run/php/php${php_fpm_ver}-fpm.pid
 error_log = /var/log/php.log
 
 [www]
@@ -1962,7 +1979,7 @@ group = www-data
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0666
-listen = /run/php/php7.4-fpm.sock
+listen = /run/php/php${php_fpm_ver}-fpm.sock
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
 
@@ -1982,7 +1999,7 @@ env[TEMP] = /tmp
 env[TMPDIR] = /tmp
 EOF
 
-cat << EOF >/etc/php/7.4/mods-available/opcache.ini
+cat << EOF >/etc/php/${php_fpm_ver}/mods-available/opcache.ini
 ; configuration for php opcache module
 ; priority=10
 zend_extension=opcache.so
@@ -2000,18 +2017,18 @@ opcache.save_comments=1
 EOF
 
 rm -rf /var/log/php.log
-rm -rf /run/php7.4-fpm.pid
-rm -rf /lib/systemd/system/php7.4-fpm.service
-cat << EOF >/etc/systemd/system/php7.4-fpm.service
+rm -rf /run/php${php_fpm_ver}-fpm.pid /run/php7.4-fpm.pid
+rm -rf /lib/systemd/system/php${php_fpm_ver}-fpm.service /lib/systemd/system/php7.4-fpm.service
+cat << EOF >/etc/systemd/system/php${php_fpm_ver}-fpm.service
 [Unit]
-Description=The PHP 7.4 FastCGI Process Manager
+Description=The PHP ${php_fpm_ver} FastCGI Process Manager
 After=network.target
 
 [Service]
 Type=simple
-PIDFile=/run/php7.4-fpm.pid
+PIDFile=/run/php/php${php_fpm_ver}-fpm.pid
 ExecStartPre=/usr/bin/touch /var/log/php.log
-ExecStart=/usr/sbin/php-fpm7.4 --nodaemonize --fpm-config /etc/php/7.4/fpm/php-fpm.conf
+ExecStart=${php_fpm_bin} --nodaemonize --fpm-config /etc/php/${php_fpm_ver}/fpm/php-fpm.conf
 ExecReload=$(which kill) -USR2 \$MAINPID
 Restart=always
 RestartSec=2
@@ -2021,8 +2038,9 @@ TimeoutStopSec=5
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
-systemctl enable php7.4-fpm >/dev/null 2>&1
-systemctl restart php7.4-fpm
+systemctl enable php${php_fpm_ver}-fpm >/dev/null 2>&1 || systemctl enable php-fpm >/dev/null 2>&1
+systemctl restart php${php_fpm_ver}-fpm 2>/dev/null || systemctl restart php-fpm 2>/dev/null
+ln -sf /run/php/php${php_fpm_ver}-fpm.sock /run/php/php7.4-fpm.sock 2>/dev/null || true
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Dependencies${cRES}"
 }
@@ -2498,7 +2516,7 @@ crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_4am/d' /tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_4h/d' /tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_2h/d' /tmp/now.cron
-sed -i '/\/opt\/de_GWD\/clear 2>/dev/null || trueKernel/d' /tmp/now.cron
+sed -i '/\/opt\/de_GWD\/clearKernel/d' /tmp/now.cron
 sed -i '/\/etc\/rc_.*/d' /tmp/now.cron
 cat << EOF >>/tmp/now.cron
 0 4 * * * /opt/de_GWD/ui_4am u
@@ -2873,12 +2891,12 @@ else
   echo -e "${WHITE} Nginx          \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
-if [[ $(systemctl is-active 'php7.4-fpm') = "active" ]]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [ ! -f "/etc/php/7.4/fpm/php-fpm.conf" ]; then
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
+if [[ $(systemctl is-active 'php7.4-fpm' 2>/dev/null) = "active" || $(systemctl is-active 'php-fpm' 2>/dev/null) = "active" || -n $(systemctl list-units --type=service 2>/dev/null | grep -E 'php[0-9.]*-fpm.*running') ]]; then
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
+elif [ ! -e "/run/php/php7.4-fpm.sock" ]; then
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
-  echo -e "${WHITE} php7.4-FPM     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
+  echo -e "${WHITE} PHP-FPM        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
 if [[ -n $(crontab -l 2>&1 | grep "autoUpdate") ]] && [[ -f "/opt/de_GWD/autoUpdate" ]]; then
