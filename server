@@ -33,6 +33,10 @@ branch="${BRANCH:-v2}"
 
 
 pkgDEP(){
+echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing System Packages...${cRES}\r\c"
+if command -v debconf-set-selections >/dev/null 2>&1; then
+    echo "man-db man-db/auto-update boolean false" | debconf-set-selections 2>/dev/null || true
+fi
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
 [[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge -y subversion
@@ -82,6 +86,7 @@ for m3 in /usr/lib/*/libmimalloc.so.3 /usr/lib/libmimalloc.so.3; do
     fi
 done
 ldconfig 2>/dev/null || true
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}System Packages Ready${cRES}"
 }
 
 
@@ -126,13 +131,20 @@ gh_download(){
   if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
     jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
   fi
-  local urls=("$url")
-  [[ -n "$jsd_url" ]] && urls+=("$jsd_url")
+  local urls=()
+  urls+=("$url")
+  if [[ "$target" != *"de_GWD"* && -n "$jsd_url" ]]; then
+    urls+=("$jsd_url")
+  fi
   urls+=("https://ghproxy.net/${url}" "https://mirror.ghproxy.com/${url}")
 
   for u in "${urls[@]}"; do
     rm -f "$target"
-    wget -4 --no-check-certificate --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --timeout=25 --tries=2 -qO "$target" "$u" 2>/dev/null
+    wget -4 --no-check-certificate --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+      --dns-timeout=5 --connect-timeout=5 --timeout=20 --tries=2 -qO "$target" "$u" 2>/dev/null
+    if [[ ! -s "$target" ]] || [[ $(du -sk "$target" 2>/dev/null | awk '{print $1}') -lt "$min_kb" ]]; then
+      curl -4 -fsSL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 5 -m 30 -o "$target" "$u" 2>/dev/null
+    fi
     if [[ -s "$target" ]]; then
       local sz=$(du -sk "$target" 2>/dev/null | awk '{print $1}')
       if [[ -n "$sz" && "$sz" -ge "$min_kb" ]]; then
@@ -334,16 +346,16 @@ fi
 if [[ $(free -m | awk 'NR==3{print$2}') = "0" ]] && [[ $virt_type != "container" ]]; then
 if [[ $(df -T / | awk '{print$2}' | tail -n 1) = "btrfs" ]]; then
 btrfs subvolume create /swap 2>/dev/null
-btrfs filesystem mkswapfile --size 1g --uuid clear 2>/dev/null || true /swap/swapfile 2>/dev/null
-swapon /swap/swapfile
+btrfs filesystem mkswapfile --size 1g /swap/swapfile 2>/dev/null || (mkswap /swap/swapfile 2>/dev/null || true)
+swapon /swap/swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swap/swapfile none swap defaults 0 0" >>/etc/fstab
 else
-fallocate -l 1G /swapfile 2>/dev/null
-dd if=/dev/zero of=/swapfile bs=1M count=1024 status=progress 2>/dev/null
+rm -f /swapfile 2>/dev/null
+fallocate -l 1G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none 2>/dev/null
 chmod 600 /swapfile
-mkswap -U clear 2>/dev/null || true /swapfile
-swapon /swapfile
+mkswap -U clear /swapfile >/dev/null 2>&1 || mkswap /swapfile >/dev/null 2>&1
+swapon /swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
 fi
