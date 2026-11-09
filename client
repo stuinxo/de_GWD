@@ -2651,7 +2651,7 @@ installGWD(){
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} V2 Path [Default: /${uuid%%-*}]${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    [[ -z "$path" && -t 0 ]] && read path
+    [[ -z "$path" ]] && read path
     [[ -z "$path" ]] && path="/${uuid%%-*}"
     [[ "${path:0:1}" != "/" ]] && path="/$path"
 
