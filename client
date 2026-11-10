@@ -2485,6 +2485,10 @@ if [[ $(jq -r '.v2nodeDIV.nodeDT.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]
   /opt/de_GWD/ui-NodeDT >/dev/null 2>&1
 fi
 
+if [[ -n $(jq -r '.v2nodeDIV.ss.ssAddress' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
+  /opt/de_GWD/ui-changeNodeSS >/dev/null 2>&1
+fi
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}V2 Split${cRES}"
 
 if [[ $(jq -r '.FORWARD.FWD1.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then

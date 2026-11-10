@@ -457,31 +457,48 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-body">
-      <div class="input-group">
-        <div class="input-group-prepend ">
-          <span class="input-group-text">地址</span>
-        </div>
-          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''; ?>">
-        <div class="input-group-prepend input-group-append">
-          <span class="input-group-text">端口</span>
-        </div>
-          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort ?? ''; ?>">
-        <div class="input-group-prepend input-group-append">
-          <span class="input-group-text">加密方式</span>
-        </div>
-        <div class="input-group-prepend input-group-append">
-          <button id="ssMethod" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''; ?>"><?php echo $de_GWDconf->v2nodeDIV->ss->ssMethod ?? ''; ?></button>
-          <div class="dropdown-menu">
-            <a class='dropdown-item' href='#' id="ssAES256">AES-256-GCM</a>
-            <a class='dropdown-item' href='#' id="ssAES128">AES-128-GCM</a>
-            <a class='dropdown-item' href='#' id="ssChaCha20">ChaCha20-IETF-Poly1305</a>
+        <div class="input-group mb-3">
+          <div class="input-group-prepend">
+            <span class="input-group-text">链接</span>
           </div>
+          <input id="ssLink" class="form-control" placeholder="粘贴 vless://... Reality 节点链接自动解析填充">
         </div>
-        <div class="input-group-prepend input-group-append">
-          <span class="input-group-text">密码</span>
+
+        <div class="input-group mb-2">
+          <div class="input-group-prepend">
+            <span class="input-group-text">地址</span>
+          </div>
+          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''; ?>">
+          <div class="input-group-prepend input-group-append">
+            <span class="input-group-text">端口</span>
+          </div>
+          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort ?? ''; ?>" placeholder="443">
         </div>
-          <input id="ssSecure" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSecure ?? ''; ?>">
-      </div>
+
+        <div class="input-group mb-2">
+          <div class="input-group-prepend">
+            <span class="input-group-text">UUID</span>
+          </div>
+          <input id="ssUUID" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssUUID ?? ''; ?>">
+        </div>
+
+        <div class="input-group mb-2">
+          <div class="input-group-prepend">
+            <span class="input-group-text">SNI</span>
+          </div>
+          <input id="ssSNI" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSNI ?? ''; ?>">
+        </div>
+
+        <div class="input-group">
+          <div class="input-group-prepend">
+            <span class="input-group-text">PublicKey</span>
+          </div>
+          <input id="ssPBK" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPBK ?? ''; ?>">
+          <div class="input-group-prepend input-group-append">
+            <span class="input-group-text">ShortId</span>
+          </div>
+          <input id="ssSID" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSID ?? ''; ?>">
+        </div>
       </div>
       <div class="modal-footer">
         <button id="buttonSSclear" type="button" class="btn btn-outline-secondary btn-sm">
@@ -551,7 +568,7 @@
                 </button>
 
                 <button id="buttonSSdetail" type="button" class="btn <?php passthru('/opt/de_GWD/ui-checkNodeSS &'); ?> btn-sm mt-1 mr-2" style="border-radius: 0px;" data-toggle="modal" data-target="#ssDetail">
-                  <span>SS</span>
+                  <span>Reality</span>
                 </button>
 
                 <button id="buttonclearDIV" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-radius: 0px;">
@@ -1038,20 +1055,49 @@ $.get('./act/NodeCUrules.php', {customDomain:customDomain, customIP:customIP}, f
 })
 })
 
-$('#ssAES256').click(function(){
-$('#ssMethod').html("AES-256-GCM")
-$('#ssMethod').val("aes-256-gcm")
-})
+function parseVlessLink(raw) {
+  raw = (raw || '').trim();
+  if (!raw.startsWith('vless://')) return null;
+  try {
+    var url = new URL(raw);
+    var uuid = url.username;
+    var address = url.hostname;
+    var port = url.port || '443';
+    var sni = url.searchParams.get('sni') || url.searchParams.get('peer') || address;
+    var pbk = url.searchParams.get('pbk') || url.searchParams.get('publicKey') || '';
+    var sid = url.searchParams.get('sid') || url.searchParams.get('shortId') || '';
+    return { uuid: uuid, address: address, port: port, sni: sni, pbk: pbk, sid: sid };
+  } catch (e) {
+    var m = raw.match(/^vless:\/\/([^@]+)@([^:?#]+)(?::([0-9]+))?(?:\?(.*))?$/);
+    if (m) {
+      var uuid = m[1];
+      var address = m[2];
+      var port = m[3] || '443';
+      var search = m[4] ? m[4].split('#')[0] : '';
+      var params = new URLSearchParams(search);
+      var sni = params.get('sni') || params.get('peer') || address;
+      var pbk = params.get('pbk') || params.get('publicKey') || '';
+      var sid = params.get('sid') || params.get('shortId') || '';
+      return { uuid: uuid, address: address, port: port, sni: sni, pbk: pbk, sid: sid };
+    }
+    return null;
+  }
+}
 
-$('#ssAES128').click(function(){
-$('#ssMethod').html("AES-128-GCM")
-$('#ssMethod').val("aes-128-gcm")
-})
-
-$('#ssChaCha20').click(function(){
-$('#ssMethod').html("ChaCha20-IETF-Poly1305")
-$('#ssMethod').val("chacha20-ietf-poly1305")
-})
+$('#ssLink').on('input change paste', function(){
+  setTimeout(function(){
+    var val = $('#ssLink').val();
+    var p = parseVlessLink(val);
+    if (p) {
+      if (p.address) $('#ssAddress').val(p.address);
+      if (p.port) $('#ssPort').val(p.port);
+      if (p.uuid) $('#ssUUID').val(p.uuid);
+      if (p.sni) $('#ssSNI').val(p.sni);
+      if (p.pbk) $('#ssPBK').val(p.pbk);
+      if (p.sid !== undefined) $('#ssSID').val(p.sid);
+    }
+  }, 50);
+});
 
 $('#buttonSSclear').click(function(){
 $("#buttonSSclearloading").attr("class", "spinner-border spinner-border-sm")
@@ -1063,11 +1109,20 @@ $.get('./act/changeNodeSS0.php', function(result){
 
 $('#buttonSSsubmit').click(function(){
 $("#buttonSSsubmitloading").attr("class", "spinner-border spinner-border-sm")
-ssAddress=$('#ssAddress').val()
-ssPort=$('#ssPort').val()
-ssMethod=$('#ssMethod').val()
-ssSecure=$('#ssSecure').val()
-$.get('./act/changeNodeSS.php', {ssAddress:ssAddress, ssPort:ssPort, ssMethod:ssMethod, ssSecure:ssSecure}, function(result){
+var ssAddress = ($('#ssAddress').val() || '').trim();
+var ssPort = ($('#ssPort').val() || '').trim();
+var ssUUID = ($('#ssUUID').val() || '').trim();
+var ssSNI = ($('#ssSNI').val() || '').trim();
+var ssPBK = ($('#ssPBK').val() || '').trim();
+var ssSID = ($('#ssSID').val() || '').trim();
+$.get('./act/changeNodeSS.php', {
+  ssAddress: ssAddress,
+  ssPort: ssPort,
+  ssUUID: ssUUID,
+  ssSNI: ssSNI,
+  ssPBK: ssPBK,
+  ssSID: ssSID
+}, function(result){
   $("#buttonSSsubmitloading").removeClass()
   $("#ssDetail").modal('hide')
   $("#buttonSSdetail").attr('class','btn btn-success btn-sm mt-1')
