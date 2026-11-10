@@ -3610,6 +3610,285 @@ exit
 
 
 
+RproxySsave(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+local RproxyStunnelPort=$(jq -r '.port // empty' "$settings" 2>/dev/null)
+local RproxyStunnelUUID=$(jq -r '.uuid // empty' "$settings" 2>/dev/null)
+local RproxySinUUID=$(jq -r '.clients[]? // empty' "$settings" 2>/dev/null)
+local RproxySmappingList=$(jq -c '.mapping // []' "$settings" 2>/dev/null)
+
+[[ ! -x /opt/de_GWD/vtrui/vtrui ]] && return 1
+[[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) || return 1
+[[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || return 1
+
+for uuid in $RproxySinUUID; do
+  [[ $uuid =~ ^[0-9a-fA-F-]{36}$ ]] || return 1
+done
+local len=$(echo "$RproxySmappingList" | jq length)
+for (( i=0; i<len; i++ )); do
+  local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
+  local protocol=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].protocol')
+  [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || return 1
+  [[ $protocol = "tcp" || $protocol = "udp" || $protocol = "tcp,udp" ]] || return 1
+done
+
+mkdir -p /opt/de_GWD/RproxyS
+rm -f /opt/de_GWD/RproxyS/RproxyS /opt/de_GWD/RproxyS/config.json
+cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
+chmod +x /opt/de_GWD/RproxyS/RproxyS
+
+cat << EOF >/opt/de_GWD/RproxyS/config.json
+{
+  "log": {"access":"none","error":"none","loglevel":"none"},
+  "dns": {"queryStrategy":"UseIP","disableCache":true,"servers":["tcp+local://127.0.0.1:53"]},
+  "routing": {"rules":[
+    {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
+    {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
+  ]},
+  "reverse": {"portals":[{"tag":"portal","domain":"reverse.localhost"}]},
+  "inbounds": [{
+    "tag":"reverseTunnel",
+    "listen":"0.0.0.0",
+    "port":$RproxyStunnelPort,
+    "protocol":"vmess",
+    "settings":{"clients":[{"id":"$RproxyStunnelUUID"}]},
+    "streamSettings":{"network":"tcp"}
+  }]
+}
+EOF
+
+for uuid in $RproxySinUUID; do
+  jq --arg id "$uuid" '.inbounds[0].settings.clients += [{"id":$id}]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+done
+
+for (( i=0; i<len; i++ )); do
+  local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
+  local protocol=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].protocol')
+  jq --argjson port "$port" --arg protocol "$protocol" --arg tag "mapping$i" \
+    '.routing.rules += [{"type":"field","inboundTag":[$tag],"outboundTag":"portal"}] | .inbounds += [{"tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"dokodemo-door","settings":{"address":"127.0.0.1","port":$port,"network":$protocol}}]' \
+    /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+done
+
+/opt/de_GWD/RproxyS/RproxyS run -test -c /opt/de_GWD/RproxyS/config.json >/dev/null 2>&1 || return 1
+chmod 600 /opt/de_GWD/RproxyS/config.json
+rm -rf /lib/systemd/system/RproxyS.service /etc/systemd/system/RproxyS.service
+cat << "EOF" >/etc/systemd/system/RproxyS.service
+[Unit]
+Description=Rproxy Service
+After=network.target nss-lookup.target
+
+[Service]
+User=root
+Type=simple
+ExecStart=/opt/de_GWD/RproxyS/RproxyS run -c /opt/de_GWD/RproxyS/config.json
+Restart=always
+RestartSec=2
+TimeoutStopSec=5
+
+LimitNOFILE=10000000
+LimitNPROC=10000000
+LimitCORE=10000000
+
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null
+systemctl enable RproxyS >/dev/null 2>&1
+systemctl restart RproxyS
+
+if systemctl is-active --quiet nftables; then
+  nft add rule inet filter INPUT tcp dport $RproxyStunnelPort accept 2>/dev/null || true
+  for (( i=0; i<len; i++ )); do
+    local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
+    local protocol=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].protocol')
+    if [[ "$protocol" == "tcp" ]]; then
+      nft add rule inet filter INPUT tcp dport $port accept 2>/dev/null || true
+    elif [[ "$protocol" == "udp" ]]; then
+      nft add rule inet filter INPUT udp dport $port accept 2>/dev/null || true
+    else
+      nft add rule inet filter INPUT meta l4proto { tcp, udp } th dport $port accept 2>/dev/null || true
+    fi
+  done
+fi
+
+systemctl is-active --quiet RproxyS || return 1
+}
+
+
+RproxySstop(){
+systemctl disable --now RproxyS >/dev/null 2>&1
+rm -f /lib/systemd/system/RproxyS.service /etc/systemd/system/RproxyS.service
+rm -f /opt/de_GWD/RproxyS/RproxyS /opt/de_GWD/RproxyS/config.json
+systemctl daemon-reload >/dev/null
+}
+
+
+RproxySensureSettings(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+if [[ -f $settings ]]; then
+  jq -e '(.port | type == "number") and (.uuid | type == "string") and (.clients | type == "array") and (.mapping | type == "array")' "$settings" >/dev/null 2>&1 || {
+    echo -e "${RED}Invalid RproxyS settings${cRES}"
+    return 1
+  }
+  return 0
+fi
+
+local RproxyStunnelPort RproxyStunnelUUID RproxySClients
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}RproxyS base settings${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+read -r -p "RproxyS listen port [20000]: " RproxyStunnelPort
+RproxyStunnelPort=${RproxyStunnelPort:-20000}
+[[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
+read -r -p "RproxyS UUID [auto]: " RproxyStunnelUUID
+RproxyStunnelUUID=${RproxyStunnelUUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || /opt/de_GWD/vtrui/vtrui uuid 2>/dev/null)}
+[[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
+read -r -p "Extra client UUIDs, comma separated [none]: " RproxySClients
+
+local temp=/tmp/RproxyS.settings.$$
+jq -n --argjson port "$RproxyStunnelPort" --arg uuid "$RproxyStunnelUUID" \
+  '{port:$port,uuid:$uuid,clients:[],mapping:[]}' >"$temp" || { rm -f "$temp"; return 1; }
+local clientUUID
+IFS=',' read -r -a clientUUIDs <<< "$RproxySClients"
+for clientUUID in "${clientUUIDs[@]}"; do
+  clientUUID=${clientUUID//[[:space:]]/}
+  [[ -z $clientUUID ]] && continue
+  [[ $clientUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { rm -f "$temp"; echo -e "${RED}Invalid client UUID${cRES}"; return 1; }
+  jq --arg id "$clientUUID" '.clients += [$id]' "$temp" | sponge "$temp"
+done
+mkdir -p /opt/de_GWD/RproxyS
+mv -f "$temp" "$settings"
+chmod 600 "$settings"
+}
+
+
+RproxySaddPort(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+RproxySensureSettings || return 1
+local listenPort=$(jq -r '.port' "$settings")
+local mappingPort mappingProtocol
+echo -e "${GREEN}1. Port${cRES}"
+read -r -p "Mapping port: " mappingPort
+mappingPort=${mappingPort//[[:space:]]/}
+[[ $mappingPort =~ ^[1-9][0-9]{0,4}$ ]] && (( mappingPort <= 65535 )) || { echo -e "${RED}Invalid mapping port${cRES}"; return 1; }
+[[ $mappingPort != "$listenPort" ]] || { echo -e "${RED}Mapping port conflicts with RproxyS listen port${cRES}"; return 1; }
+if jq -e --argjson port "$mappingPort" 'any(.mapping[]?; .port == $port)' "$settings" >/dev/null 2>&1; then
+  echo -e "${YELLOW}Mapping port already exists${cRES}"
+  return 1
+fi
+echo -e "${GREEN}2. Protocol (default tcp+udp)${cRES}"
+read -r -p "Mapping protocol (tcp/udp/tcp+udp) [tcp+udp]: " mappingProtocol
+mappingProtocol=${mappingProtocol:-tcp+udp}
+mappingProtocol=${mappingProtocol//+/,}
+[[ $mappingProtocol = "tcp" || $mappingProtocol = "udp" || $mappingProtocol = "tcp,udp" ]] || { echo -e "${RED}Invalid mapping protocol${cRES}"; return 1; }
+
+local temp=/tmp/RproxyS.settings.$$.add
+jq --argjson port "$mappingPort" --arg protocol "$mappingProtocol" \
+  '.mapping += [{port:$port,protocol:$protocol}]' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
+mv -f "$temp" "$settings"
+chmod 600 "$settings"
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Mapping ${GREEN}Added${cRES}; use 1 to apply"
+}
+
+
+RproxySdeletePort(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+[[ -f $settings ]] || { echo -e "${YELLOW}RproxyS is not configured${cRES}"; return 1; }
+local len=$(jq -r '.mapping | length' "$settings" 2>/dev/null)
+(( len > 0 )) || { echo -e "${YELLOW}No mapping ports${cRES}"; return 0; }
+echo -e "${GREEN}Current mapping ports${cRES}"
+jq -r '.mapping[] | "\(.port)/\(.protocol)"' "$settings"
+local mappingPort
+read -r -p "Delete mapping port: " mappingPort
+mappingPort=${mappingPort//[[:space:]]/}
+[[ $mappingPort =~ ^[1-9][0-9]{0,4}$ ]] || { echo -e "${RED}Invalid mapping port${cRES}"; return 1; }
+if ! jq -e --argjson port "$mappingPort" 'any(.mapping[]?; .port == $port)' "$settings" >/dev/null 2>&1; then
+  echo -e "${YELLOW}Mapping port does not exist${cRES}"
+  return 1
+fi
+local temp=/tmp/RproxyS.settings.$$.delete
+jq --argjson port "$mappingPort" '.mapping |= map(select(.port != $port))' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
+mv -f "$temp" "$settings"
+chmod 600 "$settings"
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Mapping ${GREEN}Deleted${cRES}; use 1 to apply"
+}
+
+
+RproxySstatus(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+local serviceStatus=$(systemctl is-active RproxyS 2>/dev/null || echo inactive)
+local serviceEnabled=$(systemctl is-enabled RproxyS 2>/dev/null || echo disabled)
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}RproxyS status${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${BLUE}Service:    ${YELLOW}$serviceStatus${cRES}"
+echo -e "${BLUE}AutoStart:  ${YELLOW}$serviceEnabled${cRES}"
+[[ -f $settings ]] || { echo -e "${BLUE}Settings:   ${YELLOW}not configured${cRES}"; return 0; }
+local domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/.$//')
+[[ -z "$domain" ]] && domain=$(curl -4 -s --connect-timeout 3 ip.sb 2>/dev/null || hostname -I | awk '{print $1}')
+local listenPort=$(jq -r '.port' "$settings")
+local uuid=$(jq -r '.uuid' "$settings")
+echo -e "${BLUE}Address:    ${YELLOW}$domain:$listenPort${cRES}"
+echo -e "${BLUE}UUID:       ${YELLOW}$uuid${cRES}"
+echo -e "${BLUE}Mappings:   ${YELLOW}$(jq -r '.mapping | length' "$settings" 2>/dev/null)${cRES}"
+jq -r '.mapping[]? | "  \(.port)/\(.protocol)"' "$settings" 2>/dev/null
+[[ $serviceStatus = "active" ]] || echo -e "${YELLOW}Pending settings require Apply${cRES}"
+}
+
+
+RproxySapply(){
+RproxySensureSettings || return 1
+RproxySsave || { echo -e "${RED}RproxyS apply failed${cRES}"; return 1; }
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS ${GREEN}Applied${cRES}"
+}
+
+
+RproxySaction(){
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}[1]: Apply RproxyS${cRES}"
+echo -e "${GREEN}[2]: Stop RproxyS${cRES}"
+echo -e "${GREEN}[0]: Return${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+local action
+read -r action
+echo
+case "$action" in
+  1) RproxySapply ;;
+  2) RproxySstop; echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}RproxyS ${RED}Stopped${cRES}" ;;
+  0) return ;;
+  *) echo -e "${RED}Wrong number${cRES}" ;;
+esac
+}
+
+
+changeRproxyS(){
+while true; do
+  echo -e "${GREEN}============================ ${cRES}"
+  echo -e "${GREEN}1. Apply or stop RproxyS${cRES}"
+  echo -e "${GREEN}2. Add mapping port${cRES}"
+  echo -e "${GREEN}3. Delete mapping port${cRES}"
+  echo -e "${GREEN}9. Show RproxyS status${cRES}"
+  echo -e "${GREEN}0. Return${cRES}"
+  echo -e "${GREEN}============================ ${cRES}"
+  local menuChoice
+  read -r menuChoice
+  echo
+  case "$menuChoice" in
+    1) RproxySaction ;;
+    2) RproxySaddPort ;;
+    3) RproxySdeletePort ;;
+    9) RproxySstatus ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;;
+  esac
+done
+}
+
+
+
 start_menu(){
 [[ ! -x /usr/local/bin/dex ]] && saveCommand >/dev/null 2>&1
 echo
@@ -3653,6 +3932,7 @@ echo -e "${BLUE}$virt${cRES}"
 [[ -f "/opt/de_GWD/version.php" ]] && echo -e "${BLUE}Version: ${YELLOW}$(echo $(awk 'NR==1' /opt/de_GWD/version.php)) ${cRES}"
 [[ $(systemctl is-active 'wg-quick@wgcf') = "active" ]] && echo -e "${PURPLE}[Enabled] Cloudflare wireguard upstream (WARP) ${cRES}"
 [[ $(systemctl is-active 'haproxy') = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
+[[ $(systemctl is-active 'RproxyS') = "active" ]] && echo -e "${PURPLE}[Enabled] RproxyS reverse proxy${cRES}"
 
 if [[ $virt_type = "container" ]]; then
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
@@ -3680,6 +3960,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
+  echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
   echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -3715,6 +3996,10 @@ read -p "Select:" num || exit
     ;;
     12)
     CFspeedTest
+    start_menu
+    ;;
+    22)
+    changeRproxyS
     start_menu
     ;;
     44)
@@ -3759,6 +4044,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
+  echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
   echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
@@ -3796,6 +4082,10 @@ read -p "Select:" num || exit
     ;;
     12)
     CFspeedTest
+    start_menu
+    ;;
+    22)
+    changeRproxyS
     start_menu
     ;;
     33)
