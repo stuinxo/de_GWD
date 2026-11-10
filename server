@@ -3874,12 +3874,54 @@ esac
 }
 
 
+RproxySsetBase(){
+local settings=/opt/de_GWD/RproxyS/settings.json
+RproxySensureSettings || return 1
+local curPort=$(jq -r '.port // 20000' "$settings")
+local curUUID=$(jq -r '.uuid // empty' "$settings")
+local newPort newUUID
+
+echo -e "${GREEN}============================ ${cRES}"
+echo -e "${GREEN}Modify RproxyS Base Tunnel Settings${cRES}"
+echo -e "${GREEN}============================ ${cRES}"
+read -r -p "RproxyS tunnel listen port [$curPort]: " newPort
+newPort=${newPort:-$curPort}
+newPort=${newPort//[[:space:]]/}
+[[ $newPort =~ ^[1-9][0-9]{0,4}$ ]] && (( newPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
+
+if jq -e --argjson port "$newPort" 'any(.mapping[]?; .port == $port)' "$settings" >/dev/null 2>&1; then
+  echo -e "${RED}Tunnel port conflicts with an existing mapping port ($newPort)${cRES}"
+  return 1
+fi
+
+read -r -p "RproxyS UUID [$curUUID]: " newUUID
+newUUID=${newUUID:-$curUUID}
+newUUID=${newUUID//[[:space:]]/}
+[[ $newUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
+
+local temp=/tmp/RproxyS.settings.$$.base
+jq --argjson port "$newPort" --arg uuid "$newUUID" \
+  '.port = $port | .uuid = $uuid' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
+mv -f "$temp" "$settings"
+chmod 600 "$settings"
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Base settings ${GREEN}Updated${cRES}"
+if [[ $(systemctl is-active RproxyS 2>/dev/null) = "active" ]]; then
+  local applyChoice
+  read -r -p "Apply changes to running RproxyS service now? [Y/n]: " applyChoice
+  [[ -z "$applyChoice" || "$applyChoice" =~ ^[yY]$ ]] && RproxySapply
+else
+  echo -e "${YELLOW}Use 1 to apply when ready${cRES}"
+fi
+}
+
+
 changeRproxyS(){
 while true; do
   echo -e "${GREEN}============================ ${cRES}"
   echo -e "${GREEN}1. Apply or stop RproxyS${cRES}"
   echo -e "${GREEN}2. Add mapping port${cRES}"
   echo -e "${GREEN}3. Delete mapping port${cRES}"
+  echo -e "${GREEN}4. Modify tunnel port & UUID${cRES}"
   echo -e "${GREEN}9. Show RproxyS status${cRES}"
   echo -e "${GREEN}0. Return${cRES}"
   echo -e "${GREEN}============================ ${cRES}"
@@ -3890,6 +3932,7 @@ while true; do
     1) RproxySaction ;;
     2) RproxySaddPort ;;
     3) RproxySdeletePort ;;
+    4) RproxySsetBase ;;
     9) RproxySstatus ;;
     0) return ;;
     *) echo -e "${RED}Wrong number${cRES}" ;;
