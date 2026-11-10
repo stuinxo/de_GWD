@@ -344,16 +344,21 @@ LC_IDENTIFICATION="en_US.UTF-8"
 LC_ALL=en_US.UTF-8
 EOF
 `
-if [[ -z $(locale -a | grep "en_US.utf8") ]]; then
+if [[ -z $(locale -a 2>/dev/null | grep -i "en_US\.utf") ]]; then
 echo "$localeSet" >/etc/default/locale
 echo "en_US.UTF-8 UTF-8" >/etc/locale.gen
 locale-gen "en_US.UTF-8"
+localectl set-locale en_US.UTF-8 >/dev/null 2>&1 || true
 update-locale LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8 LC_ALL=en_US.UTF-8
 fi
 
-[[ $(date +"%Z %z") != "CST +0800" ]] && timedatectl set-timezone "Asia/Shanghai"
-timedatectl set-local-rtc 0 >/dev/null 2>&1
-timedatectl set-ntp true
+if [[ $(date +"%Z %z") != "UTC +0000" ]]; then
+ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
+echo "Etc/UTC" >/etc/timezone
+timedatectl set-timezone "Etc/UTC" >/dev/null 2>&1 || true
+fi
+timedatectl set-local-rtc 0 >/dev/null 2>&1 || true
+timedatectl set-ntp true >/dev/null 2>&1 || true
 
 [[ -f "/etc/rc.local" ]] &&  rm -rf /etc/rc.local
 
