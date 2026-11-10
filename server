@@ -3641,24 +3641,34 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
 {
   "log": {"access":"none","error":"none","loglevel":"none"},
   "dns": {"queryStrategy":"UseIP","disableCache":true,"servers":["tcp+local://127.0.0.1:53"]},
-  "routing": {"rules":[
-    {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
-    {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
-  ]},
-  "reverse": {"portals":[{"tag":"portal","domain":"reverse.localhost"}]},
   "inbounds": [{
     "tag":"reverseTunnel",
     "listen":"0.0.0.0",
     "port":$RproxyStunnelPort,
-    "protocol":"vmess",
-    "settings":{"clients":[{"id":"$RproxyStunnelUUID"}]},
+    "protocol":"vless",
+    "settings":{
+      "decryption":"none",
+      "clients":[
+        {
+          "id":"$RproxyStunnelUUID",
+          "reverse":{"tag":"portal"}
+        }
+      ]
+    },
     "streamSettings":{"network":"tcp"}
-  }]
+  }],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {"rules":[]}
 }
 EOF
 
 for uuid in $RproxySinUUID; do
-  jq --arg id "$uuid" '.inbounds[0].settings.clients += [{"id":$id}]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
+  jq --arg id "$uuid" '.inbounds[0].settings.clients += [{"id":$id,"reverse":{"tag":"portal"}}]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
 done
 
 for (( i=0; i<len; i++ )); do
