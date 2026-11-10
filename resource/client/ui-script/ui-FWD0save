@@ -64,7 +64,7 @@ FWD0in=$(cat << EOF
 EOF
 )
 
-jq --argjson FWD0in "$FWD0in" '.inbounds[1]=$FWD0in' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+jq --argjson FWD0in "$FWD0in" 'del(.inbounds[] | select(.tag == "forward0")) | .inbounds += [$FWD0in]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 
 [[ "$1" = "r" ]] && systemctl restart vtrui >/dev/null 2>&1

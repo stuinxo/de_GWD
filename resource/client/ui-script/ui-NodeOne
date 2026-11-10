@@ -65,6 +65,16 @@ if [[ $(jq -r '.FORWARD.FWD0.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];th
   /opt/de_GWD/ui-FWD0save >/dev/null 2>&1
 fi
 
+if [[ -s /opt/de_GWD/extra_inbounds.json ]]; then
+  jq --slurpfile extra /opt/de_GWD/extra_inbounds.json '
+    ($extra[0] // []) as $list |
+    reduce $list[] as $inb (.; del(.inbounds[] | select(.tag == $inb.tag)) | .inbounds += [$inb])
+  ' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+  if jq -e 'any(.inbounds[]?; .tag == "inbound-dokodemo")' /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+    jq 'del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"direct"}] + (.routing.rules // [])' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+  fi
+fi
+
 
 if [[ $1 = "f" ]]; then
   jq '.v2nodeDIV.nodeCU.status="off"' /opt/de_GWD/0conf |\

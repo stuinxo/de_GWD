@@ -1968,10 +1968,10 @@ changeTCPPF(){
         echo -e "${GREEN}Status: ${RED}Not Running / No Rules Configured${cRES}"
     fi
     echo -e "${GREEN}==================================================== ${cRES}"
-    echo -e "${GREEN}[1]: Add / Update Port Forward Rule${cRES}"
-    echo -e "${GREEN}[2]: Delete Single Port Forward Rule${cRES}"
-    echo -e "${GREEN}[3]: Clear All Rules & Disable HAProxy${cRES}"
-    echo -e "${YELLOW}[0]: Return to Main Menu${cRES}"
+    echo -e "${GREEN}[1]: Add / Update Rule${cRES}"
+    echo -e "${GREEN}[2]: Delete Rule${cRES}"
+    echo -e "${GREEN}[3]: Clear All & Stop${cRES}"
+    echo -e "${YELLOW}[0]: Return${cRES}"
     echo -e "${GREEN}==================================================== ${cRES}"
     read -p "Select [0-3]: " tcpPFsw
 
@@ -3234,9 +3234,9 @@ disableAllExtraProtocols() {
 manageProtocols() {
     while true; do
         clear 2>/dev/null || true
-        echo -e "${GREEN}================================================================ ${cRES}"
-        echo -e "${GREEN}                   Manage Extra Protocols (Option 55)            ${cRES}"
-        echo -e "${GREEN}================================================================ ${cRES}"
+        echo -e "${GREEN}============================ ${cRES}"
+        echo -e "${GREEN}Manage Extra Protocols${cRES}"
+        echo -e "${GREEN}============================ ${cRES}"
 
         local pReality=$(getInboundPort "inbound-vless-reality")
         local pXhttp=$(getInboundPort "inbound-vless-xhttp")
@@ -3251,15 +3251,12 @@ manageProtocols() {
         local dVmessWs=$(getInboundDomain "inbound-vmess-ws")
         local dSocks5=$(getInboundDomain "inbound-socks5")
 
-        echo -e "${BLUE}── Reality Protocol (Anti-Censorship / Fallback) ──${cRES}"
         if [[ -n "$pReality" ]]; then
             echo -e " [1] VLESS + TCP + Reality + Vision  [${GREEN}Enabled${cRES} - ${YELLOW}${dReality}:${pReality}${cRES}]"
         else
             echo -e " [1] VLESS + TCP + Reality + Vision  [${WHITE}Disabled${cRES}]"
         fi
 
-        echo
-        echo -e "${BLUE}── TLS Protocols (Cert / Custom Port / 443 Reverse-Proxy Ready) ──${cRES}"
         if [[ -n "$pXhttp" ]]; then
             echo -e " [2] VLESS + XHTTP + TLS             [${GREEN}Enabled${cRES} - ${YELLOW}${dXhttp}:${pXhttp}${cRES}]"
         else
@@ -3278,25 +3275,23 @@ manageProtocols() {
             echo -e " [4] VMess + WS + TLS                [${WHITE}Disabled${cRES}]"
         fi
 
-        echo
-        echo -e "${BLUE}── Proxy & Port Forward ──${cRES}"
         if [[ -n "$pSocks5" ]]; then
-            echo -e " [5] SOCKS5 Inbound                  [${GREEN}Enabled${cRES} - ${YELLOW}${dSocks5}:${pSocks5}${cRES}]"
+            echo -e " [5] SOCKS5                          [${GREEN}Enabled${cRES} - ${YELLOW}${dSocks5}:${pSocks5}${cRES}]"
         else
-            echo -e " [5] SOCKS5 Inbound                  [${WHITE}Disabled${cRES}]"
+            echo -e " [5] SOCKS5                          [${WHITE}Disabled${cRES}]"
         fi
 
         if [[ -n "$pDokodemo" ]]; then
-            echo -e " [6] Dokodemo-door (Port Forward)    [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pDokodemo${cRES}]"
+            echo -e " [6] Dokodemo-door                   [${GREEN}Enabled${cRES} - Port: ${YELLOW}$pDokodemo${cRES}]"
         else
-            echo -e " [6] Dokodemo-door (Port Forward)    [${WHITE}Disabled${cRES}]"
+            echo -e " [6] Dokodemo-door                   [${WHITE}Disabled${cRES}]"
         fi
 
-        echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
-        echo -e " [7] View All Enabled Protocol Links & QR Codes"
-        echo -e " [8] Disable All Extra Protocols (Keep Default Only)"
-        echo -e " [0] Return to Main Menu"
-        echo -e "${GREEN}================================================================ ${cRES}"
+        echo -e "${BLUE}---------------------------- ${cRES}"
+        echo -e " [7] View All Nodes"
+        echo -e " [8] Disable All Extra Protocols"
+        echo -e " [0] Return"
+        echo -e "${GREEN}============================ ${cRES}"
         read -p "Select [0-8]: " pChoice
         case "$pChoice" in
             1) setupReality ;;
@@ -4015,7 +4010,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
-  echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
+  echo -e "${CYAN}55.Manage Extra Protocols${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -p "Select:" num || exit
@@ -4100,7 +4095,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
   echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
-  echo -e "${CYAN}55.Manage Extra Protocols (Reality, XHTTP, WS, SOCKS5, Dokodemo)${cRES}"
+  echo -e "${CYAN}55.Manage Extra Protocols${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
 echo
 read -p "Select:" num || exit
