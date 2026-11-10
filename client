@@ -1858,10 +1858,27 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Deploy nftable
 
 updateAPT(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
-
+export DEBIAN_FRONTEND=noninteractive
 rm -rf /etc/apt/sources.list.d/php.list
 
-apt update -q
+for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+  [[ -f "$f" ]] || continue
+  sed -i -E 's/(stretch|buster|bullseye)\/updates/bookworm-security/g' "$f" 2>/dev/null
+  sed -i -E 's/\b(stretch|buster|bullseye)(-security|-updates|-backports)?\b/bookworm\2/g' "$f" 2>/dev/null
+done
+
+if ! grep -rqw "bookworm" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+cat << EOF >/etc/apt/sources.list
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian bookworm-backports main contrib non-free non-free-firmware
+EOF
+fi
+
+dpkg --configure -a
+apt update --fix-missing && apt upgrade --allow-downgrades -y
+apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN}Updated${cRES}"
 }
@@ -2743,6 +2760,9 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN
 
 
 updateGWD_Green(){
+if [[ $(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-0}") -lt 12 ]]; then
+  updateAPT
+fi
 repoDL
 
 installDep
