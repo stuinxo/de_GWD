@@ -15,7 +15,7 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Collect Black and white list${cR
 >/opt/de_GWD/nftables/IP_listB
 jq -r '.dns.listB[]' /opt/de_GWD/0conf 2>/dev/null | sort | uniq | xargs -n 1 | sed '/^\s*$/d' | while read listB; do
   echo $listB >>/opt/de_GWD/mosdns/domains_listB
-  dig @127.0.0.1 $listB -4p 5332 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | xargs -n1 >>/opt/de_GWD/nftables/IP_listB
+  dig @127.0.0.1 $listB -4p 5332 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | xargs -n1 >>/opt/de_GWD/nftables/IP_listB
 done
 
 
@@ -44,7 +44,7 @@ chmod +x /opt/de_GWD/nftables/SET_listB.nft
 >/opt/de_GWD/nftables/IP_listW
 jq -r '.dns.listW[]' /opt/de_GWD/0conf 2>/dev/null | sort | uniq | xargs -n 1 | sed '/^\s*$/d' | while read listW; do
   echo $listW >>/opt/de_GWD/mosdns/domains_listW
-  dig @127.0.0.1 $listW -4p 5331 +short | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | xargs -n1 >>/opt/de_GWD/nftables/IP_listW
+  dig @127.0.0.1 $listW -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | xargs -n1 >>/opt/de_GWD/nftables/IP_listW
 done
 
 

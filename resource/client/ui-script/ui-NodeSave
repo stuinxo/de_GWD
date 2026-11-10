@@ -16,7 +16,11 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Collect V2 node${cRES}\r\c"
 >/opt/de_GWD/nftables/IP_V2NODE
 jq -r '.v2node[].domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' | cut -d: -f1 | sort | uniq | xargs -n 1 | sed '/^\s*$/d' | while read line; do
   echo $line >>/opt/de_GWD/mosdns/domains_nodes
-  dig @127.0.0.1 $line -4p 5332 +short  | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' | grep -v "127.0.0.1" | xargs -n 1 | sed '/^\s*$/d' >>/opt/de_GWD/nftables/IP_V2NODE
+  nodeIP=$(dig @127.0.0.1 "$line" -4p 5332 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | sed '/^\s*$/d')
+  [[ -z "$nodeIP" ]] && nodeIP=$(dig @223.5.5.5 "$line" +tcp +time=2 +tries=1 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | sed '/^\s*$/d')
+  [[ -z "$nodeIP" ]] && nodeIP=$(dig @127.0.0.1 "$line" -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | sed '/^\s*$/d')
+  [[ -z "$nodeIP" ]] && nodeIP=$(getent ahostsv4 "$line" 2>/dev/null | awk '{print $1}' | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1")
+  [[ -n "$nodeIP" ]] && echo "$nodeIP" >>/opt/de_GWD/nftables/IP_V2NODE
 done
 
 sed -i '/^\s*$/d' /opt/de_GWD/nftables/IP_V2NODE
