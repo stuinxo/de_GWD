@@ -51,6 +51,7 @@ build_vless_xhttp_outbound() {
     "security": "tls",
     "tlsSettings": {
       "serverName": "$o_tls",
+      "alpn": ["h2"],
       "allowInsecure": false
     },
     "xhttpSettings": {

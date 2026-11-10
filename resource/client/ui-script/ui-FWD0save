@@ -49,7 +49,7 @@ FWD0in=$(cat << EOF
     },
     "xhttpSettings": {
       "path": "$FWD0path",
-      "mode": "packet-up"
+      "mode": "auto"
     },
     "sockopt": {
       "tcpFastOpen": true,

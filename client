@@ -1462,6 +1462,7 @@ OBdefault=$(cat << EOF
     "security": "tls",
     "tlsSettings": {
       "serverName": "$tls",
+      "alpn": ["h2"],
       "allowInsecure": false
     },
     "xhttpSettings": {
@@ -3306,6 +3307,11 @@ setupNginxWebProxy() {
     local intPort="$4"
     local path="$5"
     local confName=$(getNginxConfName "$tag")
+    local connHeaders='        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";'
+    if [[ "$tag" == "inbound-vless-xhttp" ]]; then
+        connHeaders='        proxy_set_header Connection "";'
+    fi
 
     cat << EOF > "/etc/nginx/conf.d/${confName}.conf"
 server {
@@ -3321,8 +3327,7 @@ server {
         proxy_redirect off;
         proxy_pass http://127.0.0.1:${intPort};
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
+${connHeaders}
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -3893,7 +3898,7 @@ setupVlessXHTTP() {
     "security": "none",
     "xhttpSettings": {
       "path": "$inputPath",
-      "mode": "packet-up"
+      "mode": "auto"
     },
     "sockopt": {
       "tcpFastOpen": true,

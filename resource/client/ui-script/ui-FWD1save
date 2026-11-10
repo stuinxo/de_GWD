@@ -88,7 +88,7 @@ cat << EOF >/opt/de_GWD/vtrui1/config.json
         },
         "xhttpSettings": {
           "path": "$FWD1path",
-          "mode": "packet-up"
+          "mode": "auto"
         },
         "sockopt": {
           "tcpFastOpen": true,
@@ -127,6 +127,7 @@ OBfwd=$(cat << EOF
     "security": "tls",
     "tlsSettings": {
       "serverName": "$tls",
+      "alpn": ["h2"],
       "allowInsecure": false
     },
     "xhttpSettings": {

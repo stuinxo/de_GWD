@@ -53,6 +53,7 @@ build_vless_xhttp_outbound() {
     "security": "tls",
     "tlsSettings": {
       "serverName": "$tls",
+      "alpn": ["h2"],
       "allowInsecure": false
     },
     "xhttpSettings": {
@@ -92,7 +93,7 @@ build_vless_xhttp_inbound_nginx_tls() {
     "security": "none",
     "xhttpSettings": {
       "path": "$path",
-      "mode": "packet-up"
+      "mode": "auto"
     },
     "sockopt": {
       "tcpFastOpen": true,
@@ -140,7 +141,7 @@ build_vless_xhttp_inbound_direct_tls() {
     },
     "xhttpSettings": {
       "path": "$path",
-      "mode": "packet-up"
+      "mode": "auto"
     },
     "sockopt": {
       "tcpFastOpen": true,
