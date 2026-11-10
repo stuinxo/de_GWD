@@ -1,4 +1,4 @@
-v2.0.10
+v2.1.0
 -
 <?php
 $branch = getenv('BRANCH') ?: 'v2';
@@ -7,6 +7,6 @@ if ($remote) {
     $lines = explode("\n", trim($remote));
     echo trim($lines[0]);
 } else {
-    echo 'v2.0.10';
+    echo 'v2.1.0';
 }
 ?>

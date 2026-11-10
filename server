@@ -3655,7 +3655,18 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
         }
       ]
     },
-    "streamSettings":{"network":"tcp"}
+    "streamSettings":{
+      "network":"tcp",
+      "security":"tls",
+      "tlsSettings":{
+        "certificates":[
+          {
+            "certificateFile":"/var/www/ssl/de_GWD.cer",
+            "keyFile":"/var/www/ssl/de_GWD.key"
+          }
+        ]
+      }
+    }
   }],
   "outbounds": [
     {

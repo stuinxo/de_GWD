@@ -26,32 +26,41 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
   },
   "routing":{
     "rules":[
-      {"type":"field","inboundTag":["reverseTunnel"],"domain":["full:reverse.localhost"],"outboundTag":"portal"},
       {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
     ]
-  },
-  "reverse": {
-    "portals": [{
-        "tag": "portal",
-        "domain": "reverse.localhost"
-     }]
   },
   "inbounds": [
     {
       "tag": "reverseTunnel",
       "port": $RproxyStunnelPort,
-      "protocol": "vmess",
+      "protocol": "vless",
       "settings":{
+        "decryption": "none",
         "clients":[
           {
             "id":"$RproxyStunnelUUID",
-            "alterId": 0
+            "reverse":{"tag":"portal"}
           }
         ]
       },
       "streamSettings": {
-        "network": "tcp"
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "/var/www/ssl/de_GWD.cer",
+              "keyFile": "/var/www/ssl/de_GWD.key"
+            }
+          ]
+        }
       }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
     }
   ]
 }
@@ -60,7 +69,7 @@ EOF
 
 if [[ $RproxySinStatus = "on" ]]; then
 for uuid in $RproxySinUUID; do
-uuidStr='{"id":"'$uuid'", "alterId":0}'
+uuidStr='{"id":"'$uuid'", "reverse":{"tag":"portal"}}'
 jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
 done
 
