@@ -1,4 +1,4 @@
-v2.1.0
+v2.1.1
 -
 <?php
 $branch = getenv('BRANCH') ?: 'v2';
@@ -7,8 +7,8 @@ $remote = @file_get_contents("https://raw.githubusercontent.com/stuinxo/de_GWD/{
 if ($remote) {
     $lines = explode("\n", trim($remote));
     $ver = trim($lines[0]);
-    echo preg_match('/^v?[0-9]+\.[0-9]+/', $ver) ? $ver : 'v2.1.0';
+    echo preg_match('/^v?[0-9]+\.[0-9]+/', $ver) ? $ver : 'v2.1.1';
 } else {
-    echo 'v2.1.0';
+    echo 'v2.1.1';
 }
 ?>
