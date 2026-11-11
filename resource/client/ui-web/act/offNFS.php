@@ -1,7 +1,9 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$NFSpoint = $_GET['NFSpoint'];
-exec("sudo /opt/de_GWD/ui-NFSoff $NFSpoint &");
+$NFSpoint = trim((string)($_GET['NFSpoint'] ?? ''));
+if ($NFSpoint !== '') {
+    exec('sudo /opt/de_GWD/ui-NFSoff ' . escapeshellarg($NFSpoint) . ' &');
+}
 ?>
 <?php }?>

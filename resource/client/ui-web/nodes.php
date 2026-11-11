@@ -137,7 +137,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -182,11 +182,11 @@
 $v2nodeCount = isset($de_GWDconf->v2node) && is_countable($de_GWDconf->v2node) ? count($de_GWDconf->v2node) : 0;
 for( $i=0; $i<$v2nodeCount; $i++){
   $num = $i+1;
-  $domain = $de_GWDconf->v2node[$i]->domain;
-  $tls = isset($de_GWDconf->v2node[$i]->tls) ? $de_GWDconf->v2node[$i]->tls : '';
-  $name = $de_GWDconf->v2node[$i]->name;
-  $path = $de_GWDconf->v2node[$i]->path;
-  $uuid = $de_GWDconf->v2node[$i]->uuid;
+  $domain = htmlspecialchars($de_GWDconf->v2node[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
+  $tls = htmlspecialchars($de_GWDconf->v2node[$i]->tls ?? '', ENT_QUOTES, 'UTF-8');
+  $name = htmlspecialchars($de_GWDconf->v2node[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+  $path = htmlspecialchars($de_GWDconf->v2node[$i]->path ?? '', ENT_QUOTES, 'UTF-8');
+  $uuid = htmlspecialchars($de_GWDconf->v2node[$i]->uuid ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <tr>
 <td class="align-middle">$num</td>
@@ -233,48 +233,48 @@ EOT;
   <!-- /#wrapper -->
 <script>
 function commitTls(commitTls){
-var i = $(commitTls).closest('tr').find('td').first().text()
-var tlsValue = $(commitTls).val()
-$('#nodeTable').append(`
-<div id="commitTlsModal${i}" class="modal fade" role="dialog" aria-hidden="true">
+var tlsValue = $(commitTls).val() || '';
+if ($('#commitTlsModal').length === 0) {
+  $('body').append(`
+<div id="commitTlsModal" class="modal fade" role="dialog" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body">
         <div class="input-group">
-          <input id="serverName${i}" type="text" class="form-control" value="${tlsValue}"></input>
+          <input id="serverName" type="text" class="form-control">
           <div class="input-group-append">
-            <button id="serverNameSave${i}" type="button" class="btn btn-secondary btn-sm">保存</button>
+            <button id="serverNameSave" type="button" class="btn btn-secondary btn-sm">保存</button>
           </div>
         </div>
       </div>
     </div>
   </div>
 </div>
-                        `)
-$('#commitTlsModal'+i).modal('show')
-
-$('#serverNameSave'+i).click(function(){
-serverName=$('#serverName'+i).val()
-$(commitTls).val(serverName);
-$('#commitTlsModal'+i).modal('hide')
-})
+  `);
+}
+$('#serverName').val(tlsValue);
+$('#serverNameSave').off('click').on('click', function(){
+  $(commitTls).val($('#serverName').val());
+  $('#commitTlsModal').modal('hide');
+});
+$('#commitTlsModal').modal('show');
 }
 
 function moveUp(obj) { 
-var current = $(obj).parent().parent();
-var prev = current.prev();
-if (current.index() > 0) { 
+var current = $(obj).closest('tr');
+var prev = current.prev('tr');
+if (prev.length) { 
 current.insertBefore(prev);
-};
-};
+}
+}
 
 function moveDown(obj) { 
-var current = $(obj).parent().parent();
-var next = current.next();
-if (next) { 
+var current = $(obj).closest('tr');
+var next = current.next('tr');
+if (next.length) { 
 current.insertAfter(next);
-};
-};
+}
+}
 
 
 
@@ -297,7 +297,7 @@ $('#buttonAddLine').click(function(){
                             <div class="input-group">
                                 <input type="text" class="form-control" value="">
                               <div class="input-group-append">
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="commitTls(this)">tls</button>
+                                <button type="button" class="btn btn-secondary btn-sm" value="" onclick="commitTls(this)">tls</button>
                               </div>
                             </div>
                           </td>

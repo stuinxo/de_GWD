@@ -9,8 +9,7 @@ else
 nodecheck=$domain:$port
 fi
 
-jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf
+jq -r --arg nodecheck "$nodecheck" '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf
 
-echo $nodecheck | grep -v '^:'
-rm -rf /tmp/vtruiDomains
+echo "$nodecheck" | grep -v '^:'
 fi

@@ -161,7 +161,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?? '' ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -190,25 +190,18 @@
 
           <div id="CERbody" class="card-body" style="display:<?php if ($checkCer === true) echo 'block'; else echo 'none';?>">
             <div class="form-row">
-              <div class="col-md-3 input-group my-2">
+              <div class="col-md-5 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">域名</span>
                 </div>
-                  <input id="CFdomain" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>">
+                  <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->domain ?? '', ENT_QUOTES, 'UTF-8'); ?>">
               </div>
 
-              <div class="col-md-5 input-group my-2">
+              <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
-                  <span class="input-group-text justify-content-center" style="min-width: 120px;">CF Token / Key</span>
+                  <span class="input-group-text justify-content-center" style="min-width: 120px;">CF Token</span>
                 </div>
-                  <input id="CFapikey" type="text" class="form-control" placeholder="Cloudflare API Token 或 Global Key" value="<?php echo $de_GWDconf->FORWARD->APIkey ?? '' ?>">
-              </div>
-
-              <div class="col-md-4 input-group my-2">
-                <div class="input-group-prepend">
-                  <span class="input-group-text justify-content-center" style="min-width: 120px;">CF E-mail</span>
-                </div>
-                  <input id="CFemail" type="text" class="form-control" placeholder="使用Token时可留空" value="<?php echo $de_GWDconf->FORWARD->Email ?? '' ?>">
+                  <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->token ?? $de_GWDconf->FORWARD->APIkey ?? '', ENT_QUOTES, 'UTF-8'); ?>">
               </div>
             </div>
           </div>
@@ -243,14 +236,14 @@
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->DoGs->port ?? '' ?>">
+                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->DoGs->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>:<?php echo $de_GWDconf->FORWARD->DoGs->port ?? '' ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->DoGs->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
               </div>
             </div>
           </div>
@@ -299,7 +292,7 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD0port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD0->port ?? '' ?>">
+                  <input id="FWD0port" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->FWD0->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
               </div>
 
@@ -308,7 +301,7 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>:<?php echo $de_GWDconf->FORWARD->FWD0->port ?? '' ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->FWD0->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
                 </div>
               </div>
 
@@ -317,8 +310,8 @@
 $fwd0Uuids = $de_GWDconf->FORWARD->FWD0->uuid ?? [];
 for( $i=0; $i<count($fwd0Uuids); $i++){
   $FWD0num = $i + 1;
-  $FWD0uuid = $fwd0Uuids[$i]->FWD0uuid ?? '';
-  $FWD0mark = $fwd0Uuids[$i]->FWD0mark ?? '';
+  $FWD0uuid = htmlspecialchars($fwd0Uuids[$i]->FWD0uuid ?? '', ENT_QUOTES, 'UTF-8');
+  $FWD0mark = htmlspecialchars($fwd0Uuids[$i]->FWD0mark ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
               <div>
                 <div id="FWD0UUIDline" class="input-group my-2">
@@ -394,7 +387,7 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD1port" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->FWD1->port ?? '' ?>">
+                  <input id="FWD1port" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->FWD1->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
               </div>
 
@@ -403,18 +396,18 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>:<?php echo $de_GWDconf->FORWARD->FWD1->port ?? '' ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->FWD1->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
                 </div>
 
 <div class="btn-group">
   <label class="input-group-text">上级v2节点</label>
-  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo $checkFWD1OB[1] ?? '' ?>"><?php echo $checkFWD1OB[0] ?? '' ?></button>
+  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo htmlspecialchars($checkFWD1OB[1] ?? '', ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($checkFWD1OB[0] ?? '', ENT_QUOTES, 'UTF-8'); ?></button>
   <div id="FWD1upstreamDrop" class="dropdown-menu">
 <?php
 $v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? $de_GWDconf->v2node : [];
 for( $i=0; $i<count($v2nodes); $i++){
-  $address = $v2nodes[$i]->domain ?? '';
-  $name = $v2nodes[$i]->name ?? '';
+  $address = htmlspecialchars($v2nodes[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
+  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <button class='dropdown-item' href='#' id='FWD1upstream$i' value="$address" onclick="buttonFWD1upstream(this)">$name</button>
 EOT;
@@ -429,8 +422,8 @@ EOT;
 $fwd1Uuids = $de_GWDconf->FORWARD->FWD1->uuid ?? [];
 for( $i=0; $i<count($fwd1Uuids); $i++){
   $FWD1num = $i + 1;
-  $FWD1uuid = $fwd1Uuids[$i]->FWD1uuid ?? '';
-  $FWD1mark = $fwd1Uuids[$i]->FWD1mark ?? '';
+  $FWD1uuid = htmlspecialchars($fwd1Uuids[$i]->FWD1uuid ?? '', ENT_QUOTES, 'UTF-8');
+  $FWD1mark = htmlspecialchars($fwd1Uuids[$i]->FWD1mark ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
               <div>
                 <div class="input-group my-2">
@@ -501,98 +494,25 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? '' ?>">
+                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? '' ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?? '' ?>">
+                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
             </div>
 
             <div class="card mb-3 mt-2">
-              <div class="card-header">
-                代理型
-<span id="RproxyS0Button" class="float-right mt-n1 mb-n2" style="display:<?php if (($de_GWDconf->FORWARD->Rproxy->server->inStatus ?? '') === 'on') echo 'block'; else echo 'none';?>">
-<button id="buttonRproxyS0Add" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">添加 UUID</button>
-<button id="buttonRproxyS0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
-</span>
-<span id="RproxyS0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if (($de_GWDconf->FORWARD->Rproxy->server->inStatus ?? '') === 'on') echo 'none'; else echo 'block';?>">
-<button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyS0Switch()">展开</button>
-</span>
-              </div>
-              <div id="RproxyS0Body" class="card-body" style="display:<?php if (($de_GWDconf->FORWARD->Rproxy->server->inStatus ?? '') === 'on') echo 'block'; else echo 'none';?>">
-                <div class="form-row">
-                  <div class="col-md-3">
-                  <div class="input-group my-2">
-                    <div class="input-group-prepend">
-                      <span class="input-group-text">连入地址</span>
-                    </div>
-                    <input type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->domain ?? '' ?>:<?php echo $de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? '' ?>" READONLY>
-                  </div>
-                  </div>
-
-                  <div id="RproxyS0List" class="col-md-9">
-<?php 
-$rproxyS0Uuids = $de_GWDconf->FORWARD->Rproxy->server->inUUID ?? [];
-for( $i=0; $i<count($rproxyS0Uuids); $i++){
-  $RproxyS0num = $i + 1;
-  $RproxyS0uuid = $rproxyS0Uuids[$i]->RproxyS0uuid ?? '';
-  $RproxyS0mark = $rproxyS0Uuids[$i]->RproxyS0mark ?? '';
-print <<<EOT
-                  <div>
-                    <div class="input-group my-2">
-                    <div class="input-group-prepend">
-                      <span class="input-group-text">UUID</span>
-                    </div>
-                      <input id="RproxyS0uuid$RproxyS0num" type="text" class="form-control" value="$RproxyS0uuid">
-                    <div class="input-group-prepend input-group-append">
-                      <button type="button" class="btn btn-secondary" onclick="RproxyS0qr(this)">显示二维码</button>
-                    </div>
-                    <div class="input-group-prepend input-group-append">
-                      <span class="input-group-text">备注</span>
-                    </div>
-                      <input id="RproxyS0mark$RproxyS0num" type="text" class="form-control col-md-3" value="$RproxyS0mark">
-                    </div>
-                  </div>
-
-<div id="RproxyS0qrpop$RproxyS0num" class="modal fade" role="dialog" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title mx-auto" >内网穿透 代理型 二维码 - $RproxyS0mark</h5>
-      </div>
-      <div class="modal-body">
-        <div id="RproxyS0qrcode$RproxyS0num" class="text-center mb-3"></div>
-        <div class="input-group">
-          <input type="text" id="RproxyS0link$RproxyS0num" class="form-control" readonly>
-          <div class="input-group-append">
-            <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('RproxyS0link$RproxyS0num', this)">复制</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-EOT;
-}
-?>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card mb-3">
               <div class="card-header">
                 端口映射型
 <span id="RproxyS1Button" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxySconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
@@ -608,8 +528,8 @@ EOT;
 <?php 
 $rproxyS1Mappings = $de_GWDconf->FORWARD->Rproxy->server->mapping ?? [];
 for( $i=0; $i<count($rproxyS1Mappings); $i++){
-  $RproxyS1Port = $rproxyS1Mappings[$i]->port ?? '';
-  $RproxyS1Protocol = $rproxyS1Mappings[$i]->protocol ?? '';
+  $RproxyS1Port = htmlspecialchars($rproxyS1Mappings[$i]->port ?? '', ENT_QUOTES, 'UTF-8');
+  $RproxyS1Protocol = htmlspecialchars($rproxyS1Mappings[$i]->protocol ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <div class="col-md-4 input-group my-2">
   <div class="input-group-prepend">
@@ -663,40 +583,18 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?? '' ?>">
+                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?? '', ENT_QUOTES, 'UTF-8'); ?>">
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo $de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?? '' ?>">
+                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 </div>
             </div>
 
             <div class="card mb-3 mt-2">
-              <div class="card-header">
-                代理型
-<span id="RproxyC0Button" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'block'; else echo 'none';?>">
-<button id="buttonRproxyC0Stop" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">关闭</button>
-</span>
-<span id="RproxyC0Switch" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'none'; else echo 'block';?>">
-<button type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;" onclick="RproxyC0Switch()">展开</button>
-</span>
-              </div>
-              <div id="RproxyC0Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxyCconf), 'directOut') !== false) echo 'block'; else echo 'none';?>">
-                <div class="form-row">
-                  <div class="col-md-3 input-group my-2">
-                    <div class="input-group-prepend">
-                      <span class="input-group-text">Out</span>
-                    </div>
-                      <input type="text" class="form-control" value="Freedom" readonly="true">
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card mb-3">
               <div class="card-header">
                 端口映射型
 <span id="RproxyC1Button" class="float-right mt-n1 mb-n2" style="display:<?php if (strpos(json_encode($RproxyCconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
@@ -712,10 +610,10 @@ EOT;
 <?php 
 $rproxyC1Mappings = $de_GWDconf->FORWARD->Rproxy->client->mapping ?? [];
 for( $i=0; $i<count($rproxyC1Mappings); $i++){
-  $RproxyC1extPort = $rproxyC1Mappings[$i]->extPort ?? '';
-  $RproxyC1extProtocol = $rproxyC1Mappings[$i]->extProtocol ?? '';
-  $RproxyC1intIP = $rproxyC1Mappings[$i]->intIP ?? '';
-  $RproxyC1intPort = $rproxyC1Mappings[$i]->intPort ?? '';
+  $RproxyC1extPort = htmlspecialchars($rproxyC1Mappings[$i]->extPort ?? '', ENT_QUOTES, 'UTF-8');
+  $RproxyC1extProtocol = htmlspecialchars($rproxyC1Mappings[$i]->extProtocol ?? '', ENT_QUOTES, 'UTF-8');
+  $RproxyC1intIP = htmlspecialchars($rproxyC1Mappings[$i]->intIP ?? '', ENT_QUOTES, 'UTF-8');
+  $RproxyC1intPort = htmlspecialchars($rproxyC1Mappings[$i]->intPort ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <div class="col-md-6 input-group my-2">
   <div class="input-group-prepend">
@@ -904,57 +802,10 @@ $('#RproxySbutton').css('display', 'block');
 $('#RproxySbody').css('display', 'block');
 }
 
-function RproxyS0Switch(){
-$('#RproxyS0Switch').css('display', 'none');
-$('#RproxyS0Button').css('display', 'block');
-$('#RproxyS0Body').css('display', 'block');
-}
-
-function RproxyS0qr(RproxyS0qr){
-var RproxyS0obj = $(RproxyS0qr).parent().parent().parent().parent().find('.input-group')
-var RproxyS0objLine = $(RproxyS0qr).parent().parent().parent().find('div')
-var RproxyS0index = RproxyS0obj.index(RproxyS0objLine)+1
-$.get('./act/RproxyS0qr.php', {RproxyS0index:RproxyS0index}, function(data){
-  if ($('#RproxyS0qrpop' + RproxyS0index).length === 0) {
-    var markVal = $('#RproxyS0mark' + RproxyS0index).val() || '';
-    $('body').append(`
-      <div id="RproxyS0qrpop${RproxyS0index}" class="modal fade" role="dialog" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h5 class="modal-title mx-auto">内网穿透 代理型 二维码 - ${markVal}</h5>
-            </div>
-            <div class="modal-body">
-              <div id="RproxyS0qrcode${RproxyS0index}" class="text-center mb-3"></div>
-              <div class="input-group">
-                <input type="text" id="RproxyS0link${RproxyS0index}" class="form-control" readonly>
-                <div class="input-group-append">
-                  <button class="btn btn-outline-primary" type="button" onclick="copyNodeLink('RproxyS0link${RproxyS0index}', this)">复制</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `);
-  }
-  $('#RproxyS0qrcode'+RproxyS0index).empty()
-  $('#RproxyS0link'+RproxyS0index).val(data)
-  $('#RproxyS0qrpop'+RproxyS0index).modal('show')
-  $('#RproxyS0qrcode'+RproxyS0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
-})
-}
-
 function RproxyS1Switch(){
 $('#RproxyS1Switch').css('display', 'none');
 $('#RproxyS1Button').css('display', 'block');
 $('#RproxyS1Body').css('display', 'block');
-}
-
-function RproxyC0Switch(){
-$('#RproxyC0Switch').css('display', 'none');
-$('#RproxyC0Button').css('display', 'block');
-$('#RproxyC0Body').css('display', 'block');
 }
 
 function RproxyC1Switch(){
@@ -1012,10 +863,9 @@ $.get('./act/markThis.php', {markName:markNametxt}, function(result){window.loca
 })
 
 $('#buttonGenCER').click(function(){
-cfdomain=$('#CFdomain').val()
-cfapikey=$('#CFapikey').val().trim()
-cfemail=$('#CFemail').val()
-$.get('./act/genCER.php', {CFdomain:cfdomain, CFapikey:cfapikey, CFemail:cfemail}, function(){})
+cfdomain=$('#CFdomain').val().trim()
+cftoken=$('#CFtoken').val().trim()
+$.get('./act/genCER.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
@@ -1173,17 +1023,6 @@ $('#buttonRproxySsave').click(function(){
 $("#buttonRproxySsaveLoading").attr("class", "spinner-border spinner-border-sm")
 RproxyStunnelPort=$('#RproxyStunnelPort').val().trim()
 RproxyStunnelUUID=$('#RproxyStunnelUUID').val().trim()
-RproxySinStatus=$('#RproxyS0Body').css('display')
-var RproxyS0uuidList = []
-var len = $("#RproxyS0List .input-group").length
-var RproxyS0uuid, RproxyS0mark
-for( let i = 1; i<=len; i++){
-    var RproxyS0uuid = $('#RproxyS0uuid'+i).val().trim()
-    var RproxyS0mark = $('#RproxyS0mark'+i).val()
-    if ( RproxyS0uuid !== '' ) {
-    RproxyS0uuidList.push({RproxyS0uuid, RproxyS0mark})
-    }
-}
 RproxySmappingStatus=$('#RproxyS1Body').css('display')
 var RproxyS1List = []
 var len = $("#RproxyS1List .input-group").length
@@ -1195,7 +1034,7 @@ for( let i = 0; i<len; i++){
     RproxyS1List.push({port, protocol})
     }
 }
-$.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxyS0uuidList:RproxyS0uuidList, RproxySinStatus:RproxySinStatus, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
+$.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
   $("#buttonRproxySsaveLoading").removeClass()
   window.location.reload()
 })
@@ -1210,33 +1049,6 @@ $.get('./act/RproxySstop.php', function(result){
   $('#RproxySbutton').css('display', 'none'); 
   $('#RproxySbody').css('display', 'none'); 
 })
-})
-
-$('#buttonRproxyS0Add').click(function(){
-  var i = $("#RproxyS0List .input-group").length+1
-  $('#RproxyS0List').append(`
-                  <div>
-                    <div class="input-group my-2">
-                    <div class="input-group-prepend">
-                      <span class="input-group-text">UUID</span>
-                    </div>
-                      <input id="RproxyS0uuid${i}" type="text" class="form-control" value="">
-                    <div class="input-group-prepend input-group-append">
-                      <button type="button" class="btn btn-secondary" onclick="RproxyS0qr(this)">显示二维码</button>
-                    </div>
-                    <div class="input-group-prepend input-group-append">
-                      <span class="input-group-text">备注</span>
-                    </div>
-                      <input id="RproxyS0mark${i}" type="text" class="form-control col-md-3" value="">
-                    </div>
-                  </div>
-                          `)
-})
-
-$('#buttonRproxyS0Stop').click(function(){
-$('#RproxyS0Switch').css('display', 'block'); 
-$('#RproxyS0Button').css('display', 'none'); 
-$('#RproxyS0Body').css('display', 'none'); 
 })
 
 $('#buttonRproxyS1Stop').click(function(){
@@ -1303,7 +1115,6 @@ $('#buttonRproxyCsave').click(function(){
 $("#buttonRproxyCsaveLoading").attr("class", "spinner-border spinner-border-sm")
 RproxyCtunnelAddress=$('#RproxyCtunnelAddress').val()
 RproxyCtunnelUUID=$('#RproxyCtunnelUUID').val().trim()
-RproxyCoutStatus=$('#RproxyC0Body').css('display')
 RproxyCmappingStatus=$('#RproxyC1Body').css('display')
 var RproxyC1List = []
 var len = $("#RproxyC1List .input-group").length
@@ -1317,7 +1128,7 @@ for( let i = 0; i<len; i++){
     RproxyC1List.push({extPort, extProtocol, intIP, intPort})
     }
 }
-$.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCoutStatus:RproxyCoutStatus, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
+$.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
   $("#buttonRproxyCsaveLoading").removeClass()
   window.location.reload()
 })
@@ -1332,12 +1143,6 @@ $.get('./act/RproxyCstop.php', function(result){
   $('#RproxyCbutton').css('display', 'none'); 
   $('#RproxyCbody').css('display', 'none'); 
 })
-})
-
-$('#buttonRproxyC0Stop').click(function(){
-$('#RproxyC0Switch').css('display', 'block'); 
-$('#RproxyC0Button').css('display', 'none'); 
-$('#RproxyC0Body').css('display', 'none'); 
 })
 
 $('#buttonRproxyC1Stop').click(function(){

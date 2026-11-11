@@ -20,8 +20,8 @@ if [[ $(cat /tmp/kernelVer | sort -rV | head -n 1) = "5.6" ]]; then
     echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Update kernel first ! ${cRES}"
 else
     unset aptPKG
-    [[ -z $(dpkg -l | awk '{print$2}' | grep '^wireguard-tools$') ]] && aptPKG+=(wireguard-tools)
-    [[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+    dpkg-query -W -f='${db:Status-Abbrev}\n' wireguard-tools 2>/dev/null | grep -q '^ii' || aptPKG+=(wireguard-tools)
+    [[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
 
     if [[ -z $(jq -r '.wireguard.server.sprivatekey' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
         /opt/de_GWD/ui-WGgenSkey

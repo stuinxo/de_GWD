@@ -5,25 +5,29 @@ sed -i '/autoUpdate/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 rm -rf /opt/de_GWD/autoUpdate
-else
+elif [[ "$1" =~ ^([0-9]|1[0-9]|2[0-3])$ ]]; then
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
 localVer=$(awk 'NR==1' /var/www/html/act/version.php)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1)
+remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1 | tr -d '\r ')
 
-echo $localVer >/tmp/de_GWD_Ver
-echo $remoteVer >>/tmp/de_GWD_Ver
+if [[ -z "$remoteVer" ]] || [[ ! "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] || [[ "$remoteVer" == "$localVer" ]]; then
+  exit 0
+fi
 
-VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
+echo "$localVer" >/tmp/de_GWD_Ver
+echo "$remoteVer" >>/tmp/de_GWD_Ver
+
+VerCP=$(sort -rV /tmp/de_GWD_Ver | uniq | awk 'NR==2')
 
 if [[ $VerCP = $localVer ]]; then
 systemctl stop php-fpm 2>/dev/null
 
 rm -rf /tmp/autoUpdate
-wget -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinxo/de_GWD/v2/client
+wget -t 5 -T 10 -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinxo/de_GWD/v2/client
 
 if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
-sed -i '$d' /tmp/autoUpdate
+awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' /tmp/autoUpdate >/tmp/autoUpdate.tmp && mv -f /tmp/autoUpdate.tmp /tmp/autoUpdate
 echo "updateGWD auto" >>/tmp/autoUpdate
 chmod +x /tmp/autoUpdate
 /tmp/autoUpdate

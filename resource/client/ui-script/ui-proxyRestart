@@ -1,14 +1,15 @@
 #!/bin/bash
 python3 <<EOF
-import toml
-with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
- data = toml.load(f)
-
-data["dns"]["upstreams"] = ["127.0.0.1#5341","127.0.0.1#5341"]
-
-with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
-    toml.dump(data, f)
+import os, toml
+p = "/opt/de_GWD/pihole/pihole.toml"
+if os.path.exists(p):
+    with open(p, "r") as f:
+        data = toml.load(f)
+    data.setdefault("dns", {})["upstreams"] = ["127.0.0.1#5341", "127.0.0.1#5341"]
+    with open(p, "w") as f:
+        toml.dump(data, f)
 EOF
+docker kill -s HUP pihole >/dev/null 2>&1 || true
 
 >/etc/resolvconf/resolv.conf.d/head
 >/etc/resolvconf/resolv.conf.d/original
@@ -26,7 +27,7 @@ fi
 sed -i '/dns-nameservers /d' /etc/network/interfaces
 resolvconf -u
 
-systemctl restart samrtdns
+systemctl restart smartdns
 systemctl restart mosdns
 systemctl restart vtrui
 systemctl restart nftables

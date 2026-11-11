@@ -7,13 +7,13 @@ $globalProxyIP = $_GET['globalProxyIP'];
 $directProxyIP = $_GET['directProxyIP'];
 
 $CHNlistProxyIP = explode(" ",$CHNlistProxyIP);
-$CHNlistProxyIP = array_filter(array_map('trim', $CHNlistProxyIP));
+$CHNlistProxyIP = array_values(array_filter(array_map('trim', $CHNlistProxyIP)));
 
 $globalProxyIP = explode(" ",$globalProxyIP);
-$globalProxyIP = array_filter(array_map('trim', $globalProxyIP));
+$globalProxyIP = array_values(array_filter(array_map('trim', $globalProxyIP)));
 
 $directProxyIP = explode(" ",$directProxyIP);
-$directProxyIP = array_filter(array_map('trim', $directProxyIP));
+$directProxyIP = array_values(array_filter(array_map('trim', $directProxyIP)));
 
 $conf['v2nodeDIV']['nodeDT']['CHNlistProxyIP'] = array();
 $conf['v2nodeDIV']['nodeDT']['CHNlistProxyIP'] = $CHNlistProxyIP;

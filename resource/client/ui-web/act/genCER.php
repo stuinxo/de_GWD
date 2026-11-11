@@ -2,13 +2,12 @@
 <?php if (isset($auth) && $auth) {?>
 <?php
 $conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$CFdomain = $_GET['CFdomain'];
-$CFapikey = $_GET['CFapikey'];
-$CFemail = $_GET['CFemail'];
+$CFdomain = trim($_GET['CFdomain'] ?? '');
+$CFtoken = trim($_GET['CFtoken'] ?? '');
 
+unset($conf['FORWARD']['APIkey'], $conf['FORWARD']['Email']);
 $conf['FORWARD']['domain'] = $CFdomain;
-$conf['FORWARD']['APIkey'] = $CFapikey;
-$conf['FORWARD']['Email'] = $CFemail;
+$conf['FORWARD']['token'] = $CFtoken;
 $newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 file_put_contents('/opt/de_GWD/0conf', $newJsonString);
 

@@ -153,7 +153,8 @@ else
   jq '.v2nodeDIV.nodeSM.status="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 fi
 
-chmod 666 /opt/de_GWD/0conf 2>/dev/null || true
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf 2>/dev/null || true
 
 # Restart services if requested
 if [[ "$1" == "r" ]]; then

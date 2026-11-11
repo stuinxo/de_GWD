@@ -1,4 +1,6 @@
 #!/bin/bash
+source /opt/de_GWD/xray-common
+
 address=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 uuid=$(jq -r --argjson domainNUM "$1" '.v2node | to_entries[] | select(.key == $domainNUM) | .value.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -8,12 +10,6 @@ domain=$(echo -e "$address" | cut -d: -f1)
 port=$(echo -e "$address" | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 [[ -z $tls ]] && tls="$domain"
-
-uuid_to_path() {
-    local u="$1"
-    local first="${u%%-*}"
-    printf '/%s' "$first"
-}
 
 if [[ -z $path ]]; then
     path=$(uuid_to_path "$uuid")
@@ -26,56 +22,8 @@ jq --arg tls "$tls" '.update.v2node.tls=$tls' |\
 jq --arg port "$port" '.update.v2node.port=$port' |\
 jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
-
-build_vless_xhttp_outbound() {
-    local o_tag="$1"
-    local o_domain="$2"
-    local o_port="$3"
-    local o_uuid="$4"
-    local o_tls="$5"
-    local o_path="$6"
-    local o_mark="${7:-255}"
-
-    cat << EOF
-{
-  "tag": "$o_tag",
-  "protocol": "vless",
-  "settings": {
-    "vnext": [
-      {
-        "address": "$o_domain",
-        "port": $o_port,
-        "users": [
-          {
-            "id": "$o_uuid",
-            "encryption": "none"
-          }
-        ]
-      }
-    ]
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "serverName": "$o_tls",
-      "alpn": ["h2"],
-      "allowInsecure": false
-    },
-    "xhttpSettings": {
-      "path": "$o_path",
-      "mode": "packet-up"
-    },
-    "sockopt": {
-      "mark": $o_mark,
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  }
-}
-EOF
-}
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 OBdefault=$(build_vless_xhttp_outbound "default" "$domain" "$port" "$uuid" "$tls" "$path" 255)
 

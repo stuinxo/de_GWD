@@ -37,7 +37,7 @@
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
-<?php $checkWGinstall = exec('sudo dpkg -l | grep " wireguard-tools "')?>
+<?php $checkWGinstall = file_exists('/usr/bin/wg'); ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -141,7 +141,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -169,54 +169,6 @@
         <div class="card mb-3">
           <div class="card-header">
             <i class="fas fa-cloud"></i>
-            <a href="http://www.pubyun.com" target="_blank">F3322 DDNS</a>
-<span id="ddns3322button" class="float-right mt-n1 mb-n2" style="display:none">
-<div class="btn-group">
-<button id="buttonddns3322off" type="button" class="btn btn-outline-secondary btn-sm mt-1" style="border-Radius: 0px;">
-  <span id="buttonddns3322offLoading"></span>
-  <span>关闭</span>
-</button>
-<button id="buttonddns3322on" type="button" class="btn btn-<?php passthru('sudo /opt/de_GWD/ui-checkDDNS3322');?> btn-sm mt-1" style="border-Radius: 0px;">
-  <span id="buttonddns3322onLoading"></span>
-  <span>应用</span>
-</button>
-</div>
-</span>
-<span id="ddns3322switch" class="float-right mt-n1 mb-n2">
-<button id="buttonDDNS3322switch" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">展开</button>
-</span>
-          </div>
-
-          <div id="ddns3322body" class="card-body" style="display:none">
-    <div class="form-row">
-      <div class="col-md-4 input-group my-2">
-        <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">域名</span>
-        </div>
-          <input id="f3322domain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->domain) ? $de_GWDconf->ddns->ddns3322->domain : ''; ?>">
-      </div>
-
-      <div class="col-md-4 input-group my-2">
-        <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">用户名</span>
-        </div>
-          <input id="f3322usr" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->user) ? $de_GWDconf->ddns->ddns3322->user : ''; ?>">
-      </div>
-
-      <div class="col-md-4 input-group my-2">
-        <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">密码</span>
-        </div>
-          <input id="f3322pwd" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddns3322->pwd) ? $de_GWDconf->ddns->ddns3322->pwd : ''; ?>">
-      </div>
-    </div>
-          </div>
-        </div>
-
-
-        <div class="card mb-3">
-          <div class="card-header">
-            <i class="fas fa-cloud"></i>
             <a href="https://dash.cloudflare.com/login" target="_blank">CloudFlare DDNS</a>
 <span id="ddnsCFbutton" class="float-right mt-n1 mb-n2" style="display:none">
 <div class="btn-group">
@@ -237,25 +189,18 @@
 
           <div id="ddnsCFbody" class="card-body" style="display:none">
     <div class="form-row">
-      <div class="col-md-3 input-group my-2">
+      <div class="col-md-5 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="CFdomain" type="text" class="form-control" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfDomain) ? $de_GWDconf->ddns->ddnsCF->cfDomain : ''; ?>">
+          <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->ddns->ddnsCF->cfDomain ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
 
-      <div class="col-md-5 input-group my-2">
+      <div class="col-md-7 input-group my-2">
         <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">CF Token / Key</span>
+          <span class="input-group-text" style="min-width: 120px;">CF Token</span>
         </div>
-          <input id="CFapikey" type="text" class="form-control" placeholder="Cloudflare API Token 或 Global Key" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfAPIkey) ? $de_GWDconf->ddns->ddnsCF->cfAPIkey : ''; ?>">
-      </div>
-
-      <div class="col-md-4 input-group my-2">
-        <div class="input-group-prepend">
-          <span class="input-group-text" style="min-width: 120px;">CF E-mail</span>
-        </div>
-          <input id="CFemail" type="text" class="form-control" placeholder="使用Token时可留空" value="<?php echo isset($de_GWDconf->ddns->ddnsCF->cfEmail) ? $de_GWDconf->ddns->ddnsCF->cfEmail : ''; ?>">
+          <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo htmlspecialchars($de_GWDconf->ddns->ddnsCF->cfToken ?? $de_GWDconf->ddns->ddnsCF->cfAPIkey ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
     </div>
           </div>
@@ -286,15 +231,15 @@
 <button id="buttonWGswitch" type="button" class="btn btn-secondary btn-sm mt-1" style="border-Radius: 0px;">展开</button>
 </span>
 <span class="float-right mt-n1 mb-n2">
-<button id="buttonWGinstall" type="button" class="btn <?php if (empty($checkWGinstall) === false) echo 'btn-outline-success'; else echo 'btn-outline-secondary';?> btn-sm mt-1" style="border-Radius: 0px;">install</button>
+<button id="buttonWGinstall" type="button" class="btn <?php echo $checkWGinstall ? 'btn-outline-success' : 'btn-outline-secondary'; ?> btn-sm mt-1" style="border-Radius: 0px;">install</button>
 </span>
           </div>
           <div id="WGbody" class="card-body" style="display:none">
 <?php
-  $sprivatekey = isset($de_GWDconf->wireguard->server->sprivatekey) ? $de_GWDconf->wireguard->server->sprivatekey : '';
-  $spublickey = isset($de_GWDconf->wireguard->server->spublickey) ? $de_GWDconf->wireguard->server->spublickey : '';
-  $WGaddress = isset($de_GWDconf->wireguard->server->WGaddress) ? $de_GWDconf->wireguard->server->WGaddress : '';
-  $WGport = isset($de_GWDconf->wireguard->server->WGport) ? $de_GWDconf->wireguard->server->WGport : '';
+  $sprivatekey = htmlspecialchars($de_GWDconf->wireguard->server->sprivatekey ?? '', ENT_QUOTES, 'UTF-8');
+  $spublickey = htmlspecialchars($de_GWDconf->wireguard->server->spublickey ?? '', ENT_QUOTES, 'UTF-8');
+  $WGaddress = htmlspecialchars($de_GWDconf->wireguard->server->WGaddress ?? '', ENT_QUOTES, 'UTF-8');
+  $WGport = htmlspecialchars($de_GWDconf->wireguard->server->WGport ?? '', ENT_QUOTES, 'UTF-8');
 
   if ($sprivatekey == null || $sprivatekey == '')
   {
@@ -331,11 +276,12 @@ EOT;
 $wgClientsCount = isset($de_GWDconf->wireguard->clients) && is_countable($de_GWDconf->wireguard->clients) ? count($de_GWDconf->wireguard->clients) : 0;
 for( $i=0; $i<$wgClientsCount; $i++){
   $nodeNUM = $i+1;
-  $cprivatekey = $de_GWDconf->wireguard->clients[$i]->cprivatekey;
-  $cpublickey = $de_GWDconf->wireguard->clients[$i]->cpublickey;
-  $mark = $de_GWDconf->wireguard->clients[$i]->mark;
+  $rawCprivatekey = $de_GWDconf->wireguard->clients[$i]->cprivatekey ?? '';
+  $cprivatekey = htmlspecialchars($rawCprivatekey, ENT_QUOTES, 'UTF-8');
+  $cpublickey = htmlspecialchars($de_GWDconf->wireguard->clients[$i]->cpublickey ?? '', ENT_QUOTES, 'UTF-8');
+  $mark = htmlspecialchars($de_GWDconf->wireguard->clients[$i]->mark ?? '', ENT_QUOTES, 'UTF-8');
 
-  if ($cprivatekey == null || $cprivatekey == '' || $cprivatekey == '0000000000000000000000000000000000000000000=')
+  if ($rawCprivatekey == null || $rawCprivatekey == '' || $rawCprivatekey == '0000000000000000000000000000000000000000000=')
   {
     $buttonWGgenCKeyClass = "btn-secondary";
     $buttonWGgenCKeyHtml = "生成节点密钥";
@@ -408,12 +354,6 @@ EOT;
   </div>
   <!-- /#wrapper -->
 <script>
-function DDNS3322switch(){
-$("#ddns3322switch").css("display", "none")
-$("#ddns3322button").css("display", "block")
-$("#ddns3322body").css("display", "block")
-}
-
 function DDNSCFswitch(){
 $("#ddnsCFswitch").css("display", "none")
 $("#ddnsCFbutton").css("display", "block")
@@ -443,8 +383,6 @@ var QRnum = WGnum-1
 $.get('./act/WGqr.php', {WGnum:WGnum}, function(data){
 $('#qrcode'+QRnum).empty()
 $('#qrcode'+QRnum).qrcode({width: 240,height: 240,correctLevel:0,text: data})
-})
-$.get('./act/WGqr.php', {WGnum:WGnum}, function(data){
 $('#qrstr'+QRnum).val(data)
 })
 }
@@ -490,39 +428,6 @@ $.get('./act/checkDDNSip.php', function(data){
 })
 
 
-$.get("./act/checkDDNS3322.php", function(data){
-if ($.trim(data) == "installed"){
-DDNS3322switch()
-}
-})
-
-$('#buttonDDNS3322switch').click(function(){
-DDNS3322switch()
-})
-
-$('#buttonddns3322on').click(function(){
-$("#buttonddns3322onLoading").attr("class", "spinner-border spinner-border-sm")
-f3322domain=$('#f3322domain').val()
-f3322usr=$('#f3322usr').val()
-f3322pwd=$('#f3322pwd').val()
-$.get('./act/onDDNS3322.php', {f3322domain:f3322domain, f3322usr:f3322usr, f3322pwd:f3322pwd}, function(result){
-  $("#buttonddns3322onLoading").removeClass()
-  $('#buttonddns3322on').attr('class', 'btn btn-success btn-sm mt-1')
-})
-})
-
-$('#buttonddns3322off').click(function(){
-$("#buttonddns3322offLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/offDDNS3322.php', function(result){
-  $("#buttonddns3322offLoading").removeClass()
-  $('#buttonddns3322on').attr('class', 'btn btn-outline-secondary btn-sm mt-1')
-  $('#ddns3322switch').css('display', 'block'); 
-  $('#ddns3322button').css('display', 'none'); 
-  $('#ddns3322body').css('display', 'none'); 
-})
-})
-
-
 $.get("./act/checkDDNScf.php", function(data){
 if ($.trim(data) == "installed"){
 DDNSCFswitch()
@@ -535,10 +440,9 @@ DDNSCFswitch()
 
 $('#buttonddnsCFon').click(function(){
 $("#buttonddnsCFonLoading").attr("class", "spinner-border spinner-border-sm")
-cfdomain=$('#CFdomain').val()
-cfapikey=$('#CFapikey').val()
-cfemail=$('#CFemail').val()
-$.get('./act/onDDNScf.php', {CFdomain:cfdomain, CFapikey:cfapikey, CFemail:cfemail}, function(result){
+cfdomain=$('#CFdomain').val().trim()
+cftoken=$('#CFtoken').val().trim()
+$.get('./act/onDDNScf.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(result){
   $("#buttonddnsCFonLoading").removeClass()
   $('#buttonddnsCFon').attr('class', 'btn btn-success btn-sm mt-1')
 })

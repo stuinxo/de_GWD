@@ -1,4 +1,6 @@
 #!/bin/bash
+source /opt/de_GWD/xray-common
+
 tag=$1
 address=$2
 tls=$3
@@ -14,65 +16,10 @@ port=$(echo "$address" | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 [[ -z $tls ]] && tls="$domain"
 
-uuid_to_path() {
-    local u="$1"
-    local first="${u%%-*}"
-    printf '/%s' "$first"
-}
-
 if [[ -z $path ]]; then
     path=$(uuid_to_path "$uuid")
 fi
 [[ "${path:0:1}" != "/" ]] && path="/$path"
-
-build_vless_xhttp_outbound() {
-    local o_tag="$1"
-    local o_domain="$2"
-    local o_port="$3"
-    local o_uuid="$4"
-    local o_tls="$5"
-    local o_path="$6"
-    local o_mark="${7:-255}"
-
-    cat << EOF
-{
-  "tag": "$o_tag",
-  "protocol": "vless",
-  "settings": {
-    "vnext": [
-      {
-        "address": "$o_domain",
-        "port": $o_port,
-        "users": [
-          {
-            "id": "$o_uuid",
-            "encryption": "none"
-          }
-        ]
-      }
-    ]
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "serverName": "$o_tls",
-      "alpn": ["h2"],
-      "allowInsecure": false
-    },
-    "xhttpSettings": {
-      "path": "$o_path",
-      "mode": "packet-up"
-    },
-    "sockopt": {
-      "mark": $o_mark,
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  }
-}
-EOF
-}
 
 OBadd=$(build_vless_xhttp_outbound "$tag" "$domain" "$port" "$uuid" "$tls" "$path" 255)
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+systemd-detect-virt --container >/dev/null 2>&1 && virt_type="container" || virt_type=""
+
 if [[ $(systemctl is-active swap.target) != "active" ]]; then
 systemctl unmask swap.target >/dev/null 2>&1
 systemctl start swap.target >/dev/null 2>&1
@@ -20,6 +22,7 @@ swapon /swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
 fi
+mkdir -p /etc/initramfs-tools/conf.d
 echo "RESUME=" >/etc/initramfs-tools/conf.d/resume
 fi
 
@@ -103,8 +106,11 @@ DefaultLimitNPROC=1000000
 EOF
 systemctl daemon-reload
 
+mkdir -p /etc/modules-load.d
+touch /etc/modules-load.d/modules.conf
 sed -i '/nf_conntrack/d' /etc/modules-load.d/modules.conf
 sed -i '/ifb/d' /etc/modules-load.d/modules.conf
+sed -i '/sch_cake/d' /etc/modules-load.d/modules.conf
 cat << EOF >>/etc/modules-load.d/modules.conf
 nf_conntrack
 ifb
@@ -256,27 +262,20 @@ fi
 apt update --fix-missing && apt upgrade --allow-downgrades -y
 apt full-upgrade -y && apt --purge autoremove -y && apt clean -y && apt autoclean -y
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
-[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+grep -qE '^(ii|rc) +haveged$' <<< "$pkg_status" && apt remove --purge -y haveged
+grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
+grep -qE '^(ii|rc) +systemd-timesyncd$' <<< "$pkg_status" && apt remove --purge -y systemd-timesyncd
+grep -qE '^(ii|rc) +rng-tools(-debian)?$' <<< "$pkg_status" && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ethtool$') ]] && aptPKG+=(ethtool)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^apt-transport-https$') ]] && aptPKG+=(apt-transport-https)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^unzip$') ]] && aptPKG+=(unzip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc3') ]] && aptPKG+=(libmimalloc3)
-[[ -n $aptPKG ]] && apt update && apt install -y -q $(echo ${aptPKG[@]})
+for pkg in sudo wget curl git locales ethtool ca-certificates apt-transport-https gnupg2 unzip jq chrony libmimalloc3; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+if ! grep -qE '^ii +irqbalance$' <<< "$pkg_status" && [[ $(nproc --all) -gt 1 ]]; then
+  aptPKG+=(irqbalance)
+fi
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y -q "${aptPKG[@]}"
 
 [[ -f "/etc/ld.so.preload" ]] && sed -i "/libjemalloc/d" /etc/ld.so.preload
 ldconfig
@@ -436,11 +435,10 @@ systemctl daemon-reload >/dev/null
 
 crontab -l 2>/dev/null >/tmp/now.cron
 sed -i '/\/etc\/rc_online.local/d' /tmp/now.cron
-cat << EOF >>/tmp/now.cron
-EOF
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 
-date -s "$(wget -qSO- --max-redirect=0 aliyun.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z" | grep -v ' 08:00:00 '
-[[ $? -ne "0" ]] && date -s "$(wget -qSO- --max-redirect=0 baidu.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
+httpDate=$(wget -T 5 -t 2 -qSO- --max-redirect=0 aliyun.com 2>&1 | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ -z "$httpDate" ]] && httpDate=$(wget -T 5 -t 2 -qSO- --max-redirect=0 baidu.com 2>&1 | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ "$httpDate" =~ [0-9]{4} ]] && date -s "$httpDate" >/dev/null 2>&1 || true
 command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true

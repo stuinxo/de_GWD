@@ -1,4 +1,6 @@
 #!/bin/bash
+source /opt/de_GWD/xray-common
+
 domain=$(jq -r '.update.v2node.domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 tls=$(jq -r '.update.v2node.tls' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.update.v2node.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -7,66 +9,10 @@ path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^nul
 
 [[ -z "$port" ]] && port="443"
 [[ -z "$tls" ]] && tls="$domain"
-
-uuid_to_path() {
-    local u="$1"
-    local first="${u%%-*}"
-    printf '/%s' "$first"
-}
-
 if [[ -z "$path" ]]; then
     path=$(uuid_to_path "$uuid")
 fi
 [[ "${path:0:1}" != "/" ]] && path="/$path"
-
-build_vless_xhttp_outbound() {
-    local o_tag="$1"
-    local o_domain="$2"
-    local o_port="$3"
-    local o_uuid="$4"
-    local o_tls="$5"
-    local o_path="$6"
-    local o_mark="${7:-255}"
-
-    cat << EOF
-{
-  "tag": "$o_tag",
-  "protocol": "vless",
-  "settings": {
-    "vnext": [
-      {
-        "address": "$o_domain",
-        "port": $o_port,
-        "users": [
-          {
-            "id": "$o_uuid",
-            "encryption": "none"
-          }
-        ]
-      }
-    ]
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "serverName": "$o_tls",
-      "alpn": ["h2"],
-      "allowInsecure": false
-    },
-    "xhttpSettings": {
-      "path": "$o_path",
-      "mode": "packet-up"
-    },
-    "sockopt": {
-      "mark": $o_mark,
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  }
-}
-EOF
-}
 
 OBdefault=$(build_vless_xhttp_outbound "default" "$domain" "$port" "$uuid" "$tls" "$path" 255)
 

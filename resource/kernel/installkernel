@@ -33,16 +33,16 @@ rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
 
 
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober') ]] && apt remove --purge -y os-prober
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
 
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^python3$') ]] && aptPKG+=(python3)
+for pkg in ca-certificates gnupg2 curl python3; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
-[[ -n $aptPKG ]] && apt update && apt install -y $(echo ${aptPKG[@]})
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
 mkdir -p /boot/grub
 rm -f /var/cache/apt/archives/lock
 rm -f /var/lib/apt/lists/lock
@@ -57,11 +57,17 @@ cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
+touch /etc/sysctl.conf
 sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
 sed -i "/net.core.default_qdisc/d" /etc/sysctl.conf
 echo "net.ipv4.tcp_congestion_control = bbr" >>/etc/sysctl.conf
 echo "net.core.default_qdisc = cake" >>/etc/sysctl.conf
-sysctl -p >/dev/null 2>&1
+mkdir -p /etc/sysctl.d
+cat << "SYSCTL_EOF" >/etc/sysctl.d/99-kernel-bbr.conf
+net.ipv4.tcp_congestion_control = bbr
+net.core.default_qdisc = cake
+SYSCTL_EOF
+sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
 
 rm -f /var/cache/apt/archives/lock
 rm -f /var/lib/apt/lists/lock
@@ -174,7 +180,7 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 =tHYp
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/zabbly-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
 apt update && apt install linux-zabbly
 
@@ -263,7 +269,9 @@ ukDDFZMifwa03yTHD/a57O4dFOnzsEVojBnbzQ7W7w==
 =HKlF
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
-cat /tmp/xanmod.gpg.key | gpg --dearmor >/etc/apt/keyrings/xanmod.gpg
+mkdir -p /etc/apt/keyrings
+gpg --dearmor --yes -o /etc/apt/keyrings/xanmod.gpg /tmp/xanmod.gpg.key
+rm -f /tmp/xanmod.gpg.key
 echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
 apt update && apt install linux-xanmod-x64$CPU_LEVEL
@@ -297,9 +305,11 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
+mkdir -p /etc/apt/keyrings
 curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
-cat /tmp/liquorix.gpg.key | gpg --dearmor >/etc/apt/keyrings/liquorix.gpg
-echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) main" >/etc/apt/sources.list.d/liquorix-kernel.list
+gpg --dearmor --yes -o /etc/apt/keyrings/liquorix.gpg /tmp/liquorix.gpg.key
+rm -f /tmp/liquorix.gpg.key
+echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
 apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 

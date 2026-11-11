@@ -4,11 +4,11 @@
 $conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
 $listB = $_GET['listB'];
 $listB = explode("\n",$listB);
-$listB = array_filter(array_map('trim', $listB));
+$listB = array_values(array_filter(array_map('trim', $listB)));
 
 $listW = $_GET['listW'];
 $listW = explode("\n",$listW);
-$listW = array_filter(array_map('trim', $listW));
+$listW = array_values(array_filter(array_map('trim', $listW)));
 
 $conf['dns']['listB'] = array();
 $conf['dns']['listW'] = array();

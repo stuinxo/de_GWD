@@ -93,22 +93,41 @@ fetch_rule(){
 
 branch="${BRANCH:-v2}"
 
+sync_chnroute_rule(){
+  local target="$1"
+  local rel_path="$2"
+  local min_kb="$3"
+  local label="$4"
+  local primary_base="https://raw.githubusercontent.com/jacyl4/chnroute/main"
+  local fallback_base="https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute"
+
+  local primary_sha fallback_sha
+  primary_sha=$(fetch_text "${primary_base}/${rel_path}.sha256sum" | awk '{print$1}')
+  if [[ -n "$primary_sha" ]]; then
+    [[ $(checkSum "$target" "$primary_sha") = "true" ]] && return 0
+    fetch_rule "$target" "${primary_base}/${rel_path}" "$primary_sha" "$min_kb" && return 0
+  fi
+
+  if [[ -z "$primary_sha" || ! -s "$target" ]]; then
+    fallback_sha=$(fetch_text "${fallback_base}/${rel_path}.sha256sum" | awk '{print$1}')
+    if [[ -n "$fallback_sha" ]]; then
+      [[ $(checkSum "$target" "$fallback_sha") = "true" ]] && return 0
+      fetch_rule "$target" "${fallback_base}/${rel_path}" "$fallback_sha" "$min_kb" && return 0
+    elif [[ ! -s "$target" ]]; then
+      fetch_rule "$target" "${primary_base}/${rel_path}" "" "$min_kb" && return 0
+      fetch_rule "$target" "${fallback_base}/${rel_path}" "" "$min_kb" && return 0
+    fi
+  fi
+
+  if [[ -s "$target" ]]; then
+    echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}${label} retained existing${cRES}"
+  else
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}${label}${RED} Download Failed${cRES}"
+  fi
+}
+
 geosite_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" | awk '{print$1}')
 geoip_sha256sum=$(fetch_text "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/geoip.dat.sha256sum" | awk '{print$1}')
-IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute.sha256sum" | awk '{print$1}')
-[[ -z "$IPchnroute_sha256sum" ]] && IPchnroute_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum" | awk '{print$1}')
-
-DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
-[[ -z "$DomainsChn_sha256sum" ]] && DomainsChn_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt.sha256sum" | awk '{print$1}')
-
-DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
-[[ -z "$DomainsApple_sha256sum" ]] && DomainsApple_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt.sha256sum" | awk '{print$1}')
-
-DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
-[[ -z "$DomainsGames_sha256sum" ]] && DomainsGames_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt.sha256sum" | awk '{print$1}')
-
-bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
-[[ -z "$bogusNxdomain_sha256sum" ]] && bogusNxdomain_sha256sum=$(fetch_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf.sha256sum" | awk '{print$1}')
 
 if [[ $(checkSum /opt/de_GWD/.repo/geosite.dat "$geosite_sha256sum") = "false" ]]; then
   if ! fetch_rule "/opt/de_GWD/.repo/geosite.dat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" "$geosite_sha256sum" 3000; then
@@ -130,60 +149,11 @@ if [[ $(checkSum /opt/de_GWD/.repo/geoip.dat "$geoip_sha256sum") = "false" ]]; t
   fi
 fi
 
-if [[ $(checkSum /opt/de_GWD/.repo/IPchnroute "$IPchnroute_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute" "$IPchnroute_sha256sum" 50 && \
-     ! fetch_rule "/opt/de_GWD/.repo/IPchnroute" "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" "$IPchnroute_sha256sum" 50; then
-    if [[ -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
-      echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}IPchnroute retained existing${cRES}"
-    else
-      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}IPchnroute${RED} Download Failed${cRES}"
-    fi
-  fi
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.chn.txt "$DomainsChn_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10 && \
-     ! fetch_rule "/opt/de_GWD/.repo/Domains.chn.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.chn.txt" "$DomainsChn_sha256sum" 10; then
-    if [[ -s "/opt/de_GWD/.repo/Domains.chn.txt" ]]; then
-      echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.chn.txt retained existing${cRES}"
-    else
-      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.chn.txt${RED} Download Failed${cRES}"
-    fi
-  fi
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.apple.txt "$DomainsApple_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5 && \
-     ! fetch_rule "/opt/de_GWD/.repo/Domains.apple.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.apple.txt" "$DomainsApple_sha256sum" 5; then
-    if [[ -s "/opt/de_GWD/.repo/Domains.apple.txt" ]]; then
-      echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.apple.txt retained existing${cRES}"
-    else
-      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.apple.txt${RED} Download Failed${cRES}"
-    fi
-  fi
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/Domains.games.txt "$DomainsGames_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5 && \
-     ! fetch_rule "/opt/de_GWD/.repo/Domains.games.txt" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/Domains.games.txt" "$DomainsGames_sha256sum" 5; then
-    if [[ -s "/opt/de_GWD/.repo/Domains.games.txt" ]]; then
-      echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}Domains.games.txt retained existing${cRES}"
-    else
-      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Domains.games.txt${RED} Download Failed${cRES}"
-    fi
-  fi
-fi
-
-if [[ $(checkSum /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf "$bogusNxdomain_sha256sum") = "false" ]]; then
-  if ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1 && \
-     ! fetch_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "https://raw.githubusercontent.com/jacyl4/chnroute/main/mosdns_chnlist/99-bogus-nxdomain.china.conf" "$bogusNxdomain_sha256sum" 1; then
-    if [[ -s "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]]; then
-      echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${WHITE}bogus-nxdomain retained existing${cRES}"
-    else
-      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}bogus-nxdomain.china.conf${RED} Download Failed${cRES}"
-    fi
-  fi
-fi
+sync_chnroute_rule "/opt/de_GWD/.repo/IPchnroute" "IPchnroute" 50 "IPchnroute"
+sync_chnroute_rule "/opt/de_GWD/.repo/Domains.chn.txt" "mosdns_chnlist/Domains.chn.txt" 10 "Domains.chn.txt"
+sync_chnroute_rule "/opt/de_GWD/.repo/Domains.apple.txt" "mosdns_chnlist/Domains.apple.txt" 5 "Domains.apple.txt"
+sync_chnroute_rule "/opt/de_GWD/.repo/Domains.games.txt" "mosdns_chnlist/Domains.games.txt" 5 "Domains.games.txt"
+sync_chnroute_rule "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" "mosdns_chnlist/99-bogus-nxdomain.china.conf" 1 "bogus-nxdomain.china.conf"
 
 if [[ -f "/opt/de_GWD/.repo/99-bogus-nxdomain.china.conf" ]]; then
   cp -f /opt/de_GWD/.repo/99-bogus-nxdomain.china.conf /etc/dnsmasq.d/
@@ -219,13 +189,31 @@ chmod +x /opt/de_GWD/nftables/SET_CHNROUTE.nft
 fi
 fi
 
-if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
-"/root/.acme.sh"/acme.sh --force --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --force --cron --home "/root/.acme.sh"
+if [[ -f /var/www/ssl/de_GWD.cer ]] && [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 2>/dev/null | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
+  "/root/.acme.sh"/acme.sh --force --set-default-ca --server letsencrypt
+  "/root/.acme.sh"/acme.sh --force --cron --home "/root/.acme.sh"
 
-sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
-cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
-cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
+  curDomain=$(jq -r '.FORWARD.domain // .address.serverName // empty' /opt/de_GWD/0conf 2>/dev/null)
+  parentDomain=""
+  [[ "$curDomain" == *.*.* ]] && parentDomain="${curDomain#*.}"
+  sslDir=""
+  if [[ -n "$curDomain" && -d "/root/.acme.sh/${curDomain}_ecc" ]]; then
+    sslDir="/root/.acme.sh/${curDomain}_ecc"
+  elif [[ -n "$parentDomain" && -d "/root/.acme.sh/${parentDomain}_ecc" ]]; then
+    sslDir="/root/.acme.sh/${parentDomain}_ecc"
+  else
+    sslDir=$(ls -dt /root/.acme.sh/*_ecc 2>/dev/null | head -n 1)
+  fi
+
+  if [[ -n "$sslDir" && -f "$sslDir/fullchain.cer" ]]; then
+    cp -f "$sslDir/fullchain.cer" /var/www/ssl/de_GWD.cer
+    keyFile=$(ls "$sslDir"/*.key 2>/dev/null | head -n 1)
+    [[ -n "$keyFile" ]] && cp -f "$keyFile" /var/www/ssl/de_GWD.key
+    chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+    systemctl reload nginx 2>/dev/null || systemctl force-reload nginx 2>/dev/null || true
+    systemctl is-active --quiet vtrui1 && systemctl restart vtrui1 2>/dev/null || true
+    systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true
+  fi
 fi
 
 [[ $1 = "u" ]] && service cron restart

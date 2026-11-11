@@ -50,49 +50,54 @@ plugins:
 EOF
 
 if [[ -n $doh1 ]]; then
-doh1Domain=$(echo $doh1 | cut -d/ -f1 | cut -d: -f1)
-doh1IP=$(dig @127.0.0.1 $doh1Domain -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-yq eval -i ".plugins.[0].args.entries += [\"$doh1Domain $doh1IP\"]" /opt/de_GWD/mosdns/hosts.yaml
+doh1Domain=$(echo "$doh1" | cut -d/ -f1 | cut -d: -f1)
+doh1IP=$(dig @127.0.0.1 "$doh1Domain" -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+[[ -n $doh1Domain && -n $doh1IP ]] && yq eval -i ".plugins.[0].args.entries += [\"$doh1Domain $doh1IP\"]" /opt/de_GWD/mosdns/hosts.yaml
 fi
 
 if [[ -n $doh2 ]]; then
-doh2Domain=$(echo $doh2 | cut -d/ -f1 | cut -d: -f1)
-doh2IP=$(dig @127.0.0.1 $doh2Domain -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-yq eval -i ".plugins.[0].args.entries += [\"$doh2Domain $doh2IP\"]" /opt/de_GWD/mosdns/hosts.yaml
+doh2Domain=$(echo "$doh2" | cut -d/ -f1 | cut -d: -f1)
+doh2IP=$(dig @127.0.0.1 "$doh2Domain" -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
+[[ -n $doh2Domain && -n $doh2IP ]] && yq eval -i ".plugins.[0].args.entries += [\"$doh2Domain $doh2IP\"]" /opt/de_GWD/mosdns/hosts.yaml
 fi
 
-if [[ -n $(jq -r '.dns.hosts' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
-hoststxt=$(jq -r '.dns.hosts | to_entries[] | [.value, .key] | @tsv' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' | sed 's/[[:space:]][[:space:]]*/ /g')
-echo $hoststxt | while read line; do
-  hostDomain=$(echo $line | awk '{print$2}')
-  hostIP=$(echo $line | awk '{print$1}')
+while IFS=$'\t' read -r hostIP hostDomain; do
+  [[ -n "$hostDomain" && -n "$hostIP" ]] || continue
   yq eval -i ".plugins.[0].args.entries += [\"$hostDomain $hostIP\"]" /opt/de_GWD/mosdns/hosts.yaml
-done
-hoststoml=$(echo "$hoststxt" | tr ' ' '\n' | awk 'NR%2==1 {line=$0} NR%2==0 {print "    \x27" line " " $0 "\x27,"}' | sed '$ s/,$//')
-python3 <<EOF
-import toml
+done < <(jq -r '.dns.hosts | if type == "object" then to_entries[] | "\(.value)\t\(.key)" else empty end' /opt/de_GWD/0conf 2>/dev/null)
+
+if [[ -f /opt/de_GWD/pihole/pihole.toml ]]; then
+pihole_hosts_changed=$(python3 - <<'PYEOF'
+import json, toml
+
+new_hosts = []
+try:
+    with open("/opt/de_GWD/0conf", "r") as cf:
+        conf = json.load(cf)
+    hosts_obj = conf.get("dns", {}).get("hosts", {})
+    if isinstance(hosts_obj, dict):
+        for dom, ip in hosts_obj.items():
+            dom = str(dom).strip()
+            ip = str(ip).strip()
+            if dom and ip:
+                new_hosts.append(f"{ip} {dom}")
+except Exception:
+    pass
+
 with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
- data = toml.load(f)
+    data = toml.load(f)
 
-data["dns"]["hosts"] = [
-$hoststoml
-]
-
-with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
-    toml.dump(data, f)
-EOF
-else
-python3 <<EOF
-import toml
-with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
- data = toml.load(f)
-
-data["dns"]["hosts"] = []
-
-with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
-    toml.dump(data, f)
-EOF
-sed -i '/c/{p;:a;N;$!ba;d}' /opt/de_GWD/mosdns/hosts.yaml
+old_hosts = data.get("dns", {}).get("hosts", [])
+if old_hosts != new_hosts:
+    data.setdefault("dns", {})["hosts"] = new_hosts
+    with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
+        toml.dump(data, f)
+    print("changed")
+PYEOF
+)
+if [[ "$pihole_hosts_changed" = "changed" ]] && [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
+  docker kill -s HUP pihole >/dev/null 2>&1 || true
+fi
 fi
 
 

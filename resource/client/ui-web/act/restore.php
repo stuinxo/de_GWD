@@ -1,8 +1,8 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-exec('sudo rm -rf /var/www/html/restore/de_GWD_bak &');
-if ($_FILES["file"]["name"] == "de_GWD_bak")
+exec('sudo rm -rf /var/www/html/restore/de_GWD_bak');
+if (isset($_FILES["file"]["name"]) && $_FILES["file"]["name"] == "de_GWD_bak")
 {
 	move_uploaded_file($_FILES['file']['tmp_name'], '../restore/' . "de_GWD_bak");
 	exec('sudo /opt/de_GWD/ui-restore &');

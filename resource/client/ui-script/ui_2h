@@ -3,9 +3,7 @@ rm -rf /opt/de_GWD/update
 rm -rf /opt/de_GWD/__MACOSX
 rm -rf ~/client*
 rm -rf ~/wget-log*
-rm -rf /var/log/*1*
-rm -rf /var/log/*2*
-rm -rf /var/log/*.gz
+find /var/log -maxdepth 2 -type f \( -name '*.1' -o -name '*.2' -o -name '*.gz' -o -name '*.old' \) -delete 2>/dev/null || true
 rm -rf /var/log/auth.log
 rm -rf /var/log/lighttpd*
 rm -rf /var/www/html/log.log
@@ -19,7 +17,9 @@ rm -rf /tmp/tmp.*
 sed -i '/^\s*$/d' /opt/de_GWD/0conf
 if [[ -n $(cat /opt/de_GWD/0conf) ]]; then
 	cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
+	chmod 600 /opt/de_GWD/0conf_bak
 elif [[ -z $(cat /opt/de_GWD/0conf) ]]; then
 	cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
-	chmod 666 /opt/de_GWD/0conf
+	chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+	chmod 660 /opt/de_GWD/0conf
 fi

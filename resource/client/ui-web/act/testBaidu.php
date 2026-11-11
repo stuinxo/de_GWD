@@ -1,12 +1,16 @@
+<?php require_once('../auth.php'); ?>
+<?php if (isset($auth) && $auth) {?>
 <?php
 function onlineStatus(){
     $status = array("OFFLINE", "ONLINE");
-    $handle = fsockopen("www.baidu.com",443,$errno,$errstr,2);
-    if($handle)
+    $handle = @fsockopen("www.baidu.com", 443, $errno, $errstr, 2);
+    if ($handle) {
+        fclose($handle);
         return $status[1];
-    else
-        return $status[0];
+    }
+    return $status[0];
 }
 
 echo onlineStatus();
 ?>
+<?php }?>

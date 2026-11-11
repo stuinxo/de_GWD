@@ -141,7 +141,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -173,10 +173,10 @@ $arrayNFS = !empty($rawNFS) ? explode("\n", trim($rawNFS)) : [];
 $NFSnum = count($arrayNFS);
 for( $i=0; $i<$NFSnum; $i++){
   $NFSstr1 = explode(" ",$arrayNFS[$i]);
-  $NFSstr2 = explode(":",$NFSstr1[2]);
-  $NFSpoint = $NFSstr1[0];
-  $NFSserver = $NFSstr2[0];
-  $NFSaddress = $NFSstr2[1];
+  $NFSstr2 = explode(":",$NFSstr1[2] ?? '');
+  $NFSpoint = htmlspecialchars($NFSstr1[0] ?? '', ENT_QUOTES, 'UTF-8');
+  $NFSserver = htmlspecialchars($NFSstr2[0] ?? '', ENT_QUOTES, 'UTF-8');
+  $NFSaddress = htmlspecialchars($NFSstr2[1] ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <div class="form-row">
   <div class="col-md-4 input-group my-2">

@@ -4,12 +4,10 @@ mkdir -p /opt/de_GWD/RproxyS
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
 chmod +x /opt/de_GWD/RproxyS/RproxyS
 
-RproxySinStatus=$(jq -r '.FORWARD.Rproxy.server.inStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySinUUID=$(jq -r '.FORWARD.Rproxy.server.inUUID[].RproxyS0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 cat << EOF >/opt/de_GWD/RproxyS/config.json
@@ -25,9 +23,7 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
     "servers":["tcp+local://127.0.0.1:53"]
   },
   "routing":{
-    "rules":[
-      {"type":"field","inboundTag":["reverseTunnel"],"outboundTag":"portal"}
-    ]
+    "rules":[]
   },
   "inbounds": [
     {
@@ -67,50 +63,28 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
 EOF
 
 
-if [[ $RproxySinStatus = "on" ]]; then
-for uuid in $RproxySinUUID; do
-uuidStr='{"id":"'$uuid'", "reverse":{"tag":"portal"}}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-done
+jq --arg mappingStatus "$RproxySmappingStatus" \
+   --argjson mappingList "${RproxySmappingList:-[]}" '
+  if $mappingStatus == "on" and ($mappingList | type) == "array" then
+    reduce range(0; $mappingList | length) as $i (.;
+      .routing.rules += [{"type": "field", "inboundTag": ["mapping\($i)"], "outboundTag": "portal"}]
+      | .inbounds += [{
+          "tag": "mapping\($i)",
+          "port": ($mappingList[$i].port | tonumber),
+          "protocol": "dokodemo-door",
+          "settings": {
+            "address": "127.0.0.1",
+            "port": ($mappingList[$i].port | tonumber),
+            "network": $mappingList[$i].protocol
+          }
+        }]
+    )
+  else . end
+' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
 
-uniqueClient=$(jq -r '.inbounds[0].settings.clients | unique' /opt/de_GWD/RproxyS/config.json 2>/dev/null | grep -v '^null$')
-jq --argjson uniqueClient "$uniqueClient" '.inbounds[0].settings.clients=$uniqueClient' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-fi
-
-
-if [[ $RproxySmappingStatus = "on" ]]; then
-
-len=$(echo $RproxySmappingList | jq length)
-
-for (( i=0; i<$len; i++ )); do
-port=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].port')
-protocol=$(echo $RproxySmappingList | jq -r --argjson i "$i" '.[$i].protocol')
-
-RontingMapping=`cat << EOF
-      {"type":"field","inboundTag":["mapping$i"],"outboundTag":"portal"}
-EOF
-`
-
-IBmapping=`cat << EOF
-    {
-      "tag": "mapping$i",
-      "port": $port,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1",
-        "port": $port,
-        "network": "$protocol"
-      }
-    }
-EOF
-`
-jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]' /opt/de_GWD/RproxyS/config.json |\
-jq --argjson IBmapping "$IBmapping" '.inbounds+=[$IBmapping]' | sponge /opt/de_GWD/RproxyS/config.json
-done
-fi
-
-chmod 666 /opt/de_GWD/RproxyS/config.json
-chmod 644 /var/www/ssl/*.key
+chown root:www-data /opt/de_GWD/RproxyS/config.json 2>/dev/null || true
+chmod 640 /opt/de_GWD/RproxyS/config.json
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 
 rm -rf /lib/systemd/system/RproxyS.service
 cat << "EOF" >/etc/systemd/system/RproxyS.service

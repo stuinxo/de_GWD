@@ -1,9 +1,34 @@
 #!/bin/bash
-markName=$(jq -r '.address.alias' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+python3 - <<'PYEOF'
+import html, json, os, re
 
-sed -i "/<title>/c\<title>$markName \ 寒月</title>" /var/www/html/index.php
-sed -i "/<title>/c\<title>$markName \ 中转</title>" /var/www/html/forward.php
-sed -i "/<title>/c\<title>$markName \ DDNS & Wireguard</title>" /var/www/html/ddns.php
-sed -i "/<title>/c\<title>$markName \ 应用</title>" /var/www/html/app.php
-sed -i "/<title>/c\<title>$markName \ 节点管理</title>" /var/www/html/nodes.php
-sed -i "/<title>/c\<title>$markName \ 更新</title>" /var/www/html/update.php
+alias = ""
+try:
+    with open("/opt/de_GWD/0conf", "r") as f:
+        conf = json.load(f)
+    val = conf.get("address", {}).get("alias")
+    if val is not None:
+        alias = html.escape(str(val).strip())
+except Exception:
+    pass
+
+pages = [
+    ("/var/www/html/index.php", "寒月"),
+    ("/var/www/html/forward.php", "中转"),
+    ("/var/www/html/ddns.php", "DDNS & Wireguard"),
+    ("/var/www/html/app.php", "应用"),
+    ("/var/www/html/nodes.php", "节点管理"),
+    ("/var/www/html/update.php", "更新"),
+]
+
+for path, suffix in pages:
+    if not os.path.isfile(path):
+        continue
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    new_title = f"<title>{alias}  {suffix}</title>" if alias else f"<title>{suffix}</title>"
+    updated = re.sub(r"<title>.*?</title>", lambda _: new_title, content, count=1)
+    if updated != content:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(updated)
+PYEOF

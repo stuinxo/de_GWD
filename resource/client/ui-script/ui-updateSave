@@ -1,24 +1,31 @@
 #!/bin/bash
-chmod +x /opt/de_GWD/update
-if [[ $(du -sk /opt/de_GWD/update 2>/dev/null | awk '{print$1}') -le 1 ]]; then
-updateCMDaddr=$(jq -r '.update.updateCMD' /opt/de_GWD/0conf 2>/dev/null | grep -oP "https://\K[^']+" | sed s'/.$//')
-systemctl stop nftables
+updateCMDaddr=$(jq -r '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null | grep -Eo "https?://[^[:space:]'\")<>]+" | head -n 1)
 
-rm -rf /etc/resolv.conf
-cat << EOF >/etc/resolv.conf
+if [[ -n "$updateCMDaddr" ]]; then
+  rm -f /opt/de_GWD/update
+  curl -fsSL --connect-timeout 8 -m 30 -o /opt/de_GWD/update "$updateCMDaddr" 2>/dev/null || true
+
+  if [[ $(du -sk /opt/de_GWD/update 2>/dev/null | awk '{print$1}') -le 1 ]]; then
+    systemctl stop nftables
+
+    rm -rf /etc/resolv.conf
+    cat << EOF >/etc/resolv.conf
 nameserver 119.29.29.29
 nameserver 180.76.76.76
 nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
-wget -cqO /opt/de_GWD/update $updateCMDaddr
+    wget --no-check-certificate -T 15 -t 3 -cqO /opt/de_GWD/update "$updateCMDaddr"
+  fi
 fi
 
-updatePort=$(jq -r '.update.updatePort' /opt/de_GWD/0conf)
+[[ -f /opt/de_GWD/update ]] && chmod +x /opt/de_GWD/update
+
+updatePort=$(jq -r '.update.updatePort // "3000"' /opt/de_GWD/0conf 2>/dev/null)
+[[ "$updatePort" =~ ^[0-9]+$ ]] || updatePort="3000"
 
 kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1
 tmux kill-session -t updateGWD >/dev/null 2>&1
 sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
-

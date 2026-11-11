@@ -24,7 +24,9 @@ cRES='\E[0m'
 
 chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
-[[ "openvz lxc lxc-libvirt systemd-nspawn docker podman proot pouch" =~ $(systemd-detect-virt) ]] && virt_type="container"
+virt=$(systemd-detect-virt 2>/dev/null || true)
+[[ -z "$virt" ]] && virt="none"
+systemd-detect-virt --container >/dev/null 2>&1 && virt_type="container" || virt_type=""
 export DEBIAN_FRONTEND=noninteractive
 branch="${BRANCH:-v2}"
 
@@ -37,46 +39,22 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing System Packages...${c
 if command -v debconf-set-selections >/dev/null 2>&1; then
     echo "man-db man-db/auto-update boolean false" | debconf-set-selections 2>/dev/null || true
 fi
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^subversion$') ]] && apt remove --purge -y subversion
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
-[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+grep -qE '^(ii|rc) +ipset$' <<< "$pkg_status" && apt remove --purge -y ipset
+grep -qE '^(ii|rc) +haveged$' <<< "$pkg_status" && apt remove --purge -y haveged
+grep -qE '^(ii|rc) +subversion$' <<< "$pkg_status" && apt remove --purge -y subversion
+grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
+grep -qE '^(ii|rc) +systemd-timesyncd$' <<< "$pkg_status" && apt remove --purge -y systemd-timesyncd
+grep -qE '^(ii|rc) +rng-tools(-debian)?$' <<< "$pkg_status" && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^psmisc$') ]] && aptPKG+=(psmisc)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^idn2$') ]] && aptPKG+=(idn2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^dns-root-data$') ]] && aptPKG+=(dns-root-data)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^netcat-openbsd$') ]] && aptPKG+=(netcat-openbsd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^dnsutils$') ]] && aptPKG+=(dnsutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^net-tools$') ]] && aptPKG+=(net-tools)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^resolvconf$') ]] && aptPKG+=(resolvconf)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^nftables$') ]] && aptPKG+=(nftables)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^apt-transport-https$') ]] && aptPKG+=(apt-transport-https)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^unzip$') ]] && aptPKG+=(unzip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^zstd$') ]] && aptPKG+=(zstd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^bc$') ]] && aptPKG+=(bc)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^screen$') ]] && aptPKG+=(screen)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ethtool$') ]] && aptPKG+=(ethtool)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^qrencode$') ]] && aptPKG+=(qrencode)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^unbound$') ]] && aptPKG+=(unbound)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc3') ]] && aptPKG+=(libmimalloc3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt install -y -q $(echo ${aptPKG[@]})
+for pkg in sudo wget curl git locales psmisc idn2 dns-root-data netcat-openbsd dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq bc moreutils chrony cron socat screen ethtool qrencode sqlite3 unbound libmimalloc3; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+if ! grep -qE '^ii +irqbalance$' <<< "$pkg_status" && [[ $(nproc --all) -gt 1 ]]; then
+  aptPKG+=(irqbalance)
+fi
+[[ ${#aptPKG[@]} -gt 0 ]] && apt install -y -q "${aptPKG[@]}"
 for m3 in /usr/lib/*/libmimalloc.so.3 /usr/lib/libmimalloc.so.3; do
     if [[ -f "$m3" ]]; then
         m2="${m3%.3}.2"
@@ -357,14 +335,17 @@ swapon /swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
 fi
+mkdir -p /etc/initramfs-tools/conf.d
 echo "RESUME=" >/etc/initramfs-tools/conf.d/resume
 fi
 
 mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 cat << "EOF" >/opt/de_GWD/tcpTime
-date -s "$(wget -qSO- --max-redirect=0 whatismyip.akamai.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
-[[ $? -ne "0" ]]&& date -s "$(curl -sI cloudflare.com| grep -i '^date:'|cut -d' ' -f2-)"
+#!/bin/bash
+httpDate=$(wget -T 5 -t 2 -qSO- --max-redirect=0 whatismyip.akamai.com 2>&1 | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ -z "$httpDate" ]] && httpDate=$(curl -fsSI --connect-timeout 5 -m 8 cloudflare.com 2>/dev/null | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ "$httpDate" =~ [0-9]{4} ]] && date -s "$httpDate" >/dev/null 2>&1 || true
 command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/tcpTime
@@ -642,8 +623,11 @@ timedatectl set-local-rtc 0 >/dev/null 2>&1 || true
 timedatectl set-ntp true >/dev/null 2>&1 || true
 
 if [[ $virt_type != "container" ]]; then
+mkdir -p /etc/modules-load.d
+touch /etc/modules-load.d/modules.conf
 sed -i '/nf_conntrack/d' /etc/modules-load.d/modules.conf
 sed -i '/ifb/d' /etc/modules-load.d/modules.conf
+sed -i '/sch_cake/d' /etc/modules-load.d/modules.conf
 cat << EOF >>/etc/modules-load.d/modules.conf
 nf_conntrack
 ifb
@@ -775,7 +759,7 @@ sync
 sysctl -p >/dev/null 2>&1
 fi
 
-if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
+if dpkg-query -W -f='${db:Status-Abbrev}\n' docker-ce 2>/dev/null | grep -q '^ii' && dpkg-query -W -f='${db:Status-Abbrev}\n' containerd.io 2>/dev/null | grep -q '^ii'; then
 mkdir -p /etc/docker/
 systemctl stop docker docker.socket containerd
 cat << EOF >/etc/docker/daemon.json
@@ -1198,14 +1182,8 @@ sed -i '/acme.sh/d' /tmp/now.cron
 crontab /tmp/now.cron
 rm -rf /tmp/now.cron
 
-if [[ -n "$CFtoken" ]]; then
-    export CF_Token="$CFtoken"
-    unset CF_Key CF_Email
-elif [[ -n "$CFapikey" ]]; then
-    export CF_Key="$CFapikey"
-    export CF_Email="$CFemail"
-    unset CF_Token
-fi
+export CF_Token="$CFtoken"
+unset CF_Key CF_Email
 
 local mainDomain="$domain"
 local domainArgs=("-d" "$domain" "-d" "*.$domain")
@@ -1238,68 +1216,12 @@ if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
 fi
 
 if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
-  curl -fsSL https://get.acme.sh | sh -s email="${CFemail:-admin@example.com}"
+  curl -fsSL https://get.acme.sh | sh
 fi
+sed -i '/CF_Key/d;/CF_Email/d;/ACCOUNT_EMAIL.*example\.com/d' /root/.acme.sh/account.conf 2>/dev/null || true
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
 "/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 45 "${domainArgs[@]}" -k ec-256
 "/root/.acme.sh"/acme.sh --installcert -d "$mainDomain" \
-               --key-file       /var/www/ssl/de_GWD.key  \
-               --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc
-
-chmod 644 /var/www/ssl/*.key 2>/dev/null || true
-}
-
-
-
-makeSSL_W(){
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/acme.sh/d' /tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
-rm -rf "/root/.acme.sh"
-
-rm -rf /etc/nginx/conf.d/80.conf
-rm -rf /etc/nginx/conf.d/default.conf
-cat << EOF >/etc/nginx/conf.d/default.conf
-# SERVER_BASE_START
-server {
-    listen      80 reuseport;
-    server_name $domain;
-    root        /var/www/html;
-    index       index.php index.html index.htm;
-# SERVER_BASE_END
-}
-EOF
-
-if [[ $(systemctl is-active 'nginx') != "active" ]]; then
-  systemctl restart nginx
-  if [[ $? -ne 0 ]]; then
-  sed -i '/Nice=/d' /etc/systemd/system/nginx.service
-  systemctl daemon-reload >/dev/null
-  systemctl restart nginx
-  fi
-else
-systemctl force-reload nginx
-fi
-
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {} 2>/dev/null || true
-if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
-  mkdir -p /var/www/ssl
-  openssl req -x509 -nodes -days 365 \
-    -subj "/C=CA/ST=QC/O=Company, Inc./CN=$domain" \
-    -newkey rsa:2048 \
-    -keyout /var/www/ssl/de_GWD.key \
-    -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
-  chmod 644 /var/www/ssl/de_GWD.key 2>/dev/null || true
-fi
-
-curl https://get.acme.sh | sh
-"/root/.acme.sh"/acme.sh --upgrade  --auto-upgrade
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue -d $domain -w /var/www/html -k ec-256
-"/root/.acme.sh"/acme.sh --installcert -d $domain \
                --key-file       /var/www/ssl/de_GWD.key  \
                --fullchain-file /var/www/ssl/de_GWD.cer \
                --reloadcmd     "systemctl force-reload nginx" \
@@ -1503,14 +1425,11 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
 }
 EOF
 
-for uuid in $uuids; do
-uuidStr='{"id": "'$uuid'"}'
-jq --argjson uuidStr "$uuidStr" '.inbounds[0].settings.clients+=[$uuidStr]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-done
-
-if [[ "$extraInbounds" != "[]" ]]; then
-  jq --argjson extra "$extraInbounds" '.inbounds += $extra' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-fi
+clientsJson=$(printf '%s\n' $uuids | jq -R 'select(length > 0) | {id: .}' | jq -s '.')
+jq --argjson clients "${clientsJson:-[]}" --argjson extra "${extraInbounds:-[]}" \
+  '.inbounds[0].settings.clients += $clients | if ($extra | length) > 0 then .inbounds += $extra else . end' \
+  /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+chmod 644 /opt/de_GWD/vtrui/config.json
 }
 
 
@@ -1534,9 +1453,9 @@ OBblo=`cat << EOF
 EOF
 `
 
-jq '.outbounds=[]' /opt/de_GWD/vtrui/config.json |\
-jq --argjson OBdir "$OBdir" '.outbounds+=[$OBdir]' |\
-jq --argjson OBblo "$OBblo" '.outbounds+=[$OBblo]' | sponge /opt/de_GWD/vtrui/config.json
+jq --argjson OBdir "$OBdir" --argjson OBblo "$OBblo" \
+  '.outbounds = [$OBdir, $OBblo]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+chmod 644 /opt/de_GWD/vtrui/config.json
 }
 
 
@@ -1563,16 +1482,13 @@ fi
 
 cat << "EOF" >/opt/de_GWD/Q2H
 #!/bin/bash
-virt=$(systemd-detect-virt)
-virtCON="openvz lxc lxc-libvirt systemd-nspawn docker podman rkt wsl proot pouch"
-
-[[ $virt_type != "container" ]] && /opt/de_GWD/tcpTime
+if ! systemd-detect-virt --container >/dev/null 2>&1; then
+  /opt/de_GWD/tcpTime
+fi
 
 rm -rf ~/server*
 rm -rf ~/wget-log
-rm -rf /var/log/*1*
-rm -rf /var/log/*2*
-rm -rf /var/log/*.gz
+find /var/log -maxdepth 2 -type f \( -name '*.1' -o -name '*.2' -o -name '*.gz' -o -name '*.old' \) -delete 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/Q2H
 /opt/de_GWD/Q2H
@@ -1580,15 +1496,30 @@ chmod +x /opt/de_GWD/Q2H
 
 cat << "EOF" >/opt/de_GWD/Qday
 #!/bin/bash
-if [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
-"/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --cron --force --home "/root/.acme.sh"
+if [[ -f /var/www/ssl/de_GWD.cer ]] && [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 2>/dev/null | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
+  "/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt
+  "/root/.acme.sh"/acme.sh --cron --force --home "/root/.acme.sh"
 
-sslFolder=$(ls "/root/.acme.sh" | grep '_ecc')
-cp -f "/root/.acme.sh"/$sslFolder/fullchain.cer /var/www/ssl/de_GWD.cer
-cp -f "/root/.acme.sh"/$sslFolder/*.key /var/www/ssl/de_GWD.key
+  curDomain=$(awk '/server_name/ {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/;$//')
+  parentDomain=""
+  [[ "$curDomain" == *.*.* ]] && parentDomain="${curDomain#*.}"
+  sslDir=""
+  if [[ -n "$curDomain" && -d "/root/.acme.sh/${curDomain}_ecc" ]]; then
+    sslDir="/root/.acme.sh/${curDomain}_ecc"
+  elif [[ -n "$parentDomain" && -d "/root/.acme.sh/${parentDomain}_ecc" ]]; then
+    sslDir="/root/.acme.sh/${parentDomain}_ecc"
+  else
+    sslDir=$(ls -dt /root/.acme.sh/*_ecc 2>/dev/null | head -n 1)
+  fi
 
-chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+  if [[ -n "$sslDir" && -f "$sslDir/fullchain.cer" ]]; then
+    cp -f "$sslDir/fullchain.cer" /var/www/ssl/de_GWD.cer
+    keyFile=$(ls "$sslDir"/*.key 2>/dev/null | head -n 1)
+    [[ -n "$keyFile" ]] && cp -f "$keyFile" /var/www/ssl/de_GWD.key
+    chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+    systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+    systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true
+  fi
 fi
 EOF
 chmod +x /opt/de_GWD/Qday
@@ -1636,15 +1567,6 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Post Install${
 
 cat << "EOF" >/tmp/comRestart
 #!/bin/bash
-virt=$(systemd-detect-virt)
-[[ -n $(echo "openvz lxc lxc-libvirt systemd-nspawn docker podman rkt wsl proot pouch" | grep $virt) ]] && virt_type="container"
-
-if [[ $virt_type = "container" ]]; then
-sed -i '/de_GWD.socket/c\proxy_pass http://127.0.0.1:9896;' /etc/nginx/conf.d/default.conf
-jq 'del(.inbounds[0].listen)' /opt/de_GWD/vtrui/config.json |\
-jq '.inbounds[0].port=9896' | sponge /opt/de_GWD/vtrui/config.json
-fi
-
 systemctl restart doh-server
 if [[ $? -ne 0 ]]; then
 sed -i '/Nice=/d' /etc/systemd/system/doh-server.service
@@ -1724,18 +1646,10 @@ fi
 
 if [[ "$sslMode" == "2" ]]; then
     echo -e "${GREEN}================================================================ ${cRES}"
-    echo -e "${GREEN} Cloudflare API Token (Recommended with Zone:DNS:Edit permission)${cRES}"
-    echo -e "${GREEN} Or enter legacy Cloudflare Global API Key${cRES}"
+    echo -e "${GREEN} Cloudflare API Token (Zone:DNS:Edit permission)${cRES}"
     echo -e "${GREEN}================================================================ ${cRES}"
-    read -p "Enter CF API Token or Global Key: " cfInput
-    cfInput=$(echo "$cfInput" | tr -d ' ')
-    if [[ ${#cfInput} -eq 37 && ! "$cfInput" =~ [_-] ]]; then
-        CFapikey="$cfInput"
-        read -p "Enter Cloudflare Account Email: " CFemail
-        CFemail=$(echo "$CFemail" | tr -d ' ')
-    else
-        CFtoken="$cfInput"
-    fi
+    read -p "Enter CF API Token: " CFtoken
+    CFtoken=$(echo "$CFtoken" | tr -d ' ')
 fi
 
 if [[ "$sslMode" == "3" && -f "/var/www/ssl/de_GWD.cer" && -f "/var/www/ssl/de_GWD.key" ]]; then
@@ -1809,8 +1723,8 @@ else
 localAddrIPv4=$(ip -4 a | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
 if [[ -n $localAddrIPv4 ]]; then
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^wireguard-tools$') ]] && aptPKG+=(wireguard-tools)
-[[ -n $aptPKG ]] && apt update && apt install -y -q $(echo ${aptPKG[@]})
+dpkg-query -W -f='${db:Status-Abbrev}\n' wireguard-tools 2>/dev/null | grep -q '^ii' || aptPKG+=(wireguard-tools)
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y -q "${aptPKG[@]}"
 
 ghREPO="ViRb3/wgcf"
 ghPackage="linux_$architecture"
@@ -2251,7 +2165,7 @@ setInboundPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_ports.json ]] && echo '{}' > /opt/de_GWD/extra_ports.json
     jq --arg tag "$in_tag" --argjson p "$p" '.[$tag] = $p' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json
-    chmod 666 /opt/de_GWD/extra_ports.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_ports.json 2>/dev/null || true
 }
 
 getInternalPort() {
@@ -2292,10 +2206,18 @@ setupNginxWebProxy() {
         connHeaders='        proxy_set_header Connection "";'
     fi
 
-    cat << EOF > "/etc/nginx/conf.d/${confName}.conf"
+    local ipv6Listen=""
+    if [[ -f /proc/net/if_inet6 ]] && [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" != "1" ]]; then
+        ipv6Listen="    listen [::]:${pubPort} ssl;"
+    fi
+    local confPath="/etc/nginx/conf.d/${confName}.conf"
+    local bakPath="/tmp/${confName}.conf.bak.$$"
+    [[ -f "$confPath" ]] && cp -f "$confPath" "$bakPath"
+
+    cat << EOF > "$confPath"
 server {
     listen ${pubPort} ssl;
-    listen [::]:${pubPort} ssl;
+${ipv6Listen}
     http2 on;
     server_name ${domain};
     root /var/www/html;
@@ -2332,7 +2254,17 @@ ${connHeaders}
 }
 EOF
     rm -f "/etc/nginx/conf.d/v2_${tag}.conf" 2>/dev/null || true
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    if nginx -t >/dev/null 2>&1; then
+        rm -f "$bakPath"
+        systemctl reload nginx
+    else
+        if [[ -f "$bakPath" ]]; then
+            mv -f "$bakPath" "$confPath"
+        else
+            rm -f "$confPath"
+        fi
+        return 1
+    fi
 }
 
 removeNginxWebProxy() {
@@ -2424,7 +2356,7 @@ parseDomainAndPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_domains.json ]] && echo '{}' > /opt/de_GWD/extra_domains.json
     jq --arg tag "$in_tag" --arg dom "$target_domain" '.[$tag] = $dom' /opt/de_GWD/extra_domains.json | sponge /opt/de_GWD/extra_domains.json
-    chmod 666 /opt/de_GWD/extra_domains.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_domains.json 2>/dev/null || true
 }
 
 removeXrayInbound() {
@@ -3240,7 +3172,7 @@ EOF
 
 disableAllExtraProtocols() {
     clear 2>/dev/null || true
-    read -p "Are you sure you want to disable ALL extra protocols? (Default VMess node will be kept) [y/N]: " confirm
+    read -p "Are you sure you want to disable ALL extra protocols? (Default VLESS node will be kept) [y/N]: " confirm
     if [[ "$confirm" =~ ^[yY] ]]; then
         local tags=("inbound-vless-reality" "inbound-vless-xhttp" "inbound-vless-ws" "inbound-vmess-ws" "inbound-socks5" "inbound-dokodemo")
         for t in "${tags[@]}"; do
@@ -3414,7 +3346,7 @@ fi
 
 if [[ -f /opt/de_GWD/server ]]; then
   chmod +x /opt/de_GWD/server
-  grep -q 'start_menu' /opt/de_GWD/server || echo 'start_menu' >> /opt/de_GWD/server
+  grep -qx 'start_menu' /opt/de_GWD/server || echo 'start_menu' >> /opt/de_GWD/server
   ln -sf /opt/de_GWD/server /usr/local/bin/dex 2>/dev/null
   ln -sf /opt/de_GWD/server /usr/bin/dex 2>/dev/null
   ln -sf /opt/de_GWD/server /usr/local/bin/de_GWD 2>/dev/null
@@ -3451,18 +3383,10 @@ fi
 
 if [[ "$sslMode" == "2" ]]; then
     echo -e "${GREEN}================================================================ ${cRES}"
-    echo -e "${GREEN} Cloudflare API Token (Recommended with Zone:DNS:Edit permission)${cRES}"
-    echo -e "${GREEN} Or enter legacy Cloudflare Global API Key${cRES}"
+    echo -e "${GREEN} Cloudflare API Token (Zone:DNS:Edit permission)${cRES}"
     echo -e "${GREEN}================================================================ ${cRES}"
-    read -p "Enter CF API Token or Global Key: " cfInput
-    cfInput=$(echo "$cfInput" | tr -d ' ')
-    if [[ ${#cfInput} -eq 37 && ! "$cfInput" =~ [_-] ]]; then
-        CFapikey="$cfInput"
-        read -p "Enter Cloudflare Account Email: " CFemail
-        CFemail=$(echo "$CFemail" | tr -d ' ')
-    else
-        CFtoken="$cfInput"
-    fi
+    read -p "Enter CF API Token: " CFtoken
+    CFtoken=$(echo "$CFtoken" | tr -d ' ')
 fi
 
 uuids=$(cat /proc/sys/kernel/random/uuid)
@@ -3534,6 +3458,10 @@ XrayOutboundDirect
 
 postInstall
 
+if [[ -f /opt/de_GWD/RproxyS/settings.json ]] && systemctl is-enabled --quiet RproxyS 2>/dev/null; then
+  RproxySsave >/dev/null 2>&1 || true
+fi
+
 saveCommand
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Updated${cRES}"
@@ -3547,20 +3475,24 @@ enableAutoUpdate(){
 cat << "EOF" >/opt/de_GWD/autoUpdate
 #!/bin/bash
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
-remoteVer=$(curl -fsSLo- https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1)
+remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1 | tr -d '\r ')
 
-echo $localVer >/tmp/de_GWD_Ver
-echo $remoteVer >>/tmp/de_GWD_Ver
+if [[ -z "$remoteVer" ]] || [[ ! "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] || [[ "$remoteVer" == "$localVer" ]]; then
+  exit 0
+fi
 
-VerCP=$(cat /tmp/de_GWD_Ver | sort -rV | uniq | awk NR==2)
+echo "$localVer" >/tmp/de_GWD_Ver
+echo "$remoteVer" >>/tmp/de_GWD_Ver
+
+VerCP=$(sort -rV /tmp/de_GWD_Ver | uniq | awk 'NR==2')
 
 if [[ $VerCP == $localVer ]]; then
 rm -rf /tmp/autoUpdate
 wget -t 5 -T 10 -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinxo/de_GWD/v2/server
 
 if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
-sed -i '$d' /tmp/autoUpdate
-echo "updateGWD" >>  /tmp/autoUpdate
+awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' /tmp/autoUpdate >/tmp/autoUpdate.tmp && mv -f /tmp/autoUpdate.tmp /tmp/autoUpdate
+echo "updateGWD" >> /tmp/autoUpdate
 chmod +x /tmp/autoUpdate
 /tmp/autoUpdate
 rm -rf /tmp/autoUpdate
@@ -3634,16 +3566,12 @@ RproxySsave(){
 local settings=/opt/de_GWD/RproxyS/settings.json
 local RproxyStunnelPort=$(jq -r '.port // empty' "$settings" 2>/dev/null)
 local RproxyStunnelUUID=$(jq -r '.uuid // empty' "$settings" 2>/dev/null)
-local RproxySinUUID=$(jq -r '.clients[]? // empty' "$settings" 2>/dev/null)
 local RproxySmappingList=$(jq -c '.mapping // []' "$settings" 2>/dev/null)
 
 [[ ! -x /opt/de_GWD/vtrui/vtrui ]] && return 1
 [[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) || return 1
 [[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || return 1
 
-for uuid in $RproxySinUUID; do
-  [[ $uuid =~ ^[0-9a-fA-F-]{36}$ ]] || return 1
-done
 local len=$(echo "$RproxySmappingList" | jq length)
 for (( i=0; i<len; i++ )); do
   local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
@@ -3697,10 +3625,6 @@ cat << EOF >/opt/de_GWD/RproxyS/config.json
   "routing": {"rules":[]}
 }
 EOF
-
-for uuid in $RproxySinUUID; do
-  jq --arg id "$uuid" '.inbounds[0].settings.clients += [{"id":$id,"reverse":{"tag":"portal"}}]' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-done
 
 for (( i=0; i<len; i++ )); do
   local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
@@ -3770,14 +3694,14 @@ systemctl daemon-reload >/dev/null
 RproxySensureSettings(){
 local settings=/opt/de_GWD/RproxyS/settings.json
 if [[ -f $settings ]]; then
-  jq -e '(.port | type == "number") and (.uuid | type == "string") and (.clients | type == "array") and (.mapping | type == "array")' "$settings" >/dev/null 2>&1 || {
+  jq -e '(.port | type == "number") and (.uuid | type == "string") and (.mapping | type == "array")' "$settings" >/dev/null 2>&1 || {
     echo -e "${RED}Invalid RproxyS settings${cRES}"
     return 1
   }
   return 0
 fi
 
-local RproxyStunnelPort RproxyStunnelUUID RproxySClients
+local RproxyStunnelPort RproxyStunnelUUID
 echo -e "${GREEN}============================ ${cRES}"
 echo -e "${GREEN}RproxyS base settings${cRES}"
 echo -e "${GREEN}============================ ${cRES}"
@@ -3787,19 +3711,10 @@ RproxyStunnelPort=${RproxyStunnelPort:-20000}
 read -r -p "RproxyS UUID [auto]: " RproxyStunnelUUID
 RproxyStunnelUUID=${RproxyStunnelUUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || /opt/de_GWD/vtrui/vtrui uuid 2>/dev/null)}
 [[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
-read -r -p "Extra client UUIDs, comma separated [none]: " RproxySClients
 
 local temp=/tmp/RproxyS.settings.$$
 jq -n --argjson port "$RproxyStunnelPort" --arg uuid "$RproxyStunnelUUID" \
-  '{port:$port,uuid:$uuid,clients:[],mapping:[]}' >"$temp" || { rm -f "$temp"; return 1; }
-local clientUUID
-IFS=',' read -r -a clientUUIDs <<< "$RproxySClients"
-for clientUUID in "${clientUUIDs[@]}"; do
-  clientUUID=${clientUUID//[[:space:]]/}
-  [[ -z $clientUUID ]] && continue
-  [[ $clientUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { rm -f "$temp"; echo -e "${RED}Invalid client UUID${cRES}"; return 1; }
-  jq --arg id "$clientUUID" '.clients += [$id]' "$temp" | sponge "$temp"
-done
+  '{port:$port,uuid:$uuid,mapping:[]}' >"$temp" || { rm -f "$temp"; return 1; }
 mkdir -p /opt/de_GWD/RproxyS
 mv -f "$temp" "$settings"
 chmod 600 "$settings"
@@ -3999,11 +3914,11 @@ else
 fi
 
 if [[ $(systemctl is-active 'doh-server') = "active" ]]; then
-  echo -e "${WHITE} DoH serverr    \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
+  echo -e "${WHITE} DoH server     \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
 elif [[ ! -f "/opt/de_GWD/doh-server" ]]; then
-  echo -e "${WHITE} DoH serverr    \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
+  echo -e "${WHITE} DoH server     \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
-  echo -e "${WHITE} DoH serverr    \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
+  echo -e "${WHITE} DoH server     \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
 fi
 
 if [[ -n $(crontab -l 2>&1 | grep "autoUpdate") ]] && [[ -f "/opt/de_GWD/autoUpdate" ]]; then
@@ -4020,7 +3935,7 @@ echo -e "${BLUE}$virt${cRES}"
 
 if [[ $virt_type = "container" ]]; then
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
- echo -e "${BLUE}Debian Version:                 $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) ${cRES}"
+ echo -e "${BLUE}Debian Version:                 $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") ${cRES}"
  echo -e "${BLUE}Kernel:                         $(uname -r) ${cRES}"
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
  echo -e "${BLUE}SSL certificate expires on:     $sslExpireDate${cRES}"
@@ -4037,9 +3952,8 @@ if [[ $virt_type = "container" ]]; then
  echo -e "${GREEN}================================================================ ${cRES}"
  echo
  echo -e "${GREEN}1. Install de_GWD${cRES}"
- echo -e "${GREEN}2. Install lkl-haproxy${cRES}"
-   echo -e "${RED}4. Change domain and generate new certificate${cRES}"
-   echo -e "${RED}5. Change Xray path & UUID${cRES}"
+   echo -e "${RED}3. Change domain and generate new certificate${cRES}"
+   echo -e "${RED}4. Change Xray path & UUID${cRES}"
 echo -e "${YELLOW}0. Update de_GWD${cRES}"
    echo -e "${RED}00.AutoUpdate turn on/off${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
@@ -4055,14 +3969,11 @@ read -p "Select:" num || exit
     installGWD
     start_menu
     ;;
-    2)
-    bash <(wget --no-check-certificate -qO- https://github.com/mzz2017/lkl-haproxy/raw/master/lkl-haproxy.sh)
-    ;;
-    4)
+    3)
     changeDomain
     start_menu
     ;;
-    5)
+    4)
     changeXrayVerify
     start_menu
     ;;
@@ -4104,7 +4015,7 @@ read -p "Select:" num || exit
 
 else
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
- echo -e "${BLUE}Debian Version:                 $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) ${cRES}"
+ echo -e "${BLUE}Debian Version:                 $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") ${cRES}"
  echo -e "${BLUE}Kernel:                         $(uname -r) ${cRES}"
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
  echo -e "${BLUE}SSL certificate expires on:     $sslExpireDate${cRES}"

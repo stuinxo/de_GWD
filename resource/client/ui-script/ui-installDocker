@@ -8,21 +8,26 @@ PURPLE='\E[1;35m'
 CYAN='\E[1;36m'
 WHITE='\E[1;37m'
 cRES='\E[0m'
-dockerComposeVer_reserved="1.29.2"
+dockerComposeVer_reserved="v2.32.4"
 
 
 
 installDocker(){
-curl -fsSLo- https://download.docker.com/linux/debian/gpg | gpg --dearmor >/usr/share/keyrings/docker-ce-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-ce-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
+mkdir -p /usr/share/keyrings
+rm -f /usr/share/keyrings/docker-ce-archive-keyring.gpg
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
+[[ ! -s /usr/share/keyrings/docker-archive-keyring.gpg ]] && curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") stable" >/etc/apt/sources.list.d/docker.list
 
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce-cli$') ]] && aptPKG+=(docker-ce-cli)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]] && aptPKG+=(containerd.io)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+for pkg in docker-ce docker-ce-cli containerd.io; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
 
-if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+if grep -qE '^ii +docker-ce$' <<< "$pkg_status" && grep -qE '^ii +containerd\.io$' <<< "$pkg_status"; then
 mkdir -p /etc/docker/
 systemctl stop docker containerd
 cat << EOF >/etc/docker/daemon.json
@@ -33,10 +38,10 @@ EOF
 systemctl restart docker
 fi
 
-dockerComposeVer=$(curl -fsSL "https://api.github.com/repos/docker/compose/releases/latest" | jq -r .tag_name | grep -v '^null$')
-[[ -z $dockerComposeVer_reserved ]] && dockerComposeVer=$dockerComposeVer_reserved
+dockerComposeVer=$(curl -fsSL --connect-timeout 5 -m 10 "https://api.github.com/repos/docker/compose/releases/latest" 2>/dev/null | jq -r .tag_name | grep -v '^null$')
+[[ -z "$dockerComposeVer" ]] && dockerComposeVer="$dockerComposeVer_reserved"
 
-curl -L https://github.com/docker/compose/releases/download/$dockerComposeVer/docker-compose-$(uname -s)-$(uname -m) >/usr/local/bin/docker-compose
+curl -fsSL "https://github.com/docker/compose/releases/download/$dockerComposeVer/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Docker${cRES}"

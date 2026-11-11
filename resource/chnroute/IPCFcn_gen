@@ -1,6 +1,0 @@
-#!/bin/bash
->IPCFcn
-wget --no-check-certificate -qO- https://www.cloudflare.com/ips-v4 | while read line
-do
-python3 IPCFcn_convert.py $line >>IPCFcn
-done

@@ -24,6 +24,7 @@ cRES='\E[0m'
 
 chmod 777 /tmp
 architecture=$(dpkg --print-architecture)
+systemd-detect-virt --container >/dev/null 2>&1 && virt_type="container" || virt_type=""
 export DEBIAN_FRONTEND=noninteractive
 TTYD_Ver="1.7.7"
 branch="${BRANCH:-v2}"
@@ -33,12 +34,6 @@ installCMD=`cat << EOF
 bash <(wget --no-check-certificate -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/${branch:-v2}/client)
 EOF
 `
-
-if [[ $architecture = "arm64" ]];then
-chnAPTsource="mirrors.tuna.tsinghua.edu.cn"
-elif [[ $architecture = "amd64" ]]; then
-chnAPTsource="mirrors.aliyun.com"
-fi
 
 gh_text(){
   local url="$1"
@@ -108,65 +103,43 @@ echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
 apt update && apt install -y apparmor apparmor-utils google-perftools
 fi
 
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^ipset$') ]] && apt remove --purge -y ipset
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^haveged$') ]] && apt remove --purge -y haveged
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^os-prober$') ]] && apt remove --purge -y os-prober
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^systemd-timesyncd$') ]] && apt remove --purge -y systemd-timesyncd
-[[ -n $(dpkg -l | awk '{print$2}' | grep -E '^rng-tools(-debian)?$') ]] && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+grep -qE '^(ii|rc) +ipset$' <<< "$pkg_status" && apt remove --purge -y ipset
+grep -qE '^(ii|rc) +haveged$' <<< "$pkg_status" && apt remove --purge -y haveged
+grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
+grep -qE '^(ii|rc) +systemd-timesyncd$' <<< "$pkg_status" && apt remove --purge -y systemd-timesyncd
+grep -qE '^(ii|rc) +rng-tools(-debian)?$' <<< "$pkg_status" && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^sudo$') ]] && aptPKG+=(sudo)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^wget$') ]] && aptPKG+=(wget)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^curl$') ]] && aptPKG+=(curl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^git$') ]] && aptPKG+=(git)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^locales$') ]] && aptPKG+=(locales)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^netcat-openbsd$') ]] && aptPKG+=(netcat-openbsd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^lsof$') ]] && aptPKG+=(lsof)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^dnsutils$') ]] && aptPKG+=(dnsutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^net-tools$') ]] && aptPKG+=(net-tools)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^resolvconf$') ]] && aptPKG+=(resolvconf)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^nftables$') ]] && aptPKG+=(nftables)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ca-certificates$') ]] && aptPKG+=(ca-certificates)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^apt-transport-https$') ]] && aptPKG+=(apt-transport-https)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^gnupg2$') ]] && aptPKG+=(gnupg2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^unzip$') ]] && aptPKG+=(unzip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^zstd$') ]] && aptPKG+=(zstd)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^jq$') ]] && aptPKG+=(jq)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^qrencode$') ]] && aptPKG+=(qrencode)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^bc$') ]] && aptPKG+=(bc)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^moreutils$') ]] && aptPKG+=(moreutils)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^chrony$') ]] && aptPKG+=(chrony)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^cron$') ]] && aptPKG+=(cron)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^irqbalance$') ]] && [[ $(nproc --all) -gt 1 ]] && aptPKG+=(irqbalance)
-[[ -n $aptPKG ]] && apt install -y -q $(echo ${aptPKG[@]})
+for pkg in sudo wget curl git locales netcat-openbsd lsof dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq qrencode bc moreutils chrony cron; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+if ! grep -qE '^ii +irqbalance$' <<< "$pkg_status" && [[ $(nproc --all) -gt 1 ]]; then
+  aptPKG+=(irqbalance)
+fi
+[[ ${#aptPKG[@]} -gt 0 ]] && apt install -y -q "${aptPKG[@]}"
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}System Packages Ready${cRES}"
 }
 
 pkgDEP2(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing Docker & PHP Services (may take 1-2 min)...${cRES}\r\c"
+mkdir -p /usr/share/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
 [[ ! -s /usr/share/keyrings/docker-archive-keyring.gpg ]] && curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) stable" >/etc/apt/sources.list.d/docker.list
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") stable" >/etc/apt/sources.list.d/docker.list
 
 
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^python3-toml$') ]] && aptPKG+=(python3-toml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^psmisc$') ]] && aptPKG+=(psmisc)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^dns-root-data$') ]] && aptPKG+=(dns-root-data)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^idn2$') ]] && aptPKG+=(idn2)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^ethtool$') ]] && aptPKG+=(ethtool)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^tmux$') ]] && aptPKG+=(tmux)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^socat$') ]] && aptPKG+=(socat)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^zip$') ]] && aptPKG+=(zip)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && aptPKG+=(docker-ce)
-[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.4)?-fpm$') ]] && aptPKG+=(php-fpm)
-[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.4)?-cgi$') ]] && aptPKG+=(php-cgi)
-[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.4)?-sqlite3$') ]] && aptPKG+=(php-sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.4)?-xml$') ]] && aptPKG+=(php-xml)
-[[ -z $(dpkg -l | awk '{print$2}' | grep -E '^php(8\.4)?-intl$') ]] && aptPKG+=(php-intl)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^sqlite3$') ]] && aptPKG+=(sqlite3)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^libmimalloc3') ]] && aptPKG+=(libmimalloc3)
-[[ -n $aptPKG ]] && apt update -q && apt install -y -q $(echo ${aptPKG[@]})
+for pkg in python3-toml psmisc dns-root-data idn2 ethtool tmux socat zip docker-ce sqlite3 libmimalloc3; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+grep -qE '^ii +php(8\.4)?-fpm$' <<< "$pkg_status" || aptPKG+=(php-fpm)
+grep -qE '^ii +php(8\.4)?-cgi$' <<< "$pkg_status" || aptPKG+=(php-cgi)
+grep -qE '^ii +php(8\.4)?-sqlite3$' <<< "$pkg_status" || aptPKG+=(php-sqlite3)
+grep -qE '^ii +php(8\.4)?-xml$' <<< "$pkg_status" || aptPKG+=(php-xml)
+grep -qE '^ii +php(8\.4)?-intl$' <<< "$pkg_status" || aptPKG+=(php-intl)
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update -q && apt install -y -q "${aptPKG[@]}"
 for m3 in /usr/lib/*/libmimalloc.so.3 /usr/lib/libmimalloc.so.3; do
     if [[ -f "$m3" ]]; then
         m2="${m3%.3}.2"
@@ -197,17 +170,22 @@ if [[ -f "./resource/chnroute/IPchnroute" ]]; then
 elif [[ -f "./IPchnroute" ]]; then
     cp -f ./IPchnroute /opt/de_GWD/.repo/IPchnroute
 elif [[ ! -s "/opt/de_GWD/.repo/IPchnroute" ]]; then
-    sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute.sha256sum")
-    [[ -z "$sha256sum_IPchnroute" ]] && sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum")
     rm -rf /tmp/IPchnroute
-    if gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute" 100 || \
-       gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" 100; then
-        if [[ -n "$sha256sum_IPchnroute" && $(checkSum /tmp/IPchnroute $sha256sum_IPchnroute) = "false" ]]; then
-            echo -e "${WHITE}IPchnroute${RED} Checksum Failed${cRES}" && exit 1
-        fi
+    sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute.sha256sum")
+    if gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/jacyl4/chnroute/main/IPchnroute" 50 && \
+       { [[ -z "$sha256sum_IPchnroute" ]] || [[ $(checkSum /tmp/IPchnroute "$sha256sum_IPchnroute") = "true" ]]; }; then
         mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
     else
-        echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit 1
+        rm -rf /tmp/IPchnroute
+        sha256sum_IPchnroute=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute.sha256sum")
+        if gh_download /tmp/IPchnroute "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/chnroute/IPchnroute" 50; then
+            if [[ -n "$sha256sum_IPchnroute" && $(checkSum /tmp/IPchnroute "$sha256sum_IPchnroute") = "false" ]]; then
+                echo -e "${WHITE}IPchnroute${RED} Checksum Failed${cRES}" && exit 1
+            fi
+            mv -f /tmp/IPchnroute /opt/de_GWD/.repo/IPchnroute
+        else
+            echo -e "${WHITE}IPchnroute${RED} Download Failed${cRES}" && exit 1
+        fi
     fi
 fi
 
@@ -270,8 +248,9 @@ fi
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
 echo
-date -s "$(curl -sI aliyun.com| grep -i '^date:'|cut -d' ' -f2-)"
-[[ $? -ne "0" ]] && date -s "$(wget -qSO- --max-redirect=0 --dns-timeout=3 baidu.com 2>&1 | grep Date: | cut -d' ' -f5-8)Z"
+httpDate=$(curl -fsSI --connect-timeout 5 -m 8 aliyun.com 2>/dev/null | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ -z "$httpDate" ]] && httpDate=$(wget -T 5 -t 2 -qSO- --max-redirect=0 --dns-timeout=3 baidu.com 2>&1 | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
+[[ "$httpDate" =~ [0-9]{4} ]] && date -s "$httpDate"
 command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true
 echo
 EOF
@@ -361,43 +340,43 @@ service cron stop
 sed -i "/nfsvers/d" /etc/fstab >/dev/null 2>&1
 sed -i '/quic/d' /etc/nginx/conf.d/*.conf >/dev/null 2>&1
 
-[[ $(jq '.v2nodeDIV.nodeSM' /opt/de_GWD/0conf) = "[]" ]] && jq '.v2nodeDIV.nodeSM={}' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ $(jq '.v2nodeDIV.nodeDT' /opt/de_GWD/0conf) = "[]" ]] && jq '.v2nodeDIV.nodeDT={}' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ $(jq '.v2nodeDIV.nodeCU' /opt/de_GWD/0conf) = "[]" ]] && jq '.v2nodeDIV.nodeCU={}' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-[[ -n $(jq '.v2nodeDIV.nodeCU.custom' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.v2nodeDIV.nodeCU.custom)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.v2nodeDIV.nodeDT.divert' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.v2nodeDIV.nodeDT.divert)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.v2nodeDIV.nodeDT.ip' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.v2nodeDIV.nodeDT.ip)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.listB' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.listB)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.listW' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.listW)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.listBlan' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.listBlan)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.listWlan' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.listWlan)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.dns.APPLEcn' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.dns.APPLEcn)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.dns.STEAMcn' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.dns.STEAMcn)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.v2nodeDIV.directApple' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.v2nodeDIV.directApple)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-[[ -n $(jq '.v2nodeDIV.directSteam' /opt/de_GWD/0conf | grep -v '^null$') ]] && jq 'del(.v2nodeDIV.directSteam)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-dohORI=$(jq -r '.dns.DOH' /opt/de_GWD/0conf | grep -v '^null$')
-dogORI=$(jq -r '.dns.DoG' /opt/de_GWD/0conf | grep -v '^null$')
-[[ -n $dohORI ]] && jq --argjson doh "$dohORI" '.dns.doh=$doh' /opt/de_GWD/0conf | jq 'del(.dns.DOH)' | sponge /opt/de_GWD/0conf
-[[ -n $dogORI ]] && jq --arg dog "$dogORI" '.dns.dog=$dog' /opt/de_GWD/0conf | jq 'del(.dns.DoG)' | sponge /opt/de_GWD/0conf
-
-adlists=$(jq -r '.dns.adlistsURL' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-[[ -n $(jq '.[]' <<< "$adlists") ]] && jq --argjson adlists "$adlists" '.dns.adlists=$adlists' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-adBlist=$(jq -r '.dns.adBlistURL' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-[[ -n $(jq '.[]' <<< "$adBlist") ]] && jq --argjson adBlist "$adBlist" '.dns.adBlist=$adBlist' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-adBregex=$(jq -r '.dns.regexRule' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-[[ -n $(jq '.[]' <<< "$adBregex") ]] && jq --argjson adBregex "$adBregex" '.dns.adBregex=$adBregex' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-adWlist=$(jq -r '.dns.adWlistURL' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-[[ -n $(jq '.[]' <<< "$adWlist") ]] && jq --argjson adWlist "$adWlist" '.dns.adWlist=$adWlist' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-
-jq 'del(.dns.adlistsURL)' /opt/de_GWD/0conf |\
-jq 'del(.dns.regexRule)' |\
-jq 'del(.dns.adWlistURL)' |\
-jq 'del(.dns.adBlistURL)' | sponge /opt/de_GWD/0conf
+if [[ -s /opt/de_GWD/0conf ]]; then
+  jq '
+    (if .v2nodeDIV.nodeSM == [] then .v2nodeDIV.nodeSM = {} else . end)
+    | (if .v2nodeDIV.nodeDT == [] then .v2nodeDIV.nodeDT = {} else . end)
+    | (if .v2nodeDIV.nodeCU == [] then .v2nodeDIV.nodeCU = {} else . end)
+    | (if (.ddns.ddnsCF.cfToken // "") == "" and ((.ddns.ddnsCF.cfAPIkey // "") | type) == "string" and ((.ddns.ddnsCF.cfAPIkey // "") | length) > 0 and ((.ddns.ddnsCF.cfAPIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .ddns.ddnsCF.cfToken = .ddns.ddnsCF.cfAPIkey else . end)
+    | (if (.FORWARD.token // "") == "" and ((.FORWARD.APIkey // "") | type) == "string" and ((.FORWARD.APIkey // "") | length) > 0 and ((.FORWARD.APIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .FORWARD.token = .FORWARD.APIkey else . end)
+    | del(
+        .v2nodeDIV.nodeCU.custom,
+        .v2nodeDIV.nodeDT.divert,
+        .v2nodeDIV.nodeDT.ip,
+        .listB,
+        .listW,
+        .listBlan,
+        .listWlan,
+        .dns.APPLEcn,
+        .dns.STEAMcn,
+        .v2nodeDIV.directApple,
+        .v2nodeDIV.directSteam,
+        .ddns.ddns3322,
+        .ddns.ddnsCF.cfAPIkey,
+        .ddns.ddnsCF.cfEmail,
+        .FORWARD.APIkey,
+        .FORWARD.Email
+      )
+    | (if .dns.DOH != null then .dns.doh = .dns.DOH | del(.dns.DOH) else . end)
+    | (if .dns.DoG != null then .dns.dog = .dns.DoG | del(.dns.DoG) else . end)
+    | (if (.dns.adlistsURL | type) == "array" and (.dns.adlistsURL | length) > 0 then .dns.adlists = .dns.adlistsURL else . end)
+    | (if (.dns.adBlistURL | type) == "array" and (.dns.adBlistURL | length) > 0 then .dns.adBlist = .dns.adBlistURL else . end)
+    | (if (.dns.regexRule | type) == "array" and (.dns.regexRule | length) > 0 then .dns.adBregex = .dns.regexRule else . end)
+    | (if (.dns.adWlistURL | type) == "array" and (.dns.adWlistURL | length) > 0 then .dns.adWlist = .dns.adWlistURL else . end)
+    | del(.dns.adlistsURL, .dns.regexRule, .dns.adWlistURL, .dns.adBlistURL)
+  ' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+  chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+  chmod 660 /opt/de_GWD/0conf
+fi
+rm -f /opt/de_GWD/ui-ddns3322* /opt/de_GWD/ui-checkDDNS3322 /var/www/html/act/*DDNS3322.php
 
 [[ -d "/opt/bitwardenrs" ]] && mv -f /opt/bitwardenrs /opt/bitwarden
 
@@ -445,6 +424,8 @@ if [[ -d "/opt/de_GWD/xDNSc" ]]; then
     systemctl daemon-reload >/dev/null
     rm -rf /opt/de_GWD/xDNSc
     jq 'del(.dns.xDNS)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+    chmod 660 /opt/de_GWD/0conf
 fi
 
 if [[ -d "/opt/de_GWD/xDNSs" ]]; then
@@ -455,6 +436,8 @@ if [[ -d "/opt/de_GWD/xDNSs" ]]; then
     systemctl daemon-reload >/dev/null
     rm -rf /opt/de_GWD/xDNSs
     jq 'del(.FORWARD.xDNSs)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+    chmod 660 /opt/de_GWD/0conf
 fi
 
 if [[ -n $(dpkg -l | awk '{print $2}' | grep -E '^php(7\.[0-9]+|8\.[0-2])-fpm$') ]]; then
@@ -552,14 +535,20 @@ uuid=$(jq -r '.update.v2node.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^nul
 path=$(jq -r '.update.v2node.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 if [[ -z $domain ]] || [[ -z $uuid ]]; then
-  cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
-  clear 2>/dev/null || true
-  preUpdate
+  if [[ -s /opt/de_GWD/0conf_bak && "${_preUpdate_retried:-0}" = "0" ]]; then
+    cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
+    chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+    chmod 660 /opt/de_GWD/0conf
+    clear 2>/dev/null || true
+    _preUpdate_retried=1 preUpdate
+    return
+  else
+    echo -e "${RED}Error: Missing valid v2node config in /opt/de_GWD/0conf. Please install or restore backup first.${cRES}"
+    exit 1
+  fi
 fi
 
 [[ -z $tls ]] && tls=$domain
-
-piholePW=$(jq -r '.address.PWD' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 webUIport=$(jq -r '.address.webUIport' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -691,6 +680,7 @@ swapon /swapfile 2>/dev/null || true
 sed -i "/swapfile/d" /etc/fstab
 echo "/swapfile none swap defaults 0 0" >>/etc/fstab
 fi
+mkdir -p /etc/initramfs-tools/conf.d
 echo "RESUME=" >/etc/initramfs-tools/conf.d/resume
 fi
 
@@ -866,8 +856,11 @@ timedatectl set-ntp true >/dev/null 2>&1 || true
 [[ -f "/etc/ld.so.preload" ]] && sed -i "/libjemalloc/d" /etc/ld.so.preload
 ldconfig
 
+mkdir -p /etc/modules-load.d
+touch /etc/modules-load.d/modules.conf
 sed -i '/nf_conntrack/d' /etc/modules-load.d/modules.conf
 sed -i '/ifb/d' /etc/modules-load.d/modules.conf
+sed -i '/sch_cake/d' /etc/modules-load.d/modules.conf
 cat << EOF >>/etc/modules-load.d/modules.conf
 nf_conntrack
 ifb
@@ -938,7 +931,7 @@ net.ipv4.conf.default.accept_source_route = 0
 net.ipv4.conf.all.route_localnet = 1
 net.ipv4.route.flush = 1
 net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.ip_local_reserved_ports = 53,5331,5331,5341,3000
+net.ipv4.ip_local_reserved_ports = 53,5331,5332,5341,3000
 net.ipv4.ip_forward = 1
 net.ipv4.conf.all.forwarding = 1
 net.ipv4.conf.default.forwarding = 1
@@ -1001,18 +994,12 @@ EOF
 sync
 sysctl -p >/dev/null 2>&1
 
-if [[ -n $(dpkg -l | awk '{print$2}' | grep '^docker-ce$') ]] && [[ -n $(dpkg -l | awk '{print$2}' | grep '^containerd.io$') ]]; then
+if dpkg-query -W -f='${db:Status-Abbrev}\n' docker-ce 2>/dev/null | grep -q '^ii' && dpkg-query -W -f='${db:Status-Abbrev}\n' containerd.io 2>/dev/null | grep -q '^ii'; then
 mkdir -p /etc/docker/
 systemctl stop docker docker.socket containerd
 cat << EOF >/etc/docker/daemon.json
 {
-  "iptables": false,
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://dockerproxy.net",
-    "https://hub-mirror.c.163.com",
-    "https://mirror.baidubce.com"
-  ]
+  "iptables": false
 }
 EOF
 systemctl restart docker
@@ -1757,8 +1744,8 @@ table inet bypassflow {
         type filter hook forward priority -300; policy accept;
         ip daddr 172.16.66.0/24 flow offload @Acceleration
         ip saddr 172.16.66.0/24 flow offload @Acceleration
-        ip daddr 172.17.00.0/16 flow offload @Acceleration
-        ip saddr 172.17.00.0/16 flow offload @Acceleration
+        ip daddr 172.17.0.0/16 flow offload @Acceleration
+        ip saddr 172.17.0.0/16 flow offload @Acceleration
     }
 }
 EOF
@@ -1930,8 +1917,31 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Debian ${GREEN
 
 installDep(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Dependencies${cRES}\r\c"
-sed -i "/www-data/d" /etc/sudoers
-sed -i "/Allow members of group sudo to execute any command/a\www-data ALL=(root)  NOPASSWD:ALL" /etc/sudoers
+sed -i "/^www-data[[:space:]]/d" /etc/sudoers
+grep -qE '^[#@]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers || echo '@includedir /etc/sudoers.d' >> /etc/sudoers
+mkdir -p /etc/sudoers.d
+cat << 'EOF' > /tmp/de_GWD.sudoers
+Cmnd_Alias DEGWD_WEB = /opt/de_GWD/, \
+    /usr/bin/nohup /usr/bin/ttyd -p 3000 -W -o /opt/de_GWD/ui-*, \
+    /bin/nohup /usr/bin/ttyd -p 3000 -W -o /opt/de_GWD/ui-*, \
+    /usr/bin/systemctl start updateGWD, /bin/systemctl start updateGWD, \
+    /usr/bin/systemctl is-active *, /bin/systemctl is-active *, \
+    /usr/sbin/nfsstat -m, /sbin/nfsstat -m, \
+    /usr/sbin/showmount -e *, /sbin/showmount -e *, \
+    /usr/bin/cat /etc/wireguard/client*.conf, /bin/cat /etc/wireguard/client*.conf, \
+    /usr/bin/cp -f /opt/de_GWD/0conf /var/www/html/restore/de_GWD_bak, \
+    /bin/cp -f /opt/de_GWD/0conf /var/www/html/restore/de_GWD_bak, \
+    /usr/bin/rm -rf /var/www/html/restore/*, /bin/rm -rf /var/www/html/restore/*, \
+    /usr/bin/zip -r /var/www/html/restore/*, \
+    /usr/bin/uname -r, /bin/uname -r
+www-data ALL=(root) NOPASSWD: DEGWD_WEB
+EOF
+chmod 0440 /tmp/de_GWD.sudoers
+if visudo -cf /tmp/de_GWD.sudoers >/dev/null 2>&1; then
+    mv -f /tmp/de_GWD.sudoers /etc/sudoers.d/de_GWD
+else
+    rm -f /tmp/de_GWD.sudoers
+fi
 
 pkgDEP1
 
@@ -2156,7 +2166,9 @@ fi
 [[ -z $serverName ]] && serverName="de_GWD"
 
 [[ -z $(echo $webUIport | grep '^[[:digit:]]*$') ]] && webUIport="443"
-jq --arg webUIport $webUIport '.address.webUIport=$webUIport' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+jq --arg webUIport "$webUIport" '.address.webUIport=$webUIport' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 if [[ $webUIport = 443 ]]; then
 cat << EOF >/etc/nginx/conf.d/80.conf
@@ -2305,6 +2317,7 @@ unzip /opt/de_GWD/.repo/client.zip -d /tmp >/dev/null 2>&1
 
 rm -rf /opt/de_GWD/ui-*
 rm -rf /opt/de_GWD/ui_*
+rm -f /opt/de_GWD/xray-common
 rm -rf /var/www/html/*.php
 rm -rf /var/www/html/*.ico
 rm -rf /var/www/html/act
@@ -2319,8 +2332,10 @@ mkdir -p /var/www/html/restore
 chown -R www-data:www-data /var/www/html
 chmod -R +x /var/www/html
 chmod +x /opt/de_GWD/*
+[[ -f /opt/de_GWD/0conf ]] && chown root:www-data /opt/de_GWD/0conf && chmod 660 /opt/de_GWD/0conf
+[[ -f /opt/de_GWD/0conf_bak ]] && chmod 600 /opt/de_GWD/0conf_bak
 
-if [[ $TTYD_UPDATE = "true" ]]; then
+if [[ $TTYD_UPDATE = "true" || ! -f /etc/systemd/system/updateGWD.service ]]; then
 [[ -z $(echo $updatePort | grep '^[[:digit:]]*$') ]] && updatePort="3000"
 
 rm -rf /lib/systemd/system/updateGWD.service
@@ -2555,6 +2570,7 @@ chmod +x /etc/rc_kernel.local
 
 
 crontab -l 2>/dev/null >/tmp/now.cron
+sed -i '/ui-ddns3322/d' /tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_4am/d' /tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_4h/d' /tmp/now.cron
 sed -i '/\/opt\/de_GWD\/ui_2h/d' /tmp/now.cron
@@ -2597,7 +2613,6 @@ rm -rf /opt/de_GWD/pihole/listsCache/*
 >/opt/de_GWD/pihole/adlists.list
 sqlite3 /opt/de_GWD/pihole/gravity.db "DELETE FROM adlist"
 docker exec pihole pihole -g
-docker exec pihole pihole --regex -d ".*;querytype=HTTPS"
 docker restart pihole
 }
 
@@ -2619,10 +2634,12 @@ serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v
 nginxSet
 systemctl force-reload nginx >/dev/null
 
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
 systemctl daemon-reload >/dev/null
 
-jq --arg updatePort $updatePort '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+jq --arg updatePort "$updatePort" '.update.updatePort=$updatePort' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Web UI Port & Web update Port ${GREEN}Updated${cRES}"
 }
@@ -2639,7 +2656,8 @@ docker exec pihole pihole setpassword "$newPW"
 
 piholePW=$(php -r "echo hash('sha256', hash('sha256', '$newPW'));")
 jq --arg piholePW "$piholePW" '.address.PWD = $piholePW' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GREEN}Changed${cRES}"
 }
@@ -2662,7 +2680,7 @@ fi
 
 if [[ -f /opt/de_GWD/client ]]; then
   chmod +x /opt/de_GWD/client
-  grep -q 'start_menu' /opt/de_GWD/client || echo 'start_menu' >> /opt/de_GWD/client
+  grep -qx 'start_menu' /opt/de_GWD/client || echo 'start_menu' >> /opt/de_GWD/client
   ln -sf /opt/de_GWD/client /usr/local/bin/dex 2>/dev/null
   ln -sf /opt/de_GWD/client /usr/bin/dex 2>/dev/null
   ln -sf /opt/de_GWD/client /usr/local/bin/de_GWD 2>/dev/null
@@ -2766,7 +2784,8 @@ jq --arg uuid "$uuid" '.update.v2node.uuid=$uuid' |\
 jq --arg path "$path" '.update.v2node.path=$path' | sponge /opt/de_GWD/0conf
 [[ -n $DoG ]] && jq --arg DoG "$DoG" '.dns.dog=$DoG' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
 [[ -n $doh1 ]] && jq --arg doh1 "$doh1" '.dns.doh+=[$doh1,$doh1]' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 de_GWDconnect
 
@@ -2914,7 +2933,7 @@ fi
 
 if [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
   echo -e "${WHITE} Pi-hole        \c" && echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]${cRES}"
-elif [[ ! -x "/usr/local/bin/pihole" ]]; then
+elif ! command -v docker >/dev/null 2>&1 || ! docker inspect pihole >/dev/null 2>&1; then
   echo -e "${WHITE} Pi-hole        \c" && echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]${cRES}"
 else
   echo -e "${WHITE} Pi-hole        \c" && echo -e "${WHITE}[ ${RED}✕ ${WHITE}]${cRES}"
@@ -3298,7 +3317,7 @@ setInboundPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_ports.json ]] && echo '{}' > /opt/de_GWD/extra_ports.json
     jq --arg tag "$in_tag" --argjson p "$p" '.[$tag] = $p' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json
-    chmod 666 /opt/de_GWD/extra_ports.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_ports.json 2>/dev/null || true
 }
 
 getInternalPort() {
@@ -3339,10 +3358,18 @@ setupNginxWebProxy() {
         connHeaders='        proxy_set_header Connection "";'
     fi
 
-    cat << EOF > "/etc/nginx/conf.d/${confName}.conf"
+    local ipv6Listen=""
+    if [[ -f /proc/net/if_inet6 ]] && [[ "$(sysctl -n net.ipv6.conf.all.disable_ipv6 2>/dev/null)" != "1" ]]; then
+        ipv6Listen="    listen [::]:${pubPort} ssl;"
+    fi
+    local confPath="/etc/nginx/conf.d/${confName}.conf"
+    local bakPath="/tmp/${confName}.conf.bak.$$"
+    [[ -f "$confPath" ]] && cp -f "$confPath" "$bakPath"
+
+    cat << EOF > "$confPath"
 server {
     listen ${pubPort} ssl;
-    listen [::]:${pubPort} ssl;
+${ipv6Listen}
     http2 on;
     server_name ${domain};
     root /var/www/html;
@@ -3368,7 +3395,17 @@ ${connHeaders}
 }
 EOF
     rm -f "/etc/nginx/conf.d/v2_${tag}.conf" 2>/dev/null || true
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    if nginx -t >/dev/null 2>&1; then
+        rm -f "$bakPath"
+        systemctl reload nginx
+    else
+        if [[ -f "$bakPath" ]]; then
+            mv -f "$bakPath" "$confPath"
+        else
+            rm -f "$confPath"
+        fi
+        return 1
+    fi
 }
 
 removeNginxWebProxy() {
@@ -3457,13 +3494,13 @@ parseDomainAndPort() {
     mkdir -p /opt/de_GWD
     [[ ! -f /opt/de_GWD/extra_domains.json ]] && echo '{}' > /opt/de_GWD/extra_domains.json
     jq --arg tag "$in_tag" --arg dom "$target_domain" '.[$tag] = $dom' /opt/de_GWD/extra_domains.json | sponge /opt/de_GWD/extra_domains.json
-    chmod 666 /opt/de_GWD/extra_domains.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_domains.json 2>/dev/null || true
 }
 
 syncExtraInboundsStore() {
     mkdir -p /opt/de_GWD
     jq '[.inbounds[]? | select(.tag != null and (.tag | startswith("inbound-")))]' /opt/de_GWD/vtrui/config.json > /opt/de_GWD/extra_inbounds.json 2>/dev/null || echo '[]' > /opt/de_GWD/extra_inbounds.json
-    chmod 666 /opt/de_GWD/extra_inbounds.json 2>/dev/null || true
+    chmod 600 /opt/de_GWD/extra_inbounds.json 2>/dev/null || true
 }
 
 removeXrayInbound() {
@@ -4408,7 +4445,7 @@ serverStatus
 
  echo
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
- echo -e "${BLUE}Debian Version:                 $(cat /etc/os-release | grep VERSION= | cut -d'(' -f2 | cut -d')' -f1) ${cRES}"
+ echo -e "${BLUE}Debian Version:                 $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") ${cRES}"
  echo -e "${BLUE}Kernel:                         $(uname -r) ${cRES}"
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
 

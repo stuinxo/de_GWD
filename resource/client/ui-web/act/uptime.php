@@ -1,8 +1,10 @@
+<?php require_once('../auth.php'); ?>
+<?php if (isset($auth) && $auth) {?>
 <?php
 function sys_linux()
 {
     $uptimestr = @file("/proc/uptime");
-    $uptimestr = explode(" ", implode("", $uptimestr));
+    $uptimestr = explode(" ", implode("", $uptimestr ?: array("0")));
     $uptimestr = (float)trim($uptimestr[0]);
     $min = $uptimestr / 60;
     $hours = $min / 60;
@@ -20,3 +22,4 @@ $sysInfo = sys_linux();
 $uptime = $sysInfo['uptime'];
 echo $uptime;
 ?>
+<?php }?>

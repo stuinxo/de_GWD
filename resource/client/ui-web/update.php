@@ -140,7 +140,7 @@
         <h5 id="markThisLabel"class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo isset($de_GWDconf->address->alias) ? $de_GWDconf->address->alias : ''; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -149,23 +149,11 @@
   </div>
 </div>
 
-<div id="donateModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="donate" aria-hidden="true">
-  <div class="modal-dialog modal-sm" style="top:50%">
-    <div class="modal-content">
-      <div class="modal-body mx-auto">
-        <img id="donatePic" src="" width="260">
-      </div>
-    </div>
-  </div>
-</div>
-
-
         <!-- Page Content -->    
         <div class="card mb-3">
           <div class="card-header">
             <i class="fas fa-archive"></i>
             备份-恢复
-          <span id="ddnscheckcf" class="badge text-success"></span>
           </div>
           <div class="card-body">
 
@@ -202,7 +190,7 @@
                 </div>
               <div class="btn-group btn-group-sm">
                 <button id="autoUpdateHourShow" class="btn <?php if ($checkAutoUpdateStatus === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> mt-1 dropdown-toggle dropdown-toggle-split" type="button" data-toggle="dropdown" style="border-radius: 0px;">
-                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo "$checkAutoUpdateHour:00";?>
+                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo htmlspecialchars((string)$checkAutoUpdateHour, ENT_QUOTES, 'UTF-8') . ':00';?>
                 </button>
 <div class="dropdown-menu dropdown-menu-sm">
 <a class="dropdown-item text-center" href="#" onclick="autoUpdateHour(this)">关闭</a>
@@ -227,18 +215,18 @@ EOT;
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">本机地址</span>
         </div>
-          <input id="updateAddr" type="text" class="form-control" value="<?php echo isset($de_GWDconf->update->updateAddr) ? $de_GWDconf->update->updateAddr : ''; ?>">
+          <input id="updateAddr" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->update->updateAddr ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo isset($de_GWDconf->update->updatePort) ? $de_GWDconf->update->updatePort : ''; ?>">
+          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo htmlspecialchars($de_GWDconf->update->updatePort ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
 
       <div class="input-group my-2 col-md-8">
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">CMD</span>
         </div>
-          <input id="updateCMD" type="text" class="form-control" value="<?php echo isset($de_GWDconf->update->updateCMD) ? $de_GWDconf->update->updateCMD : ''; ?>">
+          <input id="updateCMD" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->update->updateCMD ?? '', ENT_QUOTES, 'UTF-8'); ?>">
           <button id="buttonUpdateSave" type="button" class="btn btn-outline-danger btn-sm text-right ml-2" style="border-Radius: 0px;">
             <span id="buttonUpdateSaveLoading"></span>
             保存并更新

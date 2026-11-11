@@ -1,8 +1,8 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-exec('sudo rm -rf /var/www/html/restore/Jellyfin_bak.zip &');
-if ($_FILES["file"]["name"] == "Jellyfin_bak.zip")
+exec('sudo rm -rf /var/www/html/restore/Jellyfin_bak.zip');
+if (isset($_FILES["file"]["name"]) && $_FILES["file"]["name"] == "Jellyfin_bak.zip")
 {
 	move_uploaded_file($_FILES['file']['tmp_name'], '../restore/' . "Jellyfin_bak.zip");
 	exec('sudo /opt/de_GWD/ui-restoreJellyfin &');

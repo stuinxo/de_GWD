@@ -4,10 +4,10 @@ WGport=$(jq -r '.wireguard.server.WGport' /opt/de_GWD/0conf 2>/dev/null | grep -
 sprivatekey=$(jq -r '.wireguard.server.sprivatekey' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 spublickey=$(jq -r '.wireguard.server.spublickey' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
-clientsNUM=$(jq -r '.wireguard.clients | length' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-clientsNUMinvalid=$(jq -r '.wireguard.clients[].cprivatekey' /opt/de_GWD/0conf | grep '^undefined$' | wc -l)
-clientsNUMgood=$[$clientsNUM-$clientsNUMinvalid]
+clientsNUM=$(jq -r '.wireguard.clients | length' /opt/de_GWD/0conf 2>/dev/null)
+[[ "$clientsNUM" =~ ^[0-9]+$ ]] || clientsNUM=0
 
+mkdir -p /etc/wireguard
 rm -rf /etc/wireguard/client*.conf
 
 cat << EOF >/etc/wireguard/wg0.conf
@@ -19,18 +19,24 @@ DNS = 127.0.0.1
 MTU = 1420
 EOF
 
-for ((i=0; i<$clientsNUMgood; i++)); do
+for ((i=0; i<clientsNUM; i++)); do
+  cpriv=$(jq -r --argjson i "$i" '.wireguard.clients[$i].cprivatekey // empty' /opt/de_GWD/0conf 2>/dev/null)
+  cpub=$(jq -r --argjson i "$i" '.wireguard.clients[$i].cpublickey // empty' /opt/de_GWD/0conf 2>/dev/null)
+  if [[ -z "$cpriv" || -z "$cpub" || "$cpriv" = "undefined" || "$cpub" = "undefined" || "$cpriv" =~ ^0+=?$ || "$cpub" =~ ^0+=?$ ]]; then
+    continue
+  fi
+
 cat << EOF >>/etc/wireguard/wg0.conf
 
 [Peer]
-PublicKey = $(jq -r --argjson i "$i" '.wireguard.clients[$i].cpublickey' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-AllowedIPs = 172.16.66.$[$i+11]/32
+PublicKey = $cpub
+AllowedIPs = 172.16.66.$((i+11))/32
 EOF
 
-cat << EOF >/etc/wireguard/client$[$i+1].conf
+cat << EOF >/etc/wireguard/client$((i+1)).conf
 [Interface]
-PrivateKey = $(jq -r --argjson i "$i" '.wireguard.clients[$i].cprivatekey' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-Address = 172.16.66.$[$i+11]/32
+PrivateKey = $cpriv
+Address = 172.16.66.$((i+11))/32
 DNS = 172.16.66.1
 MTU = 1400
 
@@ -42,7 +48,7 @@ PersistentKeepalive = 15
 EOF
 done
 chmod 600 /etc/wireguard/wg0.conf
-chmod 600 /etc/wireguard/client*.conf
+chmod 600 /etc/wireguard/client*.conf 2>/dev/null || true
 
 rm -rf /lib/systemd/system/wg-quick@.service
 cat << "EOF" >/etc/systemd/system/wg-quick@.service
@@ -70,11 +76,19 @@ systemctl daemon-reload >/dev/null
 systemctl enable wg-quick@wg0 >/dev/null 2>&1
 systemctl restart wg-quick@wg0
 
-sed -i '/net.ipv4.ip_forward =/c\net.ipv4.ip_forward = 1
+mkdir -p /etc/sysctl.d
+cat << "EOF" >/etc/sysctl.d/99-wireguard.conf
+net.ipv4.ip_forward = 1
 net.ipv4.conf.all.forwarding = 1
-net.ipv4.conf.default.forwarding = 1' /etc/sysctl.conf
-sysctl -p >/dev/null 2>&1
+net.ipv4.conf.default.forwarding = 1
+EOF
+if [[ -f /etc/sysctl.conf ]]; then
+  sed -i '/net.ipv4.ip_forward =/c\net.ipv4.ip_forward = 1' /etc/sysctl.conf
+fi
+sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
 
+mkdir -p /etc/dnsmasq.d
 find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | grep -v 'veth' | awk -F'/' '{print$NF}' | xargs -I {} echo "interface={}" >/etc/dnsmasq.d/00-interface.conf
+[[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]] && docker kill -s HUP pihole >/dev/null 2>&1 || true
 
 /etc/rc_online.local

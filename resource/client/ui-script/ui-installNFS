@@ -11,11 +11,11 @@ cRES='\E[0m'
 
 
 installNFSsupport(){
-echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NFS${cRES}\r\c"
+echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install NFS${cRES}\r\c"
 unset aptPKG
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^autofs$') ]] && aptPKG+=(autofs)
-[[ -z $(dpkg -l | awk '{print$2}' | grep '^nfs-common$') ]] && aptPKG+=(nfs-common)
-[[ -n $aptPKG ]] && apt update && apt install $(echo ${aptPKG[@]})
+dpkg-query -W -f='${db:Status-Abbrev}\n' autofs 2>/dev/null | grep -q '^ii' || aptPKG+=(autofs)
+dpkg-query -W -f='${db:Status-Abbrev}\n' nfs-common 2>/dev/null | grep -q '^ii' || aptPKG+=(nfs-common)
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
 
 rm -rf '/etc/auto.master.d'
 sed -i '/+auto.master/,$d' /etc/auto.master
@@ -34,7 +34,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NFS${c
 uninstallNFSsupport(){
 apt remove --purge autofs nfs-common
 
-rm -rf /etc/auto.master.d/nfs.autofs
+rm -rf /etc/auto.master.d/nfs.autofs /etc/auto.nfs
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}NFS ${GREEN}Uninstalled${cRES}"
 }

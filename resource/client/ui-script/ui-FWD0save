@@ -1,13 +1,9 @@
 #!/bin/bash
+source /opt/de_GWD/xray-common
+
 FWD0port=$(jq -r '.FORWARD.FWD0.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD0uuid=$(jq -r '.FORWARD.FWD0.uuid[].FWD0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD0path=$(jq -r '.FORWARD.FWD0.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-uuid_to_path() {
-    local u="$1"
-    local first="${u%%-*}"
-    printf '/%s' "$first"
-}
 
 # If FWD0path is not set, initialize it from the first UUID's prefix and persist
 if [[ -z "$FWD0path" ]]; then
@@ -15,6 +11,8 @@ if [[ -z "$FWD0path" ]]; then
     if [[ -n "$first_uuid" ]]; then
         FWD0path=$(uuid_to_path "$first_uuid")
         jq --arg path "$FWD0path" '.FORWARD.FWD0.path=$path' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+        chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+        chmod 660 /opt/de_GWD/0conf
     else
         FWD0path="/fwd0"
     fi
@@ -27,42 +25,7 @@ for u in $FWD0uuid; do
     clients_json=$(jq --arg id "$u" '. += [{"id": $id}]' <<< "$clients_json")
 done
 
-FWD0in=$(cat << EOF
-{
-  "tag": "forward0",
-  "port": $FWD0port,
-  "protocol": "vless",
-  "settings": {
-    "clients": $clients_json,
-    "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "certificates": [
-        {
-          "certificateFile": "/var/www/ssl/de_GWD.cer",
-          "keyFile": "/var/www/ssl/de_GWD.key"
-        }
-      ]
-    },
-    "xhttpSettings": {
-      "path": "$FWD0path",
-      "mode": "auto"
-    },
-    "sockopt": {
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  },
-  "sniffing": {
-    "enabled": true,
-    "destOverride": ["http", "tls", "quic"]
-  }
-}
-EOF
-)
+FWD0in=$(build_vless_xhttp_inbound_direct_tls "$FWD0port" "$clients_json" "$FWD0path" "/var/www/ssl/de_GWD.cer" "/var/www/ssl/de_GWD.key" "forward0")
 
 jq --argjson FWD0in "$FWD0in" 'del(.inbounds[] | select(.tag == "forward0")) | .inbounds += [$FWD0in]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 chmod 644 /var/www/ssl/*.key 2>/dev/null || true

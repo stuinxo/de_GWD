@@ -3,7 +3,7 @@
 <?php
 $checkWG = exec('sudo /opt/de_GWD/ui-checkWG');
 
-echo exec('sudo [[ -f "/lib/systemd/system/wg-quick.target" ]] && echo installed');
+if (file_exists('/usr/bin/wg')) echo 'installed';
 
 echo ' ';
 

@@ -100,7 +100,8 @@ jellyfinDockerRun
 jellyfinNginxConf
 
 jq '.app.jellyfin="installed"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Jellyfin${cRES}"
 }
@@ -119,7 +120,8 @@ systemctl force-reload nginx >/dev/null
 
 rm -rf /opt/jellyfin
 jq 'del(.app.jellyfin)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Uninstall Jellyfin${cRES}"
 }
@@ -151,11 +153,10 @@ start_menu(){
 [[ -f "/etc/apt/sources.list.d/jellyfin.list" ]] && rm -rf /etc/apt/sources.list.d/jellyfin.list
 
 unset aptPKG
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^jellyfin$') ]] && aptPKG+=(jellyfin)
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^jellyfin-ffmpeg$') ]] && aptPKG+=(jellyfin-ffmpeg)
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^jellyfin-server$') ]] && aptPKG+=(jellyfin-server)
-[[ -n $(dpkg -l | awk '{print$2}' | grep '^jellyfin-web$') ]] && aptPKG+=(jellyfin-web)
-[[ -n $aptPKG ]] && apt update && apt autoremove --purge  $(echo ${aptPKG[@]})
+for pkg in jellyfin jellyfin-ffmpeg jellyfin-server jellyfin-web; do
+  dpkg-query -W -f='${db:Status-Abbrev}\n' "$pkg" 2>/dev/null | grep -q '^ii' && aptPKG+=("$pkg")
+done
+[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt autoremove --purge -y "${aptPKG[@]}"
 
     echo -e "${GREEN}=============================== ${cRES}"
     echo -e "${GREEN}         Jellyfin${cRES}"

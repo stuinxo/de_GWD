@@ -193,7 +193,7 @@
               </div>
               <a class="card-footer text-white clearfix small z-1">
                 <span id="uptime" class="float-left"></span>
-                <span class="float-right"><?php $kernelV=exec('sudo uname -r'); echo str_replace("-arm64", "", str_replace("-amd64", "", $kernelV));?></span>
+                <span class="float-right"><?php $kernelV = php_uname('r'); echo str_replace("-arm64", "", str_replace("-amd64", "", $kernelV));?></span>
               </a>
             </div>
           </div>
@@ -208,7 +208,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo $de_GWDconf->address->alias ?? ''; ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -386,21 +386,21 @@
   <div class="input-group-prepend">
     <span class="input-group-text">大陆白名单代理</span>
   </div>
-   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo "$v ";} } ?>">
+   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
 </div>
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
     <span class="input-group-text">全局代理</span>
   </div>
-   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo "$v ";} } ?>">
+   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
 </div>
 
 <div class="input-group input-group-sm">
   <div class="input-group-prepend">
     <span class="input-group-text">全局直连</span>
   </div>
-   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo "$v ";} } ?>">
+   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
 </div>
 
       </div>
@@ -468,36 +468,36 @@
           <div class="input-group-prepend">
             <span class="input-group-text">地址</span>
           </div>
-          <input id="ssAddress" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''; ?>">
+          <input id="ssAddress" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssAddress ?? '', ENT_QUOTES, 'UTF-8'); ?>">
           <div class="input-group-prepend input-group-append">
             <span class="input-group-text">端口</span>
           </div>
-          <input id="ssPort" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPort ?? ''; ?>" placeholder="443">
+          <input id="ssPort" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssPort ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="443">
         </div>
 
         <div class="input-group mb-2">
           <div class="input-group-prepend">
             <span class="input-group-text">UUID</span>
           </div>
-          <input id="ssUUID" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssUUID ?? ''; ?>">
+          <input id="ssUUID" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssUUID ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         </div>
 
         <div class="input-group mb-2">
           <div class="input-group-prepend">
             <span class="input-group-text">SNI</span>
           </div>
-          <input id="ssSNI" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSNI ?? ''; ?>">
+          <input id="ssSNI" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssSNI ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         </div>
 
         <div class="input-group">
           <div class="input-group-prepend">
             <span class="input-group-text">PublicKey</span>
           </div>
-          <input id="ssPBK" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssPBK ?? ''; ?>">
+          <input id="ssPBK" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssPBK ?? '', ENT_QUOTES, 'UTF-8'); ?>">
           <div class="input-group-prepend input-group-append">
             <span class="input-group-text">ShortId</span>
           </div>
-          <input id="ssSID" class="form-control" value="<?php echo $de_GWDconf->v2nodeDIV->ss->ssSID ?? ''; ?>">
+          <input id="ssSID" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssSID ?? '', ENT_QUOTES, 'UTF-8'); ?>">
         </div>
       </div>
       <div class="modal-footer">
@@ -567,7 +567,7 @@
                   <span>预定义分流</span>
                 </button>
 
-                <button id="buttonSSdetail" type="button" class="btn <?php passthru('/opt/de_GWD/ui-checkNodeSS &'); ?> btn-sm mt-1 mr-2" style="border-radius: 0px;" data-toggle="modal" data-target="#ssDetail">
+                <button id="buttonSSdetail" type="button" class="btn <?php passthru('/opt/de_GWD/ui-checkNodeSS'); ?> btn-sm mt-1 mr-2" style="border-radius: 0px;" data-toggle="modal" data-target="#ssDetail">
                   <span>Reality</span>
                 </button>
 
@@ -593,7 +593,7 @@
     <div id="nodeDT" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($v2nodes); $i++){
-  $name = $v2nodes[$i]->name ?? '';
+  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
 EOT;
@@ -623,7 +623,7 @@ EOT;
     <div id="nodeCU" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($v2nodes); $i++){
-  $name = $v2nodes[$i]->name ?? '';
+  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
 EOT;
@@ -662,8 +662,8 @@ EOT;
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
 for( $i=0; $i<count($v2nodes); $i++){
   $nodeNUM = $i+1;
-  $domain = $v2nodes[$i]->domain ?? '';
-  $name = $v2nodes[$i]->name ?? '';
+  $domain = htmlspecialchars($v2nodes[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
+  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
   if ( $checkNode != null && $checkNode == $i) $checkStatus = "btn-success"; else $checkStatus = "btn-outline-secondary";
 print <<<EOT
                   <tr> 
@@ -709,7 +709,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 1</span>
                 </div>
-                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[0] ?? '';?>">
+                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars($de_GWDconf->dns->doh[0] ?? '', ENT_QUOTES, 'UTF-8');?>">
                 <div class="input-group-append">
                   <span id="pingDOH1" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -719,7 +719,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 2</span>
                 </div>
-                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo $de_GWDconf->dns->doh[1] ?? '';?>">
+                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars($de_GWDconf->dns->doh[1] ?? '', ENT_QUOTES, 'UTF-8');?>">
                 <div class="input-group-append">
                   <span id="pingDOH2" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -729,7 +729,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DNS over gRPC</span>
                 </div>
-                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo $DoG ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
+                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo htmlspecialchars($DoG, ENT_QUOTES, 'UTF-8'); ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                 <div id="DoGping" class="input-group-prepend input-group-append" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                   <span id="pingDoG" class="form-control input-group-text text-success"></span>
                 </div>
@@ -800,7 +800,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 <div class="form-row">
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo $de_GWDconf->address->localIP ?? ''; ?>">
+                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->localIP ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">本机</span>
                 </div>
@@ -808,7 +808,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                 </div>
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo $de_GWDconf->address->upstreamIP ?? ''; ?>">
+                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->upstreamIP ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">上级</span>
                 </div>
@@ -844,33 +844,46 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
   </div>
   <!-- /#wrapper -->
 <script>
+var checklinkBaiduPending = false;
+var checklinkGlobalPending = false;
+
 function checklink(){
-$.get('./act/testBaidu.php',function(data){
-var checklink1 = data
-if ( $.trim(checklink1) == "ONLINE" ) {
-$('#testBaidu').text("✓ 国内线路畅通")
-} else {
-$('#testBaidu').text("✗ 国内线路不通")
+if (!checklinkBaiduPending) {
+  checklinkBaiduPending = true;
+  $.get('./act/testBaidu.php',function(data){
+    if ( $.trim(data) == "ONLINE" ) {
+      $('#testBaidu').text("✓ 国内线路畅通")
+    } else {
+      $('#testBaidu').text("✗ 国内线路不通")
+    }
+  }).always(function(){
+    checklinkBaiduPending = false;
+  })
 }
-})
 
-$.get('./act/testGlobal.php',function(data){
-var checklink2 = data
-if ( $.trim(checklink2) == "ONLINE" ) {
-$('#testYoutue').text("✓ 国外线路畅通")
-} else {
-$('#testYoutue').text("✗ 国外线路不通")
+if (!checklinkGlobalPending) {
+  checklinkGlobalPending = true;
+  $.get('./act/testGlobal.php',function(data){
+    if ( $.trim(data) == "ONLINE" ) {
+      $('#testYoutue').text("✓ 国外线路畅通")
+    } else {
+      $('#testYoutue').text("✗ 国外线路不通")
+    }
+  }).always(function(){
+    checklinkGlobalPending = false;
+  })
 }
-})
+}
 
+function checkVersion(){
 $.get("./act/version.php", function(data){
 var parts = (data || '').split("-");
 var currentvernum = $.trim(parts[0]) || '未知';
 var remotevernum = parts.length > 1 && $.trim(parts[1]) !== '' ? $.trim(parts[1]) : currentvernum;
 var vera = currentvernum;
 var verb = remotevernum;
-$('#currentver').attr('class','btn btn-light').html(currentvernum+' 本机')
-$('#remotever').attr('class','btn btn-light').html(remotevernum+' 发布')
+$('#currentver').attr('class','btn btn-light').text(currentvernum+' 本机')
+$('#remotever').attr('class','btn btn-light').text(remotevernum+' 发布')
 if (vera != verb) {
 $('#remotever').attr('class','btn btn-warning')
 }
@@ -1147,25 +1160,6 @@ $.get("./act/submitListBW.php", {listB:listB, listW:listW}, function(result){
 })
 })
 
-$('#adBlistLoad').click(function(){
-$("#adBlist").val("")
-})
-
-$('#adBregexLoad').click(function(){
-var adBregexLoadDefault=$.ajax({url:"/act/adBregexDefault",async:false,cache:false})
-$("#adBregex").val(adBregexLoadDefault.responseText)
-})
-
-$('#adWlistLoad').click(function(){
-var adWlistLoadDefault=$.ajax({url:"/act/adWlistDefault",async:false,cache:false})
-$("#adWlist").val(adWlistLoadDefault.responseText)
-})
-
-$('#adWregexLoad').click(function(){
-var adWregexLoadDefault=$.ajax({url:"/act/adWregexDefault",async:false,cache:false})
-$("#adWregex").val(adWregexLoadDefault.responseText)
-})
-
 $('#buttonDNSsubmit').click(function(){
 $("#buttonDNSsubmitloading").attr("class", "spinner-border spinner-border-sm")
 DoGc=$('#DoGc').val()
@@ -1185,9 +1179,11 @@ staticip2=$('#upstreamip').val()
 $.get('./act/reboot.php', {localip:staticip1, upstreamip:staticip2}, function(result){window.location.reload()})
 })
 
+checkVersion()
+checklink()
 setInterval(function() {
 checklink()
-}, 1800)
+}, 5000)
 
 $.get('./act/uptime.php', function(data){$('#uptime').text(data)})
 

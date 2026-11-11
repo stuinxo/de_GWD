@@ -79,8 +79,8 @@ bitwardenNginxConf
 
 cat << EOF >/etc/logrotate.d/bitwarden
 /var/log/bitwarden/*.log {
-    # 以 bitwarden 用户和群组的身份执行轮换
-    su bitwarden bitwarden
+    # 以 root 用户和群组的身份执行轮换
+    su root root
     # 每天轮换
     daily
     # 当尺寸大于 5M 时轮换
@@ -102,7 +102,8 @@ cat << EOF >/etc/logrotate.d/bitwarden
 }
 EOF
 jq '.app.bitwarden="installed"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Bitwarden${cRES}"
 }
@@ -128,9 +129,9 @@ rm -rf /etc/nginx/conf.d/bitwardenrs.conf
 rm -rf /etc/nginx/conf.d/bitwarden.conf
 systemctl force-reload nginx
 rm -rf /etc/logrotate.d/bitwarden
-jq 'del(.app.bitwardenrs)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-jq 'del(.app.bitwarden)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chmod 666 /opt/de_GWD/0conf
+jq 'del(.app.bitwardenrs, .app.bitwarden)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Uninstall Bitwarden${cRES}"
 }

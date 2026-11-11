@@ -4,7 +4,6 @@ mkdir -p /opt/de_GWD/RproxyC
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyC/RproxyC
 chmod +x /opt/de_GWD/RproxyC/RproxyC
 
-RproxyCoutStatus=$(jq -r '.FORWARD.Rproxy.client.outStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 RproxyCmappingStatus=$(jq -r '.FORWARD.Rproxy.client.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
 RproxyStunnelAddress=$(jq -r '.FORWARD.Rproxy.client.tunnel.address' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -61,73 +60,33 @@ cat << EOF >/opt/de_GWD/RproxyC/config.json
 EOF
 
 
-if [[ $RproxyCmappingStatus = "on" ]]; then
-  
-len=$(echo $RproxyCmappingList | jq length)
+jq --arg mappingStatus "$RproxyCmappingStatus" \
+   --argjson mappingList "${RproxyCmappingList:-[]}" '
+  if $mappingStatus == "on" and ($mappingList | type) == "array" then
+    reduce range(0; $mappingList | length) as $i (.;
+      .routing.rules += [{
+        "type": "field",
+        "inboundTag": ["bridge"],
+        "port": ($mappingList[$i].extPort | tostring),
+        "network": $mappingList[$i].extProtocol,
+        "outboundTag": "mapping\($i)"
+      }]
+      | .outbounds += [{
+          "tag": "mapping\($i)",
+          "protocol": "freedom",
+          "settings": {
+            "redirect": "\($mappingList[$i].intIP):\($mappingList[$i].intPort)",
+            "finalRules": [{"action": "allow", "ip": ["0.0.0.0/0", "::/0"]}]
+          },
+          "streamSettings": {"sockopt": {"mark": 255, "tcpFastOpen": true, "tcpNoDelay": true}}
+        }]
+    )
+  else . end
+' /opt/de_GWD/RproxyC/config.json | sponge /opt/de_GWD/RproxyC/config.json
 
-for (( i=0; i<$len; i++ )); do
-extPort=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].extPort')
-extProtocol=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].extProtocol')
-intIP=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intIP')
-intPort=$(echo $RproxyCmappingList | jq -r --argjson i "$i" '.[$i].intPort')
-
-RontingMapping=`cat << EOF
-      {"type":"field","inboundTag":["bridge"],"port":"$extPort","network":"$extProtocol","outboundTag":"mapping$i"}
-EOF
-`
-
-OBmapping=`cat << EOF
-    {
-      "tag": "mapping$i",
-      "protocol": "freedom",
-      "settings": {
-        "redirect": "$intIP:$intPort",
-        "finalRules": [
-          {
-            "action": "allow",
-            "ip": ["0.0.0.0/0", "::/0"]
-          }
-        ]
-      },
-      "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}
-    }
-EOF
-`
-jq --argjson RontingMapping "$RontingMapping" '.routing.rules+=[$RontingMapping]' /opt/de_GWD/RproxyC/config.json |\
-jq --argjson OBmapping "$OBmapping" '.outbounds+=[$OBmapping]' | sponge /opt/de_GWD/RproxyC/config.json
-done
-fi
-
-
-if [[ $RproxyCoutStatus = "on" ]]; then
-RontingOut=`cat << EOF
-      {"type":"field","inboundTag":["bridge"],"outboundTag":"directOut"}
-EOF
-`
-
-OBout=`cat << EOF
-    {
-      "tag": "directOut",
-      "protocol": "freedom",
-      "settings": {
-        "finalRules": [
-          {
-            "action": "allow",
-            "ip": ["0.0.0.0/0", "::/0"]
-          }
-        ]
-      },
-      "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}
-    }
-EOF
-`
-
-jq --argjson RontingOut "$RontingOut" '.routing.rules+=[$RontingOut]' /opt/de_GWD/RproxyC/config.json |\
-jq --argjson OBout "$OBout" '.outbounds+=[$OBout]' | sponge /opt/de_GWD/RproxyC/config.json
-fi
-
-chmod 666 /opt/de_GWD/RproxyC/config.json
-chmod 644 /var/www/ssl/*.key
+chown root:www-data /opt/de_GWD/RproxyC/config.json 2>/dev/null || true
+chmod 640 /opt/de_GWD/RproxyC/config.json
+chmod 644 /var/www/ssl/*.key 2>/dev/null || true
 
 rm -rf /lib/systemd/system/RproxyC.service
 cat << "EOF" >/etc/systemd/system/RproxyC.service

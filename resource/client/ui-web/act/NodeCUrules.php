@@ -6,10 +6,10 @@ $customDomain = $_GET['customDomain'];
 $customIP = $_GET['customIP'];
 
 $customDomain = explode("\n",$customDomain);
-$customDomain = array_filter(array_map('trim', $customDomain));
+$customDomain = array_values(array_filter(array_map('trim', $customDomain)));
 
 $customIP = explode("\n",$customIP);
-$customIP = array_filter(array_map('trim', $customIP));
+$customIP = array_values(array_filter(array_map('trim', $customIP)));
 
 $conf['v2nodeDIV']['nodeCU']['rulesDomain'] = array();
 $conf['v2nodeDIV']['nodeCU']['rulesIP'] = array();

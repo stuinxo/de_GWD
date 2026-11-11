@@ -76,7 +76,8 @@ chmod +x /opt/de_GWD/nftables/SET_listWlan.nft
 /opt/de_GWD/nftables/SET_listWlan.nft
 
 [[ $1 = "r" ]] && systemctl restart vtrui >/dev/null
-chmod 666 /opt/de_GWD/0conf
+chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
+chmod 660 /opt/de_GWD/0conf
 rm -rf /tmp/CHNlistProxyIP
 rm -rf /tmp/globalProxyIP
 rm -rf /tmp/directProxyIP
