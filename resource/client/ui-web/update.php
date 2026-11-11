@@ -248,12 +248,6 @@ EOT;
           </div>
         </div>
 
-<div class="row mt-4">
-    <div class="col"><hr></div>
-    <div class="col-auto"><img src="/vendor/w.JPG" alt="捐赠" width="300"></div>
-    <div class="col"><hr></div>
-</div>
-
         <!-- Page Content -->
       </div>
       <!-- /.container-fluid -->
@@ -340,6 +334,9 @@ $.get('./act/updateSave.php', {updateAddr:updateAddr,updatePort:updatePort,updat
 $("#updateDst").val(data)
 $("#updateModal").modal('show')
 $("#buttonUpdateSaveLoading").removeClass()
+}).fail(function(xhr){
+$("#buttonUpdateSaveLoading").removeClass()
+alert($.trim(xhr.responseText) || "更新准备失败，请重试")
 })
 })
 

@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+de_GWD Client Automatic Sequential Failover & Failback Daemon
+按顺序故障转移，恢复后自动切回高优先级主线路
+"""
+
+import os
+import sys
+import time
+import json
+import subprocess
+import logging
+
+LOG_FILE = "/var/log/de_GWD_failover.log"
+CONF_FILE = "/opt/de_GWD/0conf"
+CHECK_INTERVAL = 30       # 巡检周期：30秒
+FAIL_THRESHOLD = 3       # 判定主节点故障的连续失败次数 (3次约90秒)
+RECOVER_THRESHOLD = 3    # 判定高优先级节点恢复的连续成功次数 (3次约90秒)
+
+logger = logging.getLogger("de_GWD_failover")
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+fh.setFormatter(formatter)
+logger.addHandler(fh)
+
+sh = logging.StreamHandler(sys.stdout)
+sh.setFormatter(formatter)
+logger.addHandler(sh)
+
+def log_flush():
+    for h in logger.handlers:
+        h.flush()
+
+def get_nodes():
+    """读取 0conf 中配置的 v2node 列表"""
+    try:
+        with open(CONF_FILE, "r", encoding="utf-8") as f:
+            conf = json.load(f)
+        v2nodes = conf.get("v2node", [])
+        parsed = []
+        for n in v2nodes:
+            domain_str = n.get("domain", "")
+            if ":" in domain_str:
+                parts = domain_str.split(":")
+                host = parts[0]
+                port = int(parts[1]) if parts[1].isdigit() else 443
+            else:
+                host = domain_str
+                port = 443
+            path = n.get("path", "")
+            if not path:
+                uuid = n.get("uuid", "")
+                path = "/" + uuid.split("-")[0] if uuid else "/"
+            parsed.append({
+                "name": n.get("name", domain_str),
+                "domain": domain_str,
+                "host": host,
+                "port": port,
+                "path": path,
+                "uuid": n.get("uuid", "")
+            })
+        return parsed
+    except Exception as e:
+        logger.error(f"读取 {CONF_FILE} 失败: {e}")
+        log_flush()
+        return []
+
+def get_active_index():
+    """获取当前生效的节点序号"""
+    try:
+        res = subprocess.check_output(["/opt/de_GWD/ui-checkNode"], timeout=5).decode().strip()
+        if res.isdigit():
+            return int(res)
+    except Exception:
+        pass
+    
+    try:
+        with open(CONF_FILE, "r", encoding="utf-8") as f:
+            conf = json.load(f)
+        cur_domain = conf.get("update", {}).get("v2node", {}).get("domain", "")
+        v2nodes = conf.get("v2node", [])
+        for idx, n in enumerate(v2nodes):
+            if n.get("domain", "").startswith(cur_domain):
+                return idx
+    except Exception:
+        pass
+    return 0
+
+def probe_node_health(host, port, path, timeout=4.5):
+    """直接对节点服务器发起 HTTP2/TLS 探针，检测节点服务器是否存活 (返回 404/200 均说明存活)"""
+    try:
+        url = f"https://{host}:{port}{path}"
+        res = subprocess.run(
+            ["curl", "-s", "-m", str(timeout), "-k", "-o", "/dev/null", "-w", "%{http_code}", url],
+            capture_output=True,
+            timeout=timeout + 1
+        )
+        code = res.stdout.decode().strip()
+        return code in ["200", "204", "301", "302", "400", "404"]
+    except Exception:
+        return False
+
+def probe_active_egress(timeout=4.0):
+    """检测当前生效的透明代理链路是否能正常访问境外目标"""
+    targets = [
+        "https://cloudflare.com/cdn-cgi/trace",
+        "https://1.1.1.1",
+        "https://www.google.com"
+    ]
+    for url in targets:
+        try:
+            res = subprocess.run(
+                ["curl", "-s", "-m", str(timeout), "-k", url, "-o", "/dev/null", "-w", "%{http_code}"],
+                capture_output=True,
+                timeout=timeout + 1
+            )
+            code = res.stdout.decode().strip()
+            if code in ["200", "204", "301", "302", "400"]:
+                return True
+        except Exception:
+            continue
+    return False
+
+def switch_to_node(index):
+    """调用系统原生命令切换活跃节点"""
+    try:
+        subprocess.run(["/opt/de_GWD/ui-NodeChange", str(index)], timeout=15, check=True)
+        time.sleep(1)
+        return True
+    except Exception as e:
+        logger.error(f"切换至节点 [{index}] 失败: {e}")
+        log_flush()
+        return False
+
+def main():
+    logger.info("de_GWD 自动故障转移与自动切回守护服务已启动 (巡检周期: %ds, 故障判定: %d次, 切回判定: %d次)",
+                CHECK_INTERVAL, FAIL_THRESHOLD, RECOVER_THRESHOLD)
+    log_flush()
+
+    fail_count = 0
+    recover_counts = {}
+    loop_count = 0
+
+    while True:
+        try:
+            loop_count += 1
+            nodes = get_nodes()
+            if len(nodes) < 2:
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            active_idx = get_active_index()
+            if active_idx >= len(nodes):
+                active_idx = 0
+
+            # 1. 自动切回 (Failback) 逻辑：若当前在备用节点，优先顺序探测更高优先级的节点 (0 -> 1 -> ...)
+            if active_idx > 0:
+                for higher_idx in range(0, active_idx):
+                    h_node = nodes[higher_idx]
+                    h_domain = h_node["domain"]
+                    if probe_node_health(h_node["host"], h_node["port"], h_node["path"]):
+                        recover_counts[higher_idx] = recover_counts.get(higher_idx, 0) + 1
+                        logger.info(f"高优先级主节点 [{higher_idx}] {h_domain} 探针健康 ({recover_counts[higher_idx]}/{RECOVER_THRESHOLD})")
+                        log_flush()
+                        if recover_counts[higher_idx] >= RECOVER_THRESHOLD:
+                            logger.info(f"★ [FAILBACK 自动切回] 高优先级主节点 [{higher_idx}] {h_domain} 持续健康！正在切回...")
+                            log_flush()
+                            if switch_to_node(higher_idx):
+                                logger.info(f"★ [FAILBACK 成功] 已平滑恢复为主线路 [{higher_idx}] {h_domain}")
+                                log_flush()
+                                active_idx = higher_idx
+                                fail_count = 0
+                                recover_counts.clear()
+                                break
+                    else:
+                        recover_counts[higher_idx] = 0
+
+            # 2. 当前活跃节点出口可用性检测
+            cur_domain = nodes[active_idx]["domain"]
+            if probe_active_egress():
+                if fail_count > 0:
+                    logger.info(f"当前节点 [{active_idx}] {cur_domain} 出口链路已恢复正常。")
+                    log_flush()
+                fail_count = 0
+                if loop_count % 10 == 0:
+                    logger.info(f"[HEARTBEAT 心跳] 节点 [{active_idx}] {cur_domain} 运行正常，透明代理链路畅通。")
+                    log_flush()
+            else:
+                fail_count += 1
+                logger.warning(f"当前节点 [{active_idx}] {cur_domain} 出口访问超时 ({fail_count}/{FAIL_THRESHOLD})")
+                log_flush()
+                
+                # 达到故障判定阈值，触发顺序转移
+                if fail_count >= FAIL_THRESHOLD:
+                    logger.warning(f"▲ [FAILOVER 触发] 节点 [{active_idx}] {cur_domain} 异常，正在按优先级顺序寻找下一个健康备用节点...")
+                    log_flush()
+                    switched = False
+                    
+                    # 按照顺序遍历备用节点 (0 -> 1 -> 2 ...)
+                    candidate_order = [i for i in range(len(nodes)) if i != active_idx]
+                    for candidate_idx in candidate_order:
+                        c_node = nodes[candidate_idx]
+                        c_domain = c_node["domain"]
+                        logger.info(f"探测备用节点 [{candidate_idx}] {c_domain} ...")
+                        log_flush()
+                        if probe_node_health(c_node["host"], c_node["port"], c_node["path"]):
+                            logger.info(f"▲ [FAILOVER 成功] 选定健康备用节点 [{candidate_idx}] {c_domain}，正在执行切换...")
+                            log_flush()
+                            if switch_to_node(candidate_idx):
+                                logger.info(f"▲ [FAILOVER 完成] 线路已切换至 [{candidate_idx}] {c_domain}")
+                                log_flush()
+                                active_idx = candidate_idx
+                                fail_count = 0
+                                recover_counts.clear()
+                                switched = True
+                                break
+                        else:
+                            logger.warning(f"备用节点 [{candidate_idx}] {c_domain} 亦不可达。")
+                            log_flush()
+                    
+                    if not switched:
+                        logger.error("▲ [FAILOVER 告警] 所有备用节点探测均不可达，保持当前配置等待网络恢复。")
+                        log_flush()
+
+        except Exception as e:
+            logger.error(f"守护主循环异常: {e}", exc_info=True)
+            log_flush()
+
+        time.sleep(CHECK_INTERVAL)
+
+if __name__ == "__main__":
+    main()
