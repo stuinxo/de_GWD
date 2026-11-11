@@ -1600,7 +1600,7 @@ sleep 3
 
 
 checkKernel(){
-if [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]]; then
+if [[ $virt_type != "container" ]] && [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]]; then
 echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Kernel updated & reboot${cRES}"
 sleep 2
 sudo reboot
