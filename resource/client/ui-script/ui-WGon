@@ -89,6 +89,6 @@ sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
 
 mkdir -p /etc/dnsmasq.d
 find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | grep -v 'veth' | awk -F'/' '{print$NF}' | xargs -I {} echo "interface={}" >/etc/dnsmasq.d/00-interface.conf
-[[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]] && docker kill -s HUP pihole >/dev/null 2>&1 || true
+[[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]] && (docker exec pihole pihole reloaddns >/dev/null 2>&1 || docker restart pihole >/dev/null 2>&1 || true)
 
 /etc/rc_online.local

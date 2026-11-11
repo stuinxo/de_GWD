@@ -9,7 +9,7 @@ if os.path.exists(p):
     with open(p, "w") as f:
         toml.dump(data, f)
 EOF
-docker kill -s HUP pihole >/dev/null 2>&1 || true
+docker exec pihole pihole reloaddns >/dev/null 2>&1 || docker restart pihole >/dev/null 2>&1 || true
 
 >/etc/resolvconf/resolv.conf.d/head
 >/etc/resolvconf/resolv.conf.d/original

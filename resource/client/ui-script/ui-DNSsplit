@@ -96,7 +96,7 @@ if old_hosts != new_hosts:
 PYEOF
 )
 if [[ "$pihole_hosts_changed" = "changed" ]] && [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
-  docker kill -s HUP pihole >/dev/null 2>&1 || true
+  docker exec pihole pihole reloaddns >/dev/null 2>&1 || docker restart pihole >/dev/null 2>&1 || true
 fi
 fi
 
