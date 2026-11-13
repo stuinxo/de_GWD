@@ -1069,13 +1069,13 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install DoH se
 
 installXray(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Install Xray${cRES}\r\c"
-rm -rf /opt/de_GWD/vtrui
 mkdir -p /opt/de_GWD/vtrui
+rm -f /opt/de_GWD/vtrui/vtrui
 
 if [[ -n $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]]; then
 rm -rf /tmp/de_GWD
-unzip /opt/de_GWD/.repo/de_GWD.zip -d /tmp/de_GWD >/dev/null 2>&1
-mv -f /tmp/de_GWD/xray /opt/de_GWD/vtrui/vtrui
+unzip -oqj /opt/de_GWD/.repo/de_GWD.zip xray -d /opt/de_GWD/vtrui >/dev/null 2>&1
+mv -f /opt/de_GWD/vtrui/xray /opt/de_GWD/vtrui/vtrui
 chmod +x /opt/de_GWD/vtrui/vtrui
 rm -rf /tmp/de_GWD*
 else
