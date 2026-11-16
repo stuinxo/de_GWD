@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 supportsSystem(){
   local osRelease=$1
   local architecture=$2
@@ -43,6 +44,9 @@ virt=$(systemd-detect-virt 2>/dev/null || true)
 systemd-detect-virt --container >/dev/null 2>&1 && virt_type="container" || virt_type=""
 export DEBIAN_FRONTEND=noninteractive
 branch="${BRANCH:-v2}"
+socks5OutboundSettings="${SOCKS5_OUTBOUND_SETTINGS:-/opt/de_GWD/socks5-outbound.json}"
+vtruiConfig="${VTRUI_CONFIG_PATH:-/opt/de_GWD/vtrui/config.json}"
+vtruiDir="${VTRUI_DIR:-/opt/de_GWD/vtrui}"
 
 [[ -f "/etc/nginx/conf.d/default.conf" ]] && sed -i 's/fastopen=128/fastopen=500/g' /etc/nginx/conf.d/default.conf
 
@@ -53,6 +57,8 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing System Packages...${c
 if command -v debconf-set-selections >/dev/null 2>&1; then
     echo "man-db man-db/auto-update boolean false" | debconf-set-selections 2>/dev/null || true
 fi
+wait_apt_lock
+apt update -qq >/dev/null 2>&1 || true
 pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
 grep -qE '^(ii|rc) +ipset$' <<< "$pkg_status" && apt remove --purge -y ipset
 grep -qE '^(ii|rc) +haveged$' <<< "$pkg_status" && apt remove --purge -y haveged
@@ -62,13 +68,31 @@ grep -qE '^(ii|rc) +systemd-timesyncd$' <<< "$pkg_status" && apt remove --purge 
 grep -qE '^(ii|rc) +rng-tools(-debian)?$' <<< "$pkg_status" && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
-for pkg in sudo wget curl git locales psmisc idn2 dns-root-data netcat-openbsd dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq bc moreutils chrony cron socat screen ethtool qrencode sqlite3 unbound libmimalloc3; do
+for pkg in sudo wget curl git locales psmisc idn2 dns-root-data netcat-openbsd dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq bc moreutils chrony cron socat screen ethtool qrencode sqlite3 unbound libbrotli1 libcrypt1; do
   grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
 done
+if apt-cache show libmimalloc3 >/dev/null 2>&1; then
+  grep -qE '^ii +libmimalloc3$' <<< "$pkg_status" || aptPKG+=(libmimalloc3)
+elif apt-cache show libmimalloc2.0 >/dev/null 2>&1; then
+  grep -qE '^ii +libmimalloc2\.0$' <<< "$pkg_status" || aptPKG+=(libmimalloc2.0)
+fi
+if [[ $architecture == "arm64" ]]; then
+  if apt-cache show libgoogle-perftools4t64 >/dev/null 2>&1; then
+    grep -qE '^ii +libgoogle-perftools4t64$' <<< "$pkg_status" || aptPKG+=(libgoogle-perftools4t64)
+  elif apt-cache show libgoogle-perftools4 >/dev/null 2>&1; then
+    grep -qE '^ii +libgoogle-perftools4$' <<< "$pkg_status" || aptPKG+=(libgoogle-perftools4)
+  fi
+fi
 if ! grep -qE '^ii +irqbalance$' <<< "$pkg_status" && [[ $(nproc --all) -gt 1 ]]; then
   aptPKG+=(irqbalance)
 fi
-[[ ${#aptPKG[@]} -gt 0 ]] && apt install -y -q "${aptPKG[@]}"
+if [[ ${#aptPKG[@]} -gt 0 ]]; then
+  wait_apt_lock
+  if ! apt install -y -q "${aptPKG[@]}"; then
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Failed to install required packages${cRES}" >&2
+    exit 1
+  fi
+fi
 for m3 in /usr/lib/*/libmimalloc.so.3 /usr/lib/libmimalloc.so.3; do
     if [[ -f "$m3" ]]; then
         m2="${m3%.3}.2"
@@ -123,7 +147,6 @@ gh_text(){
   fi
   local urls=("$url")
   [[ -n "$jsd_url" ]] && urls+=("$jsd_url")
-  urls+=("https://ghproxy.net/${url}")
 
   for u in "${urls[@]}"; do
     local content
@@ -445,9 +468,13 @@ mkdir -p /opt/de_GWD
 mkdir -p /opt/de_GWD/.repo
 cat << "EOF" >/opt/de_GWD/tcpTime
 #!/bin/bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+if [[ $(timedatectl show -p NTPSynchronized --value 2>/dev/null) == "yes" ]]; then
+  exit 0
+fi
 httpDate=$(wget -T 5 -t 2 -qSO- --max-redirect=0 whatismyip.akamai.com 2>&1 | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
 [[ -z "$httpDate" ]] && httpDate=$(curl -fsSI --connect-timeout 5 -m 8 cloudflare.com 2>/dev/null | awk '/^[[:space:]]*[Dd]ate:/{sub(/^[[:space:]]*[Dd]ate:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit}')
-[[ "$httpDate" =~ [0-9]{4} ]] && date -s "$httpDate" >/dev/null 2>&1 || true
+[[ "$httpDate" =~ ^[A-Za-z]{3},[[:space:]]+[0-9]{1,2}[[:space:]]+[A-Za-z]{3}[[:space:]]+[0-9]{4}[[:space:]]+[0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]]+GMT$ ]] && date -s "$httpDate" >/dev/null 2>&1 || true
 command -v hwclock >/dev/null 2>&1 && hwclock -w 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/tcpTime
@@ -523,10 +550,14 @@ www-data     soft   memlock   unlimited
 *     soft   memlock   unlimited
 EOF
 
-sed -i '/DefaultLimitCORE/d' /etc/systemd/system.conf
-sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf
-sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf
-cat >>'/etc/systemd/system.conf' <<EOF
+if [[ -f /etc/systemd/system.conf ]]; then
+  sed -i '/DefaultLimitCORE/d' /etc/systemd/system.conf
+  sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf
+  sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf
+fi
+mkdir -p /etc/systemd/system.conf.d
+cat << EOF >/etc/systemd/system.conf.d/99-de_GWD.conf
+[Manager]
 DefaultLimitCORE=1000000
 DefaultLimitNOFILE=1000000
 DefaultLimitNPROC=1000000
@@ -536,23 +567,24 @@ systemctl daemon-reload
 export DEBIAN_FRONTEND=noninteractive
 wait_apt_lock
 
-for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+local codename
+codename=$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-trixie}")
+for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do
   [[ -f "$f" ]] || continue
-  sed -i -E 's/(stretch|buster|bullseye)\/updates/trixie-security/g' "$f" 2>/dev/null
-  sed -i -E 's/\b(stretch|buster|bullseye|bookworm)(-security|-updates|-backports)?\b/trixie\2/g' "$f" 2>/dev/null
+  sed -i -E 's|http://deb\.debian\.org|https://deb.debian.org|g' "$f" 2>/dev/null || true
 done
 
-if ! grep -rqw "trixie" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+if ! grep -rqw "$codename" /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources 2>/dev/null; then
 cat << EOF >/etc/apt/sources.list
-deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian $codename main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian-security ${codename}-security main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian ${codename}-updates main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian ${codename}-backports main contrib non-free non-free-firmware
 EOF
 fi
 
-apt update --fix-missing && apt upgrade --allow-downgrades -y
-apt full-upgrade -y && apt autoremove --purge -y && apt clean -y && apt autoclean -y
+apt update --fix-missing && apt upgrade -y
+apt autoremove --purge -y && apt clean -y && apt autoclean -y
 
 pkgDEP
 
@@ -683,8 +715,8 @@ ldconfig
 DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 [[ -n $DPKGclean ]] && echo $DPKGclean | xargs sudo dpkg --purge
 
-rm -rf /var/log/journal/*
-systemctl restart systemd-journald >/dev/null 2>&1
+journalctl --vacuum-time=7d --vacuum-size=100M >/dev/null 2>&1 || true
+systemctl restart systemd-journald >/dev/null 2>&1 || true
 
 localeSet=`cat << EOF
 LANG=en_US.UTF-8
@@ -735,7 +767,8 @@ modprobe nf_conntrack
 modprobe ifb
 modprobe sch_cake
 
-cat << EOF >/etc/sysctl.conf
+mkdir -p /etc/sysctl.d
+cat << EOF >/etc/sysctl.d/99-de_GWD.conf
 kernel.sysrq = 438
 vm.overcommit_memory = 1
 vm.swappiness = 5
@@ -832,7 +865,6 @@ net.ipv4.tcp_ecn = 0
 net.ipv4.tcp_fin_timeout = 10
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_fastopen_blackhole_timeout_sec = 0
-net.ipv4.tcp_fastopen_key = 00000000-00000000-00000000-00000000
 net.ipv4.tcp_keepalive_time = 300
 net.ipv4.tcp_keepalive_intvl = 30
 net.ipv4.tcp_keepalive_probes = 5
@@ -854,109 +886,120 @@ net.core.default_qdisc = cake
 EOF
 
 sync
-sysctl -p >/dev/null 2>&1
+sysctl --system >/dev/null 2>&1 || true
 fi
 
 if dpkg-query -W -f='${db:Status-Abbrev}\n' docker-ce 2>/dev/null | grep -q '^ii' && dpkg-query -W -f='${db:Status-Abbrev}\n' containerd.io 2>/dev/null | grep -q '^ii'; then
-mkdir -p /etc/docker/
-systemctl stop docker docker.socket containerd
-cat << EOF >/etc/docker/daemon.json
+  mkdir -p /etc/docker/
+  if [[ ! -s /etc/docker/daemon.json ]] || ! jq -e '.iptables == false' /etc/docker/daemon.json >/dev/null 2>&1; then
+    systemctl stop docker docker.socket containerd 2>/dev/null || true
+    if [[ -s /etc/docker/daemon.json ]] && jq -e 'type == "object"' /etc/docker/daemon.json >/dev/null 2>&1; then
+      jq '.iptables = false' /etc/docker/daemon.json | sponge /etc/docker/daemon.json
+    else
+      cat << EOF >/etc/docker/daemon.json
 {
   "iptables": false
 }
 EOF
-systemctl restart docker
+    fi
+    systemctl restart docker
+  fi
 fi
 
-cat << EOF >/etc/rc_online.local
+if [[ $virt_type != "container" ]]; then
+cat << 'EOF' >/etc/rc_online.local
 #!/bin/bash
-echo madvise >/sys/kernel/mm/transparent_hugepage/enabled
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+echo madvise >/sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
 
-$(which ip) route show table local | grep -v 'linkdown' | grep -v 'broadcast' | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 1500 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic
+ip route show table local | grep -v 'linkdown' | grep -v 'broadcast' | while read -r line; do
+  line=$(echo "$line" | awk -F' mtu ' '{print $1}')
+  ip route change $line mtu 1500 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic 2>/dev/null || true
 done
 
-$(which ip) route show table local | grep ' dev lo ' | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 65520 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic
+ip route show table local | grep ' dev lo ' | while read -r line; do
+  line=$(echo "$line" | awk -F' mtu ' '{print $1}')
+  ip route change $line mtu 65520 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic 2>/dev/null || true
 done
 
-NIC_local=\$($(which ip) route | grep -v 'linkdown' | grep -v 'broadcast' | grep -v 'scope' | awk -F' dev ' '{print\$2}' | cut -d' ' -f1)
-$(which ip) route | grep " dev \$NIC_local " | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 1500 fastopen_no_cookie 1 congctl lock $(sysctl net.ipv4.tcp_congestion_control | awk -F' = ' '{print$2}')
+cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo bbr)
+for NIC_local in $(ip route | grep -v 'linkdown' | grep -v 'broadcast' | grep -v 'scope' | awk -F' dev ' '{print $2}' | cut -d' ' -f1 | sort -u); do
+  ip route | grep " dev ${NIC_local} " | while read -r line; do
+    line=$(echo "$line" | awk -F' mtu ' '{print $1}')
+    ip route change $line mtu 1500 fastopen_no_cookie 1 congctl lock "$cc" 2>/dev/null || true
+  done
 done
 
-
-
-NIC_device=\$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device')
-for ifb in \$(echo \$NIC_device | xargs -n 1 | grep 'virtual' | awk -F'/' '{print\$NF}' | grep '^ifb'); do
-$(which ip) link set \$ifb down
-$(which ip) link delete \$ifb
+NIC_device=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath 2>/dev/null | grep 'device' || true)
+for ifb in $(echo "$NIC_device" | xargs -n 1 | grep 'virtual' | awk -F'/' '{print $NF}' | grep '^ifb' || true); do
+  ip link set "$ifb" down 2>/dev/null || true
+  ip link delete "$ifb" 2>/dev/null || true
 done
 
-$(which ip) link set lo qlen 10000 mtu 65520
-$(which tc) qdisc del dev lo root >/dev/null 2>&1
-$(which tc) qdisc add dev lo root cake unlimited rtt 50us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter-aggressive raw egress
+ip link set lo qlen 10000 mtu 65520 2>/dev/null || true
+tc qdisc del dev lo root >/dev/null 2>&1 || true
+tc qdisc add dev lo root cake unlimited rtt 50us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter-aggressive raw egress 2>/dev/null || true
 
-$(which ip) link add name ifb4lo type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev lo ingress >/dev/null 2>&1
-$(which tc) qdisc add dev lo handle ffff: ingress
-$(which tc) qdisc del dev ifb4lo root >/dev/null 2>&1
-$(which tc) qdisc add dev ifb4lo root cake unlimited rtt 50us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw ingress
-$(which ip) link set ifb4lo qlen 10000 mtu 65520
-$(which ip) link set ifb4lo up
-$(which tc) filter add dev lo parent ffff: matchall action mirred egress redirect dev ifb4lo
+ip link add name ifb4lo type ifb >/dev/null 2>&1 || true
+tc qdisc del dev lo ingress >/dev/null 2>&1 || true
+tc qdisc add dev lo handle ffff: ingress 2>/dev/null || true
+tc qdisc del dev ifb4lo root >/dev/null 2>&1 || true
+tc qdisc add dev ifb4lo root cake unlimited rtt 50us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw ingress 2>/dev/null || true
+ip link set ifb4lo qlen 10000 mtu 65520 2>/dev/null || true
+ip link set ifb4lo up 2>/dev/null || true
+tc filter add dev lo parent ffff: matchall action mirred egress redirect dev ifb4lo 2>/dev/null || true
 
-echo \$NIC_device | xargs -n 1 | grep 'virtual' | awk -F'/' '{print\$NF}' | grep -v 'docker' | grep -v 'ifb' | grep -v '^lo\$' | while read line; do
-MTU_NUM=\$(< /sys/class/net/\$line/mtu)
-ifb4eth=\$(echo "ifb4\$line" | cut -c 1-15)
-$(which ip) link set \$line qlen 10001 mtu \$MTU_NUM
-$(which tc) qdisc del dev \$line root >/dev/null 2>&1
-$(which tc) qdisc add dev \$line root cake unlimited rtt 200us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter raw overhead 18 mpu 64 egress
+echo "$NIC_device" | xargs -n 1 | grep 'virtual' | awk -F'/' '{print $NF}' | grep -vE '^(lo|ifb.*|docker.*|br-.*|veth.*|wg.*|tun.*|tap.*)$' | while read -r line; do
+  [[ -n $line ]] || continue
+  MTU_NUM=$(< "/sys/class/net/${line}/mtu")
+  ifb4eth=$(echo "ifb4${line}" | cut -c 1-15)
+  ip link set "$line" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  tc qdisc del dev "$line" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" root cake unlimited rtt 200us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter raw overhead 18 mpu 64 egress 2>/dev/null || true
 
-$(which ip) link add name \$ifb4eth type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev \$line ingress >/dev/null 2>&1
-$(which tc) qdisc add dev \$line handle ffff: ingress
-$(which tc) qdisc del dev \$ifb4eth root >/dev/null 2>&1
-$(which tc) qdisc add dev \$ifb4eth root cake unlimited rtt 200us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw overhead 18 mpu 64 ingress
-$(which ip) link set \$ifb4eth qlen 10001 mtu \$MTU_NUM
-$(which ip) link set \$ifb4eth up
-$(which tc) filter add dev \$line parent ffff: matchall action mirred egress redirect dev \$ifb4eth
+  ip link add name "$ifb4eth" type ifb >/dev/null 2>&1 || true
+  tc qdisc del dev "$line" ingress >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" handle ffff: ingress 2>/dev/null || true
+  tc qdisc del dev "$ifb4eth" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$ifb4eth" root cake unlimited rtt 200us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw overhead 18 mpu 64 ingress 2>/dev/null || true
+  ip link set "$ifb4eth" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  ip link set "$ifb4eth" up 2>/dev/null || true
+  tc filter add dev "$line" parent ffff: matchall action mirred egress redirect dev "$ifb4eth" 2>/dev/null || true
 done
 
-echo \$NIC_device | xargs -n 1 | grep -v 'virtual' | awk -F'/' '{print\$NF}' | while read line; do
-MTU_NUM=\$(< /sys/class/net/\$line/mtu)
-ifb4eth=\$(echo "ifb4\$line" | cut -c 1-15)
-$(which ip) link set \$line qlen 10001 mtu \$MTU_NUM
-$(which tc) qdisc del dev \$line root >/dev/null 2>&1
-$(which tc) qdisc add dev \$line root cake unlimited besteffort dual-srchost nonat nowash no-split-gso ack-filter ethernet egress
+echo "$NIC_device" | xargs -n 1 | grep -v 'virtual' | awk -F'/' '{print $NF}' | grep -vE '^(lo|ifb.*|docker.*|br-.*|veth.*|wg.*|tun.*|tap.*)$' | while read -r line; do
+  [[ -n $line ]] || continue
+  MTU_NUM=$(< "/sys/class/net/${line}/mtu")
+  ifb4eth=$(echo "ifb4${line}" | cut -c 1-15)
+  ip link set "$line" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  tc qdisc del dev "$line" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" root cake unlimited besteffort dual-srchost nonat nowash no-split-gso ack-filter ethernet egress 2>/dev/null || true
 
-$(which ip) link add name \$ifb4eth type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev \$line ingress >/dev/null 2>&1
-$(which tc) qdisc add dev \$line handle ffff: ingress
-$(which tc) qdisc del dev \$ifb4eth root >/dev/null 2>&1
-$(which tc) qdisc add dev \$ifb4eth root cake unlimited diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter ethernet ingress
-$(which ip) link set \$ifb4eth qlen 10001 mtu \$MTU_NUM
-$(which ip) link set \$ifb4eth up
-$(which tc) filter add dev \$line parent ffff: matchall action mirred egress redirect dev \$ifb4eth
+  ip link add name "$ifb4eth" type ifb >/dev/null 2>&1 || true
+  tc qdisc del dev "$line" ingress >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" handle ffff: ingress 2>/dev/null || true
+  tc qdisc del dev "$ifb4eth" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$ifb4eth" root cake unlimited diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter ethernet ingress 2>/dev/null || true
+  ip link set "$ifb4eth" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  ip link set "$ifb4eth" up 2>/dev/null || true
+  tc filter add dev "$line" parent ffff: matchall action mirred egress redirect dev "$ifb4eth" 2>/dev/null || true
 
-$(which ethtool) -s \$line duplex full >/dev/null 2>&1
-$(which ethtool) -K \$line rx on tx on sg off gro off gso off tx-gso-partial off lro off tso off ufo off >/dev/null 2>&1
+  ethtool -s "$line" duplex full >/dev/null 2>&1 || true
+  ethtool -K "$line" rx on tx on sg off gro off gso off tx-gso-partial off lro off tso off ufo off >/dev/null 2>&1 || true
 done
 
-$(which ip) tcp_metrics flush
-$(which ip) route flush cache
+ip tcp_metrics flush 2>/dev/null || true
+ip route flush cache 2>/dev/null || true
 EOF
 chmod +x /etc/rc_online.local
 
 mkdir -p /etc/systemd/system/networking.service.d/
 cat << EOF >/etc/systemd/system/networking.service.d/override.conf
 [Service]
-ExecStartPost=/etc/rc_online.local
+ExecStartPost=-/etc/rc_online.local
 EOF
 systemctl daemon-reload >/dev/null
+fi
 }
 
 
@@ -968,35 +1011,40 @@ mkdir -p /opt/de_GWD/nftables
 
 cat << "EOF" >/opt/de_GWD/nftables/flowtable_eth.sh
 #!/bin/bash
-interface_FT=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | awk -F'/' '{print$NF}' | xargs -n1 | grep -v '^lo$' | grep -v '^ifb4lo$')
+interface_FT=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath 2>/dev/null | grep 'device' | awk -F'/' '{print $NF}' | xargs -n1 | grep -vE '^(lo|ifb.*|wg.*|tun.*|tap.*|docker.*|br-.*|veth.*)$' || true)
 
 interface_BF=()
 while IFS= read -r line; do
-    interface_BF+=("$line")
+    [[ -n "$line" ]] && interface_BF+=("$line")
 done <<< "$interface_FT"
 
-echo "define flowtable_eth = { $(IFS=, ; echo "${interface_BF[*]}") };" >/opt/de_GWD/nftables/flowtable.eth
+if [[ ${#interface_BF[@]} -gt 0 ]]; then
+  cat << FT_EOF >/opt/de_GWD/nftables/flowtable.nft
+table inet bypassflow {
+    flowtable Acceleration {
+        hook ingress priority filter; devices = { $(IFS=, ; echo "${interface_BF[*]}") };
+    }
+
+    chain bypasschain {
+        type filter hook forward priority filter; policy accept;
+        ct state established ip daddr 172.16.0.0/24 flow offload @Acceleration
+        ct state established ip saddr 172.16.0.0/24 flow offload @Acceleration
+        ct state established ip daddr 172.17.0.0/16 flow offload @Acceleration
+        ct state established ip saddr 172.17.0.0/16 flow offload @Acceleration
+    }
+}
+FT_EOF
+else
+  : >/opt/de_GWD/nftables/flowtable.nft
+fi
 EOF
 chmod +x /opt/de_GWD/nftables/flowtable_eth.sh
 
 cat << "EOF" >/opt/de_GWD/nftables/default.nft
 #!/usr/sbin/nft -f
+flush ruleset
 
-include "/opt/de_GWD/nftables/flowtable.eth"
-
-table inet bypassflow {
-    flowtable Acceleration {
-        hook ingress priority -300; devices = $flowtable_eth;
-    }
-
-    chain bypasschain {
-        type filter hook forward priority -300; policy accept;
-        ip daddr 172.16.0.0/24 flow offload @Acceleration
-        ip saddr 172.16.0.0/24 flow offload @Acceleration
-        ip daddr 172.17.0.0/16 flow offload @Acceleration
-        ip saddr 172.17.0.0/16 flow offload @Acceleration
-    }
-}
+include "/opt/de_GWD/nftables/flowtable.nft"
 
 table inet filter {
         chain INPUT {
@@ -1007,7 +1055,7 @@ table inet filter {
                 iifname "ifb4lo" accept
                 iifname "ifb4wgcf" accept
                 ct state established,related accept
-                tcp flags != syn ct state new drop
+                tcp flags & (fin|syn|rst|ack) != syn ct state new drop
                 tcp flags & (fin|syn) == (fin|syn) drop
                 tcp flags & (syn|rst) == (syn|rst) drop
                 tcp flags & (fin|syn|rst|psh|ack|urg) == 0 drop
@@ -1019,6 +1067,7 @@ table inet filter {
         }
         chain FORWARD {
                 type filter hook forward priority 0; policy accept;
+                tcp flags & (syn|rst) == syn tcp option maxseg size set rt mtu
                 # WireGuard traffic
                 iifname "ifb4wgcf" accept
                 iifname "wgcf" accept
@@ -1063,7 +1112,6 @@ table inet router {
         }
         chain PREROUTING {
                 type nat hook prerouting priority dstnat; policy accept;
-                tcp flags & (syn|rst) == syn counter tcp option maxseg size set 1460
                 # Docker
                 fib daddr type local counter jump DOCKER
         }
@@ -1091,7 +1139,7 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh' ; /usr/sbin/nft -f /opt/de_GWD/nftables/default.nft
+ExecStart=-/bin/bash -c '/etc/rc_online.local' ; /bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh' ; /usr/sbin/nft -f /opt/de_GWD/nftables/default.nft
 ExecStop=/usr/sbin/nft flush ruleset
 
 [Install]
@@ -1194,8 +1242,8 @@ Restart=on-failure
 RestartPreventExitStatus=23
 
 Nice=-8
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 
 LimitNOFILE=10000000
@@ -1289,10 +1337,16 @@ unset CF_Key CF_Email
 
 local mainDomain="$domain"
 local domainArgs=("-d" "$domain" "-d" "*.$domain")
-if [[ "$domain" == *.*.* ]]; then
+if [[ "$domain" =~ \.(co|org|gov|ac|net|me|plc|ltd)\.uk$ || "$domain" =~ \.(com|net|org|gov|edu|ac)\.cn$ || "$domain" =~ \.(com|net|org|edu|gov)\.(hk|tw|au)$ || "$domain" =~ \.(co|or|ne|ac|go)\.jp$ || "$domain" =~ \.(co|or|ne)\.kr$ || "$domain" =~ \.com\.(sg|br|mx|tr)$ || "$domain" =~ \.co\.(za|in|nz)$ || "$domain" =~ \.eu\.org$ ]]; then
+  if [[ "$domain" == *.*.*.* ]]; then
     local parentDomain=$(echo "$domain" | cut -d. -f2-)
     mainDomain="$parentDomain"
     domainArgs=("-d" "$parentDomain" "-d" "*.$parentDomain" "-d" "*.$domain")
+  fi
+elif [[ "$domain" == *.*.* ]]; then
+  local parentDomain=$(echo "$domain" | cut -d. -f2-)
+  mainDomain="$parentDomain"
+  domainArgs=("-d" "$parentDomain" "-d" "*.$parentDomain" "-d" "*.$domain")
 fi
 
 if [[ $(systemctl is-active 'nginx') != "active" ]]; then
@@ -1350,7 +1404,7 @@ if "/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 45 "${domainArgs[@]}
       if "/root/.acme.sh"/acme.sh --installcert -d "$mainDomain" \
                      --key-file       /var/www/ssl/de_GWD.key  \
                      --fullchain-file /var/www/ssl/de_GWD.cer \
-                     --reloadcmd     "chown root:www-data /var/www/ssl/*.key 2>/dev/null || true; chmod 640 /var/www/ssl/*.key 2>/dev/null || true; systemctl force-reload nginx" \
+                     --reloadcmd     "chown root:www-data /var/www/ssl/*.key 2>/dev/null || true; chmod 640 /var/www/ssl/*.key 2>/dev/null || true; systemctl force-reload nginx; if systemctl is-active --quiet RproxyS; then systemctl restart RproxyS; fi" \
                      --ecc; then
         chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
         chmod 640 /var/www/ssl/*.key 2>/dev/null || true
@@ -1395,15 +1449,24 @@ touch /etc/nginx/conf.d/default.conf
 sed -i '/SERVER_BASE_START/,/SERVER_BASE_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/DOH_START/,/DOH_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/V2_START/,/V2_END/d' /etc/nginx/conf.d/default.conf
-sed -i '$s/}$//' /etc/nginx/conf.d/default.conf
 
-until [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) != "$" ]]; do
+while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
    sed -i '1d' /etc/nginx/conf.d/default.conf
 done
 
-until [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) != "$" ]]; do
+while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
    sed -i '$d' /etc/nginx/conf.d/default.conf
 done
+
+if [[ -s /etc/nginx/conf.d/default.conf ]]; then
+   sed -i '${/^[[:space:]]*}[[:space:]]*$/d;}' /etc/nginx/conf.d/default.conf
+   while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
+      sed -i '$d' /etc/nginx/conf.d/default.conf
+   done
+fi
+
+local existingConf
+existingConf=$(cat /etc/nginx/conf.d/default.conf 2>/dev/null)
 
 cat << EOF >/etc/nginx/conf.d/.HSTS
 add_header X-Download-Options                 "noopen"            always;
@@ -1494,6 +1557,7 @@ location $path {
   proxy_set_header            X-Real-IP \$remote_addr;
   proxy_set_header            X-Real-PORT \$remote_port;
   proxy_set_header            X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_set_header            Early-Data \$ssl_early_data;
   proxy_redirect              off;
   proxy_buffering             off;
   proxy_request_buffering     off;
@@ -1504,7 +1568,7 @@ location $path {
 }
 # V2_END
 
-$(cat /etc/nginx/conf.d/default.conf 2>/dev/null)
+${existingConf}
 }
 EOF
 }
@@ -1582,7 +1646,11 @@ jq --argjson clients "${clientsJson:-[]}" --argjson extra "${extraInbounds:-[]}"
    --argjson rules "${existingRules:-[]}" --argjson outbounds "${existingOutbounds:-[]}" \
   '.inbounds[0].settings.clients += $clients | .routing.rules = $rules | if ($extra | length) > 0 then .inbounds += $extra else . end | if ($outbounds | length) > 0 then .outbounds = $outbounds else . end' \
   /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-chmod 644 /opt/de_GWD/vtrui/config.json
+if chgrp www-data /opt/de_GWD/vtrui/config.json 2>/dev/null; then
+  chmod 640 /opt/de_GWD/vtrui/config.json
+else
+  chmod 644 /opt/de_GWD/vtrui/config.json
+fi
 }
 
 
@@ -1609,7 +1677,1503 @@ EOF
 jq --argjson OBdir "$OBdir" --argjson OBblo "$OBblo" \
   '.outbounds = [$OBdir, $OBblo] + ([.outbounds[]? | select(.tag != "direct" and .tag != "blocked")])' \
   /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-chmod 644 /opt/de_GWD/vtrui/config.json
+if chgrp www-data /opt/de_GWD/vtrui/config.json 2>/dev/null; then
+  chmod 640 /opt/de_GWD/vtrui/config.json
+else
+  chmod 644 /opt/de_GWD/vtrui/config.json
+fi
+if [[ -s "${socks5OutboundSettings:-/opt/de_GWD/socks5-outbound.json}" ]] && declare -F socks5OutboundSync >/dev/null 2>&1; then
+  socks5OutboundSync || return 1
+fi
+}
+
+
+
+socks5Trim(){
+  local s="${1:-}"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+
+
+socks5WriteFile(){
+  local src="$1"
+  local dest="$2"
+  local mode="$3"
+  mkdir -p "$(dirname "$dest")"
+  if [[ -L "$dest" ]]; then
+    cat "$src" > "$dest" || return 1
+    rm -f "$src"
+  else
+    mv -f "$src" "$dest" || return 1
+  fi
+  if [[ $mode == "640-www" ]]; then
+    if chgrp www-data "$dest" 2>/dev/null; then
+      chmod 640 "$dest" || return 1
+    else
+      chmod 644 "$dest" || return 1
+    fi
+  else
+    chmod "$mode" "$dest" || return 1
+  fi
+}
+
+
+
+socks5UrlDecode(){
+  local LC_ALL=C s="${1:-}" out="" i=0 len ch hex
+  len=${#s}
+  while (( i < len )); do
+    if [[ ${s:i:1} == "%" && $((i + 2)) -lt $len && ${s:i+1:2} =~ ^[0-9A-Fa-f]{2}$ ]]; then
+      hex="${s:i+1:2}"
+      [[ $hex == "00" ]] && return 1
+      printf -v ch "\\x${hex}"
+      out+="$ch"
+      i=$((i + 3))
+    else
+      out+="${s:i:1}"
+      i=$((i + 1))
+    fi
+  done
+  printf '%s' "$out"
+}
+
+
+
+socks5OutboundIsValidIpv4(){
+  local ip="${1:-}" o1 o2 o3 o4
+  [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
+  IFS='.' read -r o1 o2 o3 o4 <<< "$ip"
+  (( 10#$o1 <= 255 && 10#$o2 <= 255 && 10#$o3 <= 255 && 10#$o4 <= 255 ))
+}
+
+
+
+socks5OutboundIsValidIpv6(){
+  local ip="${1:-}" rest seg colonCount=0 maxSeg=8 hasDouble=0
+  [[ -n $ip && $ip == *:* ]] || return 1
+  [[ $ip != *:::* ]] || return 1
+  [[ $ip =~ ^[0-9A-Fa-f:.]+$ ]] || return 1
+  if [[ $ip =~ ^:[^:] || $ip =~ [^:]:$ ]]; then
+    return 1
+  fi
+  [[ $ip == *"::"* ]] && hasDouble=1
+  rest="${ip#*::}"
+  if (( hasDouble == 1 )) && [[ $rest == *"::"* ]]; then
+    return 1
+  fi
+  if [[ $ip == *.* ]]; then
+    local last="${ip##*:}"
+    socks5OutboundIsValidIpv4 "$last" || return 1
+    ip="${ip%:*}"
+    maxSeg=6
+  fi
+  local IFS=':'
+  local parts=()
+  read -r -a parts <<< "${ip} "
+  local lastIdx=$(( ${#parts[@]} - 1 ))
+  parts[$lastIdx]="${parts[$lastIdx]% }"
+  for seg in "${parts[@]}"; do
+    if [[ -n $seg ]]; then
+      [[ $seg =~ ^[0-9A-Fa-f]{1,4}$ ]] || return 1
+      colonCount=$((colonCount + 1))
+    fi
+  done
+  if (( hasDouble == 1 )); then
+    (( colonCount < maxSeg )) || return 1
+  else
+    (( colonCount == maxSeg )) || return 1
+  fi
+  return 0
+}
+
+
+
+socks5OutboundIsValidAddress(){
+  local addr="${1:-}"
+  [[ -n $addr && $addr != *[[:space:]]* ]] || return 1
+  if [[ $addr =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+    socks5OutboundIsValidIpv4 "$addr"
+    return $?
+  elif [[ $addr == *:* ]]; then
+    socks5OutboundIsValidIpv6 "$addr"
+    return $?
+  else
+    [[ $addr =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$ ]]
+    return $?
+  fi
+}
+
+
+
+socks5OutboundIsValidIpRule(){
+  local rule="${1:-}" addr prefix
+  [[ -n $rule && $rule != *[[:space:]]* ]] || return 1
+  if [[ $rule =~ ^geoip:!?[A-Za-z0-9_-]+$ ]]; then
+    return 0
+  elif [[ $rule =~ ^ext:[A-Za-z0-9._-]+:[A-Za-z0-9!_-]+$ ]]; then
+    return 0
+  elif [[ $rule == *"/"* ]]; then
+    addr="${rule%/*}"
+    prefix="${rule#*/}"
+    [[ $prefix =~ ^(0|[1-9][0-9]{0,2})$ ]] || return 1
+    if socks5OutboundIsValidIpv4 "$addr"; then
+      (( 10#$prefix <= 32 ))
+      return $?
+    elif socks5OutboundIsValidIpv6 "$addr"; then
+      (( 10#$prefix <= 128 ))
+      return $?
+    fi
+    return 1
+  else
+    socks5OutboundIsValidIpv4 "$rule" && return 0
+    socks5OutboundIsValidIpv6 "$rule" && return 0
+    return 1
+  fi
+}
+
+
+
+socks5OutboundParseEndpoint(){
+  local raw kind="" address="" port="" username="" password="" hasAuth=false
+  raw=$(socks5Trim "${1:-}")
+  [[ -n $raw ]] || return 1
+
+  if [[ $raw == *"://"* ]]; then
+    local scheme lowerScheme rest userinfo="" hostport="" tail="" decodedInfo="" b64Decoded=""
+    scheme="${raw%%://*}"
+    lowerScheme=$(printf '%s' "$scheme" | tr 'A-Z' 'a-z')
+    [[ $lowerScheme == "socks5" || $lowerScheme == "socks5h" || $lowerScheme == "socks" ]] || return 1
+    rest="${raw#*://}"
+    rest="${rest%%#*}"
+    rest="${rest%%\?*}"
+    rest="${rest%%/*}"
+    [[ -n $rest ]] || return 1
+
+    if [[ $rest == *"@"* ]]; then
+      userinfo="${rest%@*}"
+      hostport="${rest##*@}"
+    else
+      hostport="$rest"
+    fi
+
+    if [[ -n $userinfo ]]; then
+      if [[ $userinfo == *:* ]]; then
+        [[ ${userinfo%%:*} =~ %0[0-9A-Fa-f]|%1[0-9A-Fa-f]|%7[Ff] ]] && return 1
+        [[ ${userinfo#*:} =~ %0[0-9A-Fa-f]|%1[0-9A-Fa-f]|%7[Ff] ]] && return 1
+        username=$(socks5UrlDecode "${userinfo%%:*}") || return 1
+        password=$(socks5UrlDecode "${userinfo#*:}") || return 1
+        hasAuth=true
+      else
+        [[ $userinfo =~ %0[0-9A-Fa-f]|%1[0-9A-Fa-f]|%7[Ff] ]] && return 1
+        decodedInfo=$(socks5UrlDecode "$userinfo") || return 1
+        if [[ $decodedInfo == *:* ]]; then
+          username="${decodedInfo%%:*}"
+          password="${decodedInfo#*:}"
+          hasAuth=true
+        else
+          b64Decoded=$(jq -rn --arg u "$decodedInfo" 'try ($u | gsub("-"; "+") | gsub("_"; "/") | . + ("===="[0:(4 - (length % 4)) % 4]) | @base64d) catch empty' 2>/dev/null || true)
+          if [[ -n $b64Decoded && $b64Decoded == *:* ]]; then
+            username="${b64Decoded%%:*}"
+            password="${b64Decoded#*:}"
+            hasAuth=true
+          else
+            return 1
+          fi
+        fi
+      fi
+      [[ -n $username && -n $password ]] || return 1
+    fi
+
+    if [[ $hostport =~ ^\[([^\]]+)\](.*)$ ]]; then
+      address="${BASH_REMATCH[1]}"
+      tail="${BASH_REMATCH[2]}"
+      if [[ -z $tail ]]; then
+        port=""
+      elif [[ $tail =~ ^:([0-9]+)$ ]]; then
+        port="${BASH_REMATCH[1]}"
+      else
+        return 1
+      fi
+    elif [[ $hostport == *:*:* ]]; then
+      return 1
+    elif [[ $hostport =~ ^([^:]+):([0-9]+)$ ]]; then
+      address="${BASH_REMATCH[1]}"
+      port="${BASH_REMATCH[2]}"
+    elif [[ $hostport != *:* ]]; then
+      address="$hostport"
+      port=""
+    else
+      return 1
+    fi
+
+    address=$(socks5UrlDecode "$address") || return 1
+    kind="uri"
+  else
+    local tail=""
+    if [[ $raw =~ ^\[([^\]]+)\](.*)$ ]]; then
+      address="${BASH_REMATCH[1]}"
+      tail="${BASH_REMATCH[2]}"
+      if [[ -z $tail ]]; then
+        kind="host"
+        port=""
+      elif [[ $tail =~ ^:([0-9]+)$ ]]; then
+        kind="hostport"
+        port="${BASH_REMATCH[1]}"
+      elif [[ $tail =~ ^:([0-9]+):([^:]+):(.*)$ ]]; then
+        kind="tuple4"
+        port="${BASH_REMATCH[1]}"
+        username="${BASH_REMATCH[2]}"
+        password="${BASH_REMATCH[3]}"
+        hasAuth=true
+      else
+        return 1
+      fi
+    elif [[ $raw == *:*:* ]] && [[ $raw =~ ^[0-9A-Fa-f:]+$ || $raw =~ ^[0-9A-Fa-f:]+:[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      kind="host"
+      address="$raw"
+      port=""
+    elif [[ $raw =~ ^([^:]+):([0-9]+):([^:]+):(.*)$ ]]; then
+      kind="tuple4"
+      address="${BASH_REMATCH[1]}"
+      port="${BASH_REMATCH[2]}"
+      username="${BASH_REMATCH[3]}"
+      password="${BASH_REMATCH[4]}"
+      hasAuth=true
+    elif [[ $raw =~ ^([^:]+):([0-9]+)$ ]]; then
+      kind="hostport"
+      address="${BASH_REMATCH[1]}"
+      port="${BASH_REMATCH[2]}"
+    elif [[ $raw != *:* ]]; then
+      kind="host"
+      address="$raw"
+      port=""
+    else
+      return 1
+    fi
+  fi
+
+  socks5OutboundIsValidAddress "$address" || return 1
+  if [[ -n $port ]]; then
+    [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 )) || return 1
+  fi
+  if [[ $hasAuth == true ]]; then
+    [[ -n $username && -n $password ]] || return 1
+  fi
+
+  jq -cn \
+    --arg kind "$kind" \
+    --arg address "$address" \
+    --arg port "$port" \
+    --arg username "$username" \
+    --arg password "$password" \
+    --argjson hasAuth "$hasAuth" \
+    '{kind:$kind,address:$address,port:$port,username:$username,password:$password,hasAuth:$hasAuth}'
+}
+
+
+
+socks5OutboundExpandRules(){
+  local kind="$1"
+  local input="${2:-}"
+  local rawTokens=()
+  local token lowerToken expanded=()
+  local IFS=','
+  read -r -a rawTokens <<< "$input"
+  for token in "${rawTokens[@]}"; do
+    token=$(socks5Trim "$token")
+    [[ -n $token ]] || continue
+    if [[ ${token:0:1} == "@" ]]; then
+      lowerToken=$(printf '%s' "$token" | tr 'A-Z' 'a-z')
+      if [[ $kind == "domain" ]]; then
+        case "$lowerToken" in
+          @ai)
+            expanded+=( "geosite:openai" "geosite:anthropic" "domain:claude.ai" "domain:chatgpt.com" "domain:gemini.google.com" "domain:perplexity.ai" "domain:x.ai" "domain:grok.com" )
+            ;;
+          @stream)
+            expanded+=( "geosite:netflix" "geosite:disney" "geosite:youtube" "geosite:spotify" "geosite:tiktok" "geosite:hulu" )
+            ;;
+          @tg)
+            expanded+=( "geosite:telegram" )
+            ;;
+          *)
+            echo -e "${WHITE}SOCKS5 outbound${RED} unknown domain preset: $token (supported: @ai, @stream, @tg)${cRES}" >&2
+            return 1
+            ;;
+        esac
+      else
+        case "$lowerToken" in
+          @tg)
+            expanded+=( "geoip:telegram" )
+            ;;
+          *)
+            echo -e "${WHITE}SOCKS5 outbound${RED} unknown IP preset: $token (supported: @tg)${cRES}" >&2
+            return 1
+            ;;
+        esac
+      fi
+    else
+      expanded+=( "$token" )
+    fi
+  done
+
+  if (( ${#expanded[@]} == 0 )); then
+    printf '%s\n' '[]'
+    return 0
+  fi
+
+  printf '%s\n' "${expanded[@]}" | jq -R 'select(length > 0)' | jq -s 'reduce .[] as $item ([]; if index($item) == null then . + [$item] else . end)'
+}
+
+
+
+socks5OutboundSettingsOrDefault(){
+if [[ -s $socks5OutboundSettings ]]; then
+  cat "$socks5OutboundSettings"
+else
+  cat << 'EOF'
+{
+  "profiles": []
+}
+EOF
+fi
+}
+
+
+
+socks5OutboundProfiles(){
+local settings=$1
+jq -c '
+  if (.profiles | type) == "array" then
+    [.profiles[] | {
+      tag: (if .name == "default" then "socks5-exit" else "socks5-exit-" + .name end),
+      profile: (. + {
+        domains: (.domains // []),
+        ips: (.ips // [])
+      } + (if .name == "default" then {privateBypass: (if has("privateBypass") then .privateBypass else true end)} else {} end))
+    }]
+  elif ((.enabled // false) == true or (.server.address // "") != "" or ((.domains // []) | length) > 0 or ((.ips // []) | length) > 0) then
+    [{
+      tag: "socks5-exit",
+      profile: (. + {
+        name: "default",
+        domains: (.domains // []),
+        ips: (.ips // []),
+        privateBypass: (if has("privateBypass") then .privateBypass else true end)
+      })
+    }]
+  else
+    []
+  end
+' "$settings"
+}
+
+
+
+socks5OutboundProfile(){
+local name=$1 profiles
+[[ -s $socks5OutboundSettings ]] || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+jq -c --arg name "$name" '.[] | select(.profile.name == $name) | .profile' <<< "$profiles"
+}
+
+
+
+socks5OutboundCheckSelfLoop(){
+local address="${1:-}" port="${2:-}" inboundPort="" lowerAddr="" nginxDomain="" extraDomain="" hostIp=""
+[[ -s $vtruiConfig ]] || return 0
+inboundPort=$(jq -r '.inbounds[]? | select(.tag == "inbound-socks5") | .port // empty' "$vtruiConfig" 2>/dev/null | head -n 1)
+[[ -n $inboundPort && $inboundPort =~ ^[1-9][0-9]{0,4}$ ]] || return 0
+[[ -n $port && $port =~ ^[1-9][0-9]{0,4}$ ]] || return 0
+(( 10#$inboundPort == 10#$port )) || return 0
+
+lowerAddr=$(printf '%s' "$address" | tr 'A-Z' 'a-z')
+lowerAddr="${lowerAddr#[}"
+lowerAddr="${lowerAddr%]}"
+case "$lowerAddr" in
+  127.*|::1|0:0:0:0:0:0:0:1|localhost|localhost.*|0.0.0.0|::)
+    echo -e "${WHITE}SOCKS5 outbound${RED} self-loop detected: ${address}:${port} points to local inbound-socks5${cRES}" >&2
+    return 1
+    ;;
+esac
+
+if [[ -r /etc/nginx/conf.d/default.conf ]]; then
+  nginxDomain=$(awk '/server_name/ {print $2; exit}' /etc/nginx/conf.d/default.conf 2>/dev/null | sed 's/;$//' | tr 'A-Z' 'a-z')
+  if [[ -n $nginxDomain && $lowerAddr == "$nginxDomain" ]]; then
+    echo -e "${WHITE}SOCKS5 outbound${RED} self-loop detected: ${address}:${port} points to local inbound-socks5${cRES}" >&2
+    return 1
+  fi
+fi
+
+if [[ -r /opt/de_GWD/extra_domains.json ]]; then
+  extraDomain=$(jq -r '.["inbound-socks5"] // empty' /opt/de_GWD/extra_domains.json 2>/dev/null | tr 'A-Z' 'a-z')
+  if [[ -n $extraDomain && $lowerAddr == "$extraDomain" ]]; then
+    echo -e "${WHITE}SOCKS5 outbound${RED} self-loop detected: ${address}:${port} points to local inbound-socks5${cRES}" >&2
+    return 1
+  fi
+fi
+
+if command -v hostname >/dev/null 2>&1; then
+  for hostIp in $(hostname -I 2>/dev/null || true); do
+    if [[ $(printf '%s' "$hostIp" | tr 'A-Z' 'a-z') == "$lowerAddr" ]]; then
+      echo -e "${WHITE}SOCKS5 outbound${RED} self-loop detected: ${address}:${port} points to local inbound-socks5${cRES}" >&2
+      return 1
+    fi
+  done
+fi
+return 0
+}
+
+
+
+socks5OutboundValidateProfile(){
+local profile=$1 name enabled address port username password ipRule
+jq -e 'type == "object" and ((.enabled // false) | type == "boolean") and ((.server // {}) | type == "object") and ((.domains // []) | type == "array") and ((.ips // []) | type == "array") and (if has("privateBypass") then (.privateBypass | type == "boolean") else true end)' <<< "$profile" >/dev/null 2>&1 || return 1
+name=$(jq -r '.name // empty' <<< "$profile")
+[[ -z $name || $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || return 1
+enabled=$(jq -r '.enabled // false' <<< "$profile")
+[[ $enabled = true || $enabled = false ]] || return 1
+[[ $enabled = true ]] || return 0
+
+address=$(jq -r '.server.address // empty' <<< "$profile")
+port=$(jq -r 'if (.server.port | type) == "number" or (.server.port | type) == "string" then (.server.port | tostring) else "" end' <<< "$profile")
+username=$(jq -r '.server.username // empty' <<< "$profile")
+password=$(jq -r '.server.password // empty' <<< "$profile")
+
+socks5OutboundIsValidAddress "$address" || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid server address: ${address:-<empty>}${cRES}" >&2
+  return 1
+}
+[[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid server port: ${port:-<empty>}${cRES}" >&2
+  return 1
+}
+socks5OutboundCheckSelfLoop "$address" "$port" || return 1
+
+[[ -z $username && -z $password ]] || {
+  [[ -n $username && -n $password ]] || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} username and password must be provided together${cRES}" >&2
+    return 1
+  }
+  jq -e '((.server.username // "") | test("[[:cntrl:]]") | not) and ((.server.password // "") | test("[[:cntrl:]]") | not)' <<< "$profile" >/dev/null 2>&1 || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} credentials contain invalid control characters${cRES}" >&2
+    return 1
+  }
+}
+
+jq -e 'all((.domains // [])[]; type == "string" and length > 0 and (test("[[:space:][:cntrl:]]") | not))' <<< "$profile" >/dev/null 2>&1 || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid domain rule entry${cRES}" >&2
+  return 1
+}
+jq -e 'all((.ips // [])[]; type == "string" and length > 0 and (test("[[:space:][:cntrl:]]") | not))' <<< "$profile" >/dev/null 2>&1 || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid IP/CIDR rule entry${cRES}" >&2
+  return 1
+}
+
+while IFS= read -r ipRule; do
+  [[ -n $ipRule ]] || continue
+  socks5OutboundIsValidIpRule "$ipRule" || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} invalid IP/CIDR rule: $ipRule${cRES}" >&2
+    return 1
+  }
+done < <(jq -r '(.ips // [])[]' <<< "$profile")
+
+jq -e '((.name == "default") or (((.domains // []) | length) + ((.ips // []) | length) > 0))' <<< "$profile" >/dev/null 2>&1 || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} domain or IP rules are required for non-default exits${cRES}" >&2
+  return 1
+}
+return 0
+}
+
+
+
+socks5OutboundValidate(){
+local settings=$1 profile names dupDomain dupIp
+[[ -s $settings ]] || return 1
+jq -e . "$settings" >/dev/null 2>&1 || return 1
+if jq -e 'type == "object" and (.profiles | type) == "array"' "$settings" >/dev/null 2>&1; then
+  names=$(jq -r '[.profiles[].name] | length == (unique | length)' "$settings") || return 1
+  [[ $names = true ]] || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} duplicate profile names found${cRES}" >&2
+    return 1
+  }
+  while IFS= read -r profile; do
+    socks5OutboundValidateProfile "$profile" || return 1
+  done < <(jq -c '.profiles[]' "$settings")
+  dupDomain=$(jq -r '[([.profiles[] | select(.enabled == true) | (.domains // [])[]] | group_by(.)[] | select(length > 1) | .[0])] | .[0] // empty' "$settings") || return 1
+  if [[ -n $dupDomain ]]; then
+    echo -e "${WHITE}SOCKS5 outbound${RED} duplicate domain rule across enabled profiles: $dupDomain${cRES}" >&2
+    return 1
+  fi
+  dupIp=$(jq -r '[([.profiles[] | select(.enabled == true) | (.ips // [])[]] | group_by(.)[] | select(length > 1) | .[0])] | .[0] // empty' "$settings") || return 1
+  if [[ -n $dupIp ]]; then
+    echo -e "${WHITE}SOCKS5 outbound${RED} duplicate IP rule across enabled profiles: $dupIp${cRES}" >&2
+    return 1
+  fi
+  return 0
+fi
+
+profile=$(jq -c '. + {name:"default"}' "$settings" 2>/dev/null) || return 1
+socks5OutboundValidateProfile "$profile"
+}
+
+
+
+socks5ExtractGeodataZip(){
+local zipFile="$1"
+local needGeoip="$2"
+local needGeosite="$3"
+local tmpExtract
+[[ -f $zipFile ]] || return 1
+unzip -tq "$zipFile" >/dev/null 2>&1 || return 1
+tmpExtract=$(mktemp -d /tmp/de_GWD-geodata.XXXXXX) || return 1
+if ! unzip -oq "$zipFile" -d "$tmpExtract" >/dev/null 2>&1; then
+  rm -rf "$tmpExtract"
+  return 1
+fi
+mkdir -p "$vtruiDir"
+if [[ $needGeoip == "1" ]]; then
+  if [[ -s "$tmpExtract/geoip.dat" ]]; then
+    mv -f "$tmpExtract/geoip.dat" "$vtruiDir/geoip.dat" && chmod 644 "$vtruiDir/geoip.dat"
+  else
+    rm -rf "$tmpExtract"
+    return 1
+  fi
+fi
+if [[ $needGeosite == "1" ]]; then
+  if [[ -s "$tmpExtract/geosite.dat" ]]; then
+    mv -f "$tmpExtract/geosite.dat" "$vtruiDir/geosite.dat" && chmod 644 "$vtruiDir/geosite.dat"
+  else
+    rm -rf "$tmpExtract"
+    return 1
+  fi
+fi
+rm -rf "$tmpExtract"
+return 0
+}
+
+
+
+socks5OutboundInstallGeodata(){
+local needGeoip="${1:-1}"
+local needGeosite="${2:-1}"
+local mode="${3:-auto}"
+local repoDir="${DE_GWD_REPO_DIR:-/opt/de_GWD/.repo}"
+local shaGeodata="" shaGeoip="" shaGeosite="" tmpDat="" tmpZip=""
+mkdir -p "$vtruiDir" "$repoDir"
+
+if [[ $mode != "force" ]]; then
+  if [[ -f "./resource/geodata/geodata.zip" ]] && socks5ExtractGeodataZip "./resource/geodata/geodata.zip" "$needGeoip" "$needGeosite"; then
+    return 0
+  fi
+  if [[ -f "./geodata.zip" ]] && socks5ExtractGeodataZip "./geodata.zip" "$needGeoip" "$needGeosite"; then
+    return 0
+  fi
+  if [[ -s "$repoDir/geodata.zip" ]] && socks5ExtractGeodataZip "$repoDir/geodata.zip" "$needGeoip" "$needGeosite"; then
+    return 0
+  fi
+  if declare -F fetchChecksum >/dev/null 2>&1 && declare -F downloadVerifiedResource >/dev/null 2>&1; then
+    shaGeodata=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip.sha256sum" 2>/dev/null) || shaGeodata=""
+    if [[ -n $shaGeodata ]]; then
+      tmpZip=$(mktemp /tmp/de_GWD-geodata-zip.XXXXXX) || tmpZip=""
+      if [[ -n $tmpZip ]] && downloadVerifiedResource "$tmpZip" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip" "$shaGeodata" 5000 zip; then
+        mv -f "$tmpZip" "$repoDir/geodata.zip"
+        if socks5ExtractGeodataZip "$repoDir/geodata.zip" "$needGeoip" "$needGeosite"; then
+          return 0
+        fi
+      else
+        rm -f "$tmpZip"
+      fi
+    fi
+    if [[ $needGeoip == "1" && ! -s "$vtruiDir/geoip.dat" ]]; then
+      shaGeoip=$(fetchChecksum "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat.sha256sum" 2>/dev/null) || shaGeoip=""
+      if [[ -n $shaGeoip ]]; then
+        tmpDat=$(mktemp /tmp/de_GWD-geoip.XXXXXX) || tmpDat=""
+        if [[ -n $tmpDat ]] && downloadVerifiedResource "$tmpDat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat" "$shaGeoip" 4000; then
+          mv -f "$tmpDat" "$vtruiDir/geoip.dat" && chmod 644 "$vtruiDir/geoip.dat"
+        else
+          rm -f "$tmpDat"
+        fi
+      fi
+    fi
+    if [[ $needGeosite == "1" && ! -s "$vtruiDir/geosite.dat" ]]; then
+      shaGeosite=$(fetchChecksum "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" 2>/dev/null) || shaGeosite=""
+      if [[ -n $shaGeosite ]]; then
+        tmpDat=$(mktemp /tmp/de_GWD-geosite.XXXXXX) || tmpDat=""
+        if [[ -n $tmpDat ]] && downloadVerifiedResource "$tmpDat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" "$shaGeosite" 4000; then
+          mv -f "$tmpDat" "$vtruiDir/geosite.dat" && chmod 644 "$vtruiDir/geosite.dat"
+        else
+          rm -f "$tmpDat"
+        fi
+      fi
+    fi
+  fi
+else
+  local gotGeoip=0 gotGeosite=0
+  if declare -F fetchChecksum >/dev/null 2>&1 && declare -F downloadVerifiedResource >/dev/null 2>&1; then
+    if [[ $needGeoip == "1" ]]; then
+      shaGeoip=$(fetchChecksum "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat.sha256sum" 2>/dev/null) || shaGeoip=""
+      if [[ -n $shaGeoip ]]; then
+        tmpDat=$(mktemp /tmp/de_GWD-geoip.XXXXXX) || tmpDat=""
+        if [[ -n $tmpDat ]] && downloadVerifiedResource "$tmpDat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat" "$shaGeoip" 4000; then
+          mv -f "$tmpDat" "$vtruiDir/geoip.dat" && chmod 644 "$vtruiDir/geoip.dat"
+          gotGeoip=1
+        else
+          rm -f "$tmpDat"
+        fi
+      fi
+    fi
+    if [[ $needGeosite == "1" ]]; then
+      shaGeosite=$(fetchChecksum "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat.sha256sum" 2>/dev/null) || shaGeosite=""
+      if [[ -n $shaGeosite ]]; then
+        tmpDat=$(mktemp /tmp/de_GWD-geosite.XXXXXX) || tmpDat=""
+        if [[ -n $tmpDat ]] && downloadVerifiedResource "$tmpDat" "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" "$shaGeosite" 4000; then
+          mv -f "$tmpDat" "$vtruiDir/geosite.dat" && chmod 644 "$vtruiDir/geosite.dat"
+          gotGeosite=1
+        else
+          rm -f "$tmpDat"
+        fi
+      fi
+    fi
+    if (( (needGeoip == 1 && gotGeoip == 0) || (needGeosite == 1 && gotGeosite == 0) )); then
+      shaGeodata=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip.sha256sum" 2>/dev/null) || shaGeodata=""
+      if [[ -n $shaGeodata ]]; then
+        tmpZip=$(mktemp /tmp/de_GWD-geodata-zip.XXXXXX) || tmpZip=""
+        if [[ -n $tmpZip ]] && downloadVerifiedResource "$tmpZip" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/geodata/geodata.zip" "$shaGeodata" 5000 zip; then
+          mv -f "$tmpZip" "$repoDir/geodata.zip"
+          local wantIp=0 wantSite=0
+          (( needGeoip == 1 && gotGeoip == 0 )) && wantIp=1
+          (( needGeosite == 1 && gotGeosite == 0 )) && wantSite=1
+          socks5ExtractGeodataZip "$repoDir/geodata.zip" "$wantIp" "$wantSite" || true
+        else
+          rm -f "$tmpZip"
+        fi
+      fi
+    fi
+  fi
+  if (( needGeoip == 1 )) && [[ ! -s "$vtruiDir/geoip.dat" ]]; then
+    [[ -f "./resource/geodata/geodata.zip" ]] && socks5ExtractGeodataZip "./resource/geodata/geodata.zip" 1 0 || true
+    [[ ! -s "$vtruiDir/geoip.dat" && -s "$repoDir/geodata.zip" ]] && socks5ExtractGeodataZip "$repoDir/geodata.zip" 1 0 || true
+  fi
+  if (( needGeosite == 1 )) && [[ ! -s "$vtruiDir/geosite.dat" ]]; then
+    [[ -f "./resource/geodata/geodata.zip" ]] && socks5ExtractGeodataZip "./resource/geodata/geodata.zip" 0 1 || true
+    [[ ! -s "$vtruiDir/geosite.dat" && -s "$repoDir/geodata.zip" ]] && socks5ExtractGeodataZip "$repoDir/geodata.zip" 0 1 || true
+  fi
+fi
+
+if (( needGeoip == 1 )) && [[ ! -s "$vtruiDir/geoip.dat" ]]; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} failed to provision required geoip.dat${cRES}" >&2
+  return 1
+fi
+if (( needGeosite == 1 )) && [[ ! -s "$vtruiDir/geosite.dat" ]]; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} failed to provision required geosite.dat${cRES}" >&2
+  return 1
+fi
+return 0
+}
+
+
+
+socks5OutboundEnsureGeodata(){
+local settingsFile="${1:-$socks5OutboundSettings}"
+local mode="${2:-auto}"
+if [[ $mode == "force" ]]; then
+  socks5OutboundInstallGeodata 1 1 "force"
+  return $?
+fi
+[[ -s $settingsFile ]] || return 0
+local profiles needGeoip=0 needGeosite=0 missingGeoip=0 missingGeosite=0
+profiles=$(socks5OutboundProfiles "$settingsFile") || return 1
+if jq -e 'any(.[]; .profile.enabled == true and any((.profile.domains // [])[]; startswith("geosite:") or startswith("ext:geosite.dat:")))' <<< "$profiles" >/dev/null 2>&1; then
+  needGeosite=1
+fi
+if jq -e 'any(.[]; .profile.enabled == true and any((.profile.ips // [])[]; startswith("geoip:") or startswith("ext:geoip.dat:")))' <<< "$profiles" >/dev/null 2>&1; then
+  needGeoip=1
+fi
+(( needGeoip == 0 && needGeosite == 0 )) && return 0
+if (( needGeoip == 1 )); then
+  if [[ -s "$vtruiDir/geoip.dat" ]]; then
+    chmod 644 "$vtruiDir/geoip.dat" 2>/dev/null || true
+  else
+    missingGeoip=1
+  fi
+fi
+if (( needGeosite == 1 )); then
+  if [[ -s "$vtruiDir/geosite.dat" ]]; then
+    chmod 644 "$vtruiDir/geosite.dat" 2>/dev/null || true
+  else
+    missingGeosite=1
+  fi
+fi
+(( missingGeoip == 0 && missingGeosite == 0 )) && return 0
+socks5OutboundInstallGeodata "$missingGeoip" "$missingGeosite" "auto"
+}
+
+
+
+socks5OutboundConfig(){
+local profile=$1
+socks5OutboundValidateProfile "$profile" || return 1
+[[ $(jq -r '.enabled // false' <<< "$profile") = true ]] || return 0
+jq -c '
+  {
+    "tag": (if .name == "default" then "socks5-exit" else "socks5-exit-" + .name end),
+    "protocol": "socks",
+    "settings": {
+      "servers": [{
+        "address": .server.address,
+        "port": (.server.port | tonumber)
+      } + (if (.server.username // "") != "" then {
+        "users": [{"user": .server.username, "pass": .server.password}]
+      } else {} end)]
+    },
+    "streamSettings": {
+      "sockopt": {
+        "tcpFastOpen": true,
+        "tcpNoDelay": true
+      }
+    }
+  }
+' <<< "$profile"
+}
+
+
+
+socks5OutboundSync(){
+local config="$vtruiConfig" profiles outbounds rules globalDefaultTag privateBypass hasIpRules privateRule candidate
+[[ -s $config ]] || return 1
+if [[ -s $socks5OutboundSettings ]]; then
+  socks5OutboundValidate "$socks5OutboundSettings" || return 1
+  profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+else
+  profiles='[]'
+fi
+
+outbounds=$(jq -c '[.[] | select(.profile.enabled == true) | {
+  tag: .tag,
+  protocol: "socks",
+  settings: {
+    servers: [{
+      address: .profile.server.address,
+      port: (.profile.server.port | tonumber)
+    } + (if (.profile.server.username // "") != "" then {
+      users: [{user: .profile.server.username, pass: .profile.server.password}]
+    } else {} end)]
+  },
+  streamSettings: {
+    sockopt: {
+      tcpFastOpen: true,
+      tcpNoDelay: true
+    }
+  }
+}]' <<< "$profiles") || return 1
+
+rules=$(jq -c '[.[] | select(.profile.enabled == true) |
+  (if ((.profile.domains // []) | length) > 0 then [{
+    type: "field",
+    ruleTag: ("socks5-domain-" + .profile.name),
+    domain: .profile.domains,
+    outboundTag: .tag
+  }] else [] end)
+  +
+  (if ((.profile.ips // []) | length) > 0 then [{
+    type: "field",
+    ruleTag: ("socks5-ip-" + .profile.name),
+    ip: .profile.ips,
+    outboundTag: .tag
+  }] else [] end)
+] | add // []' <<< "$profiles") || return 1
+
+globalDefaultTag=$(jq -r '.[] | select(.profile.enabled == true and .profile.name == "default" and ((.profile.domains // []) | length) == 0 and ((.profile.ips // []) | length) == 0) | .tag' <<< "$profiles" | head -n 1)
+privateBypass=$(jq -r '.[] | select(.profile.enabled == true and .profile.name == "default" and ((.profile.domains // []) | length) == 0 and ((.profile.ips // []) | length) == 0) | (if .profile | has("privateBypass") then .profile.privateBypass else true end)' <<< "$profiles" | head -n 1)
+hasIpRules=$(jq -r 'any(.[]; .profile.enabled == true and ((.profile.ips // []) | length) > 0)' <<< "$profiles")
+
+if [[ -n $globalDefaultTag && $privateBypass == true ]]; then
+  privateRule='[{"type":"field","ruleTag":"socks5-exit-private-direct","ip":["127.0.0.0/8","10.0.0.0/8","100.64.0.0/10","169.254.0.0/16","172.16.0.0/12","192.168.0.0/16","::1/128","fc00::/7","fe80::/10"],"outboundTag":"direct"}]'
+else
+  privateRule='[]'
+fi
+
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+jq --argjson outbounds "$outbounds" --argjson rules "$rules" --argjson privateRule "$privateRule" \
+   --arg globalDefaultTag "$globalDefaultTag" --argjson hasIpRules "$hasIpRules" '
+  ((.outbounds // []) | map(select(((.tag // "") | startswith("socks5-exit")) | not))) as $keptOutbounds |
+  ((.routing.rules // []) | map(select((
+    ((.outboundTag // "") | startswith("socks5-exit"))
+    or ((.ruleTag // "") | (startswith("socks5-domain-") or startswith("socks5-ip-") or startswith("socks5-exit")))
+  ) | not))) as $keptRules |
+  .outbounds = (
+    (if $globalDefaultTag == "" then [] else [$outbounds[] | select(.tag == $globalDefaultTag)] end)
+    + $keptOutbounds
+    + [$outbounds[] | select(.tag != $globalDefaultTag)]
+  )
+  | .routing = (.routing // {})
+  | .routing.rules = ($rules + $keptRules + $privateRule)
+  | if $hasIpRules then
+      if (.routing.domainStrategy // "") == "" or (.routing.domainStrategy // "") == "AsIs" then
+        .routing.domainStrategy = "IPIfNonMatch"
+      else . end
+    else
+      if (.routing.domainStrategy // "") == "IPIfNonMatch" and ([$keptRules[] | select(has("ip"))] | length) == 0 then
+        del(.routing.domainStrategy)
+      else . end
+    end
+' "$config" > "$candidate" || { rm -f "$candidate"; return 1; }
+socks5WriteFile "$candidate" "$config" 640-www || { rm -f "$candidate"; return 1; }
+return 0
+}
+
+
+
+socks5OutboundApply(){
+local candidate=$1 backupDir settingsExisted=0 configExisted=0 wasVtrui status=0 testOutput=""
+[[ -s $candidate ]] || return 1
+socks5OutboundValidate "$candidate" || { rm -f "$candidate"; return 1; }
+socks5OutboundEnsureGeodata "$candidate" "auto" || { rm -f "$candidate"; return 1; }
+backupDir=$(mktemp -d /tmp/de_GWD-socks5-outbound.XXXXXX) || { rm -f "$candidate"; return 1; }
+if [[ -e $socks5OutboundSettings || -L $socks5OutboundSettings ]]; then
+  cp -a "$socks5OutboundSettings" "$backupDir/settings" || { rm -rf "$backupDir"; rm -f "$candidate"; return 1; }
+  settingsExisted=1
+fi
+if [[ -e $vtruiConfig || -L $vtruiConfig ]]; then
+  cp -a "$vtruiConfig" "$backupDir/config" || { rm -rf "$backupDir"; rm -f "$candidate"; return 1; }
+  configExisted=1
+else
+  echo -e "${WHITE}SOCKS5 outbound${RED} missing Xray config: $vtruiConfig${cRES}" >&2
+  rm -rf "$backupDir"
+  rm -f "$candidate"
+  return 1
+fi
+
+wasVtrui=$(systemctl is-active vtrui 2>/dev/null || true)
+socks5WriteFile "$candidate" "$socks5OutboundSettings" 600 || status=1
+if (( status == 0 )) && ! socks5OutboundSync; then status=1; fi
+if (( status == 0 )) && [[ -x "$vtruiDir/vtrui" ]]; then
+  if [[ $vtruiConfig == "$vtruiDir/config.json" ]]; then
+    testOutput=$("$vtruiDir/vtrui" run -test -confdir "$vtruiDir" 2>&1) || status=1
+  else
+    testOutput=$("$vtruiDir/vtrui" run -test -c "$vtruiConfig" 2>&1) || status=1
+  fi
+  if (( status != 0 )) && [[ -n $testOutput ]]; then
+    echo -e "${WHITE}SOCKS5 outbound${RED} Xray config test failed:${cRES}" >&2
+    printf '%s\n' "$testOutput" >&2
+  fi
+fi
+if (( status == 0 )) && [[ $wasVtrui = active ]]; then
+  systemctl restart vtrui >/dev/null 2>&1 || status=1
+  systemctl is-active --quiet vtrui || status=1
+fi
+
+if (( status != 0 )); then
+  if (( settingsExisted )); then
+    rm -f "$socks5OutboundSettings"
+    cp -a "$backupDir/settings" "$socks5OutboundSettings"
+    chmod 600 "$socks5OutboundSettings" 2>/dev/null || true
+  else
+    rm -f "$socks5OutboundSettings"
+  fi
+  if (( configExisted )); then
+    rm -f "$vtruiConfig"
+    cp -a "$backupDir/config" "$vtruiConfig"
+    chmod 644 "$vtruiConfig" 2>/dev/null || true
+  fi
+  [[ $wasVtrui = active ]] && systemctl restart vtrui >/dev/null 2>&1 || true
+  rm -rf "$backupDir"
+  rm -f "$candidate"
+  return 1
+fi
+
+rm -rf "$backupDir"
+rm -f "$candidate"
+return 0
+}
+
+
+
+socks5FormatEndpoint(){
+local addr="${1:-}" port="${2:-}"
+if [[ $addr == *:* ]]; then
+  printf '[%s]:%s' "$addr" "$port"
+else
+  printf '%s:%s' "$addr" "$port"
+fi
+}
+
+
+
+socks5FormatRulesPreview(){
+local rulesJson="$1"
+jq -r '
+  if length == 0 then "none"
+  elif length <= 5 then join(", ")
+  else (.[0:5] | join(", ")) + " ... (+" + ((length - 5) | tostring) + " more)"
+  end
+' <<< "$rulesJson"
+}
+
+
+
+socks5OutboundStatus(){
+local profiles name enabled address port username privateBypass domainsJson ipsJson domainsCount ipsCount statusText index=1 hasEnabled=0 endpoint domainsPreview ipsPreview
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+echo -e "${GREEN}SOCKS5 outbound${cRES}"
+if [[ ! -s $socks5OutboundSettings ]]; then
+  echo -e "${BLUE}Status:       ${YELLOW}disabled${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+fi
+if ! socks5OutboundValidate "$socks5OutboundSettings"; then
+  echo -e "${BLUE}Status:       ${RED}invalid configuration${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 1
+fi
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+[[ $(jq -r 'length' <<< "$profiles") -gt 0 ]] || {
+  echo -e "${BLUE}Status:       ${YELLOW}disabled${cRES}"
+  echo -e "${BLUE}------------------------------------------------ ${cRES}"
+  return 0
+}
+if systemctl is-active --quiet wg-quick@wgcf 2>/dev/null; then
+  echo -e "${YELLOW}Note:         WARP (wgcf) active; SOCKS5 outbound dials via WARP unless excluded${cRES}"
+fi
+while IFS=$'\t' read -r name enabled address port username privateBypass domainsJson ipsJson; do
+  [[ $enabled = true ]] && hasEnabled=1
+  [[ $enabled = true ]] && statusText="${GREEN}enabled${cRES}" || statusText="${YELLOW}disabled${cRES}"
+  endpoint=$(socks5FormatEndpoint "$address" "$port")
+  domainsCount=$(jq -r 'length' <<< "$domainsJson")
+  ipsCount=$(jq -r 'length' <<< "$ipsJson")
+  echo -e "${BLUE}$index. ${WHITE}$name${cRES}  Status: ${statusText}"
+  echo -e "${BLUE}   Server:       ${YELLOW}${address:+$endpoint}${address:-not configured}${cRES}"
+  echo -e "${BLUE}   Auth:         ${YELLOW}$([[ -n $username ]] && printf 'enabled (%s)' "$username" || echo disabled)${cRES}"
+  if [[ $name == "default" && $domainsCount -eq 0 && $ipsCount -eq 0 ]]; then
+    if [[ $privateBypass == "true" ]]; then
+      echo -e "${BLUE}   Routing:      ${GREEN}Global default (all unmatched -> SOCKS5; private CIDRs -> direct)${cRES}"
+    else
+      echo -e "${BLUE}   Routing:      ${GREEN}Global default (all unmatched -> SOCKS5; private bypass off)${cRES}"
+    fi
+  else
+    echo -e "${BLUE}   Routing:      ${CYAN}Split routing (priority #$index)${cRES}"
+    if (( domainsCount > 0 )); then
+      domainsPreview=$(socks5FormatRulesPreview "$domainsJson")
+      echo -e "${BLUE}   Domains ($domainsCount):  ${YELLOW}$domainsPreview${cRES}"
+    fi
+    if (( ipsCount > 0 )); then
+      ipsPreview=$(socks5FormatRulesPreview "$ipsJson")
+      echo -e "${BLUE}   IP/CIDR ($ipsCount):  ${YELLOW}$ipsPreview${cRES}"
+    fi
+  fi
+  index=$((index + 1))
+done < <(jq -r '.[] | [.profile.name, (.profile.enabled // false), (.profile.server.address // ""), (.profile.server.port // ""), (.profile.server.username // ""), (if .profile | has("privateBypass") then .profile.privateBypass else true end), ((.profile.domains // []) | @json), ((.profile.ips // []) | @json)] | @tsv' <<< "$profiles")
+[[ $hasEnabled = 1 ]] || echo -e "${BLUE}Status:       ${YELLOW}all profiles disabled${cRES}"
+echo -e "${BLUE}------------------------------------------------ ${cRES}"
+}
+
+
+
+socks5OutboundConfigure(){
+local base name current oldAddress oldPort oldUsername oldPassword oldDomains oldIps oldPrivateBypass oldEndpoint
+local serverInput parsed parsedKind="" parsedPort="" parsedUser="" parsedPass="" parsedHasAuth=false
+local address port username password domainInput ipInput domainsJson ipsJson domainsCount ipsCount
+local profileJson baseProfiles candidate
+
+base=$(socks5OutboundSettingsOrDefault) || return 1
+read -r -p "Exit name [default]: " name
+name=$(socks5Trim "${name:-default}")
+[[ $name =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$ ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid exit name (allowed: letters, digits, _, -)${cRES}"
+  return 1
+}
+
+current=$(socks5OutboundProfile "$name" 2>/dev/null || true)
+if [[ -z $current ]]; then
+  current='{"name":"","enabled":false,"server":{"address":"","port":1080,"username":"","password":""},"domains":[],"ips":[],"privateBypass":true}'
+fi
+oldAddress=$(jq -r '.server.address // empty' <<< "$current")
+oldPort=$(jq -r 'if (.server.port | type) == "number" or (.server.port | type) == "string" then (.server.port | tostring) else "" end' <<< "$current")
+oldUsername=$(jq -r '.server.username // empty' <<< "$current")
+oldPassword=$(jq -r '.server.password // empty' <<< "$current")
+oldDomains=$(jq -r '(.domains // []) | join(",")' <<< "$current")
+oldIps=$(jq -r '(.ips // []) | join(",")' <<< "$current")
+oldPrivateBypass=$(jq -r 'if has("privateBypass") then .privateBypass else true end' <<< "$current")
+if [[ -n $oldAddress ]]; then
+  oldEndpoint=$(socks5FormatEndpoint "$oldAddress" "${oldPort:-1080}")
+else
+  oldEndpoint=""
+fi
+
+echo -e "${CYAN}Tip: Supports host, host:port, host:port:user:pass, or socks5://[user:pass@]host:port${cRES}"
+read -r -p "SOCKS5 server [${oldEndpoint}]: " serverInput
+serverInput=$(socks5Trim "$serverInput")
+
+if [[ -z $serverInput ]]; then
+  [[ -n $oldAddress ]] || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} server address cannot be empty${cRES}"
+    return 1
+  }
+  parsedKind="keep"
+  address="$oldAddress"
+else
+  parsed=$(socks5OutboundParseEndpoint "$serverInput") || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} invalid server endpoint format${cRES}"
+    return 1
+  }
+  parsedKind=$(jq -r '.kind' <<< "$parsed")
+  address=$(jq -r '.address' <<< "$parsed")
+  parsedPort=$(jq -r '.port' <<< "$parsed")
+  parsedUser=$(jq -r '.username' <<< "$parsed")
+  parsedPass=$(jq -r '.password' <<< "$parsed")
+  parsedHasAuth=$(jq -r '.hasAuth' <<< "$parsed")
+fi
+
+case "$parsedKind" in
+  uri)
+    if [[ -n $parsedPort ]]; then
+      port="$parsedPort"
+    else
+      read -r -p "SOCKS5 server port [${oldPort:-1080}]: " port
+      port=$(socks5Trim "${port:-${oldPort:-1080}}")
+    fi
+    if [[ $parsedHasAuth == true ]]; then
+      username="$parsedUser"
+      password="$parsedPass"
+    else
+      username=""
+      password=""
+    fi
+    echo -e "${BLUE}Parsed URI:   ${YELLOW}$(socks5FormatEndpoint "$address" "$port") ($([[ -n $username ]] && printf 'auth user: %s' "$username" || echo noauth))${cRES}"
+    ;;
+  tuple4)
+    port="$parsedPort"
+    username="$parsedUser"
+    password="$parsedPass"
+    echo -e "${BLUE}Parsed tuple: ${YELLOW}$(socks5FormatEndpoint "$address" "$port") (auth user: $username)${cRES}"
+    ;;
+  hostport)
+    port="$parsedPort"
+    read -r -p "SOCKS5 username [${oldUsername}] ('-' to clear): " username
+    if [[ $username == "-" ]]; then
+      username=""
+      password=""
+    else
+      username=${username:-$oldUsername}
+      if [[ -n $username ]]; then
+        read -r -s -p "SOCKS5 password (empty keeps current): " password
+        echo
+        password=${password:-$oldPassword}
+      else
+        password=""
+      fi
+    fi
+    ;;
+  *)
+    read -r -p "SOCKS5 server port [${oldPort:-1080}]: " port
+    port=$(socks5Trim "${port:-${oldPort:-1080}}")
+    read -r -p "SOCKS5 username [${oldUsername}] ('-' to clear): " username
+    if [[ $username == "-" ]]; then
+      username=""
+      password=""
+    else
+      username=${username:-$oldUsername}
+      if [[ -n $username ]]; then
+        read -r -s -p "SOCKS5 password (empty keeps current): " password
+        echo
+        password=${password:-$oldPassword}
+      else
+        password=""
+      fi
+    fi
+    ;;
+esac
+
+if [[ -n $username && -z $password ]]; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} username and password must be provided together${cRES}"
+  return 1
+fi
+[[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} invalid port: ${port:-<empty>}${cRES}"
+  return 1
+}
+
+echo -e "${CYAN}Presets: @ai (OpenAI/Claude/Gemini), @stream (Netflix/YouTube/Disney), @tg (Telegram)${cRES}"
+read -r -p "Domain rules (comma-separated, '-' to clear; empty for global default if name=default) [${oldDomains}]: " domainInput
+if [[ $(socks5Trim "$domainInput") == "-" ]]; then
+  domainsJson='[]'
+else
+  domainInput=${domainInput:-$oldDomains}
+  domainsJson=$(socks5OutboundExpandRules "domain" "$domainInput") || return 1
+fi
+
+read -r -p "IP/CIDR rules (comma-separated, e.g. geoip:telegram, 1.1.1.1/32, @tg, '-' to clear) [${oldIps}]: " ipInput
+if [[ $(socks5Trim "$ipInput") == "-" ]]; then
+  ipsJson='[]'
+else
+  ipInput=${ipInput:-$oldIps}
+  ipsJson=$(socks5OutboundExpandRules "ip" "$ipInput") || return 1
+fi
+
+domainsCount=$(jq -r 'length' <<< "$domainsJson")
+ipsCount=$(jq -r 'length' <<< "$ipsJson")
+if [[ $name != "default" ]] && (( domainsCount + ipsCount == 0 )); then
+  echo -e "${WHITE}SOCKS5 outbound${RED} domain or IP rules are required for non-default exits${cRES}"
+  return 1
+fi
+
+if [[ $name == "default" ]]; then
+  profileJson=$(jq -n --arg name "$name" --arg address "$address" --argjson port "$((10#$port))" \
+    --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" \
+    --argjson ips "$ipsJson" --argjson privateBypass "$oldPrivateBypass" \
+    '{name:$name,enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains,ips:$ips,privateBypass:$privateBypass}') || return 1
+else
+  profileJson=$(jq -n --arg name "$name" --arg address "$address" --argjson port "$((10#$port))" \
+    --arg username "$username" --arg password "$password" --argjson domains "$domainsJson" \
+    --argjson ips "$ipsJson" \
+    '{name:$name,enabled:true,server:{address:$address,port:$port,username:$username,password:$password},domains:$domains,ips:$ips}') || return 1
+fi
+
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+baseProfiles=$(jq -c '
+  if (.profiles | type) == "array" then .profiles
+  elif ((.enabled // false) == true or (.server.address // "") != "" or ((.domains // []) | length) > 0 or ((.ips // []) | length) > 0) then
+    [{name:"default",enabled:(.enabled // false),server:(.server // {}),domains:(.domains // []),ips:(.ips // []),privateBypass:(if has("privateBypass") then .privateBypass else true end)}]
+  else []
+  end
+' <<< "$base") || { rm -f "$candidate"; return 1; }
+
+if ! jq -n --argjson profiles "$baseProfiles" --argjson profile "$profileJson" '
+  {
+    profiles: (
+      if any($profiles[]; .name == $profile.name) then
+        ($profiles | map(if .name == $profile.name then $profile else . end))
+      else
+        ($profiles + [$profile])
+      end
+    )
+  }
+' > "$candidate"; then
+  rm -f "$candidate"
+  return 1
+fi
+
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} configuration failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${GREEN}$name enabled${cRES}"
+}
+
+
+
+socks5OutboundToggle(){
+local profiles count act index name curState newStateLabel candidate baseProfiles
+[[ -s $socks5OutboundSettings ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+socks5OutboundValidate "$socks5OutboundSettings" || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+count=$(jq -r 'length' <<< "$profiles")
+(( count > 0 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+
+while IFS=$'\t' read -r index name curState; do
+  if [[ $curState == "true" ]]; then
+    echo -e "${GREEN}$((index + 1)). $name${cRES} [${GREEN}enabled${cRES}]"
+  else
+    echo -e "${GREEN}$((index + 1)). $name${cRES} [${YELLOW}disabled${cRES}]"
+  fi
+done < <(jq -r 'to_entries[] | [.key, .value.profile.name, (.value.profile.enabled // false)] | @tsv' <<< "$profiles")
+
+read -r -p "Profile number to toggle ([e]nable all, [d]isable all, [0] cancel): " act
+act=$(socks5Trim "$act")
+[[ -z $act || $act == "0" ]] && return 0
+
+baseProfiles=$(jq -c '[.[].profile]' <<< "$profiles") || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+
+case "$act" in
+  e|E)
+    jq -n --argjson profiles "$baseProfiles" '{profiles: ($profiles | map(.enabled = true))}' > "$candidate" || { rm -f "$candidate"; return 1; }
+    newStateLabel="${GREEN}all enabled${cRES}"
+    ;;
+  d|D)
+    jq -n --argjson profiles "$baseProfiles" '{profiles: ($profiles | map(.enabled = false))}' > "$candidate" || { rm -f "$candidate"; return 1; }
+    newStateLabel="${RED}all disabled${cRES}"
+    ;;
+  *)
+    [[ $act =~ ^[1-9][0-9]*$ ]] || { rm -f "$candidate"; echo -e "${RED}Invalid selection${cRES}"; return 1; }
+    index=$((10#$act - 1))
+    (( index >= 0 && index < count )) || { rm -f "$candidate"; echo -e "${RED}Selection out of range${cRES}"; return 1; }
+    name=$(jq -r --argjson i "$index" '.[$i].name' <<< "$baseProfiles")
+    curState=$(jq -r --argjson i "$index" '.[$i].enabled // false' <<< "$baseProfiles")
+    jq -n --argjson profiles "$baseProfiles" --argjson i "$index" '{profiles: ($profiles | .[$i].enabled = ((.[$i].enabled // false) | not))}' > "$candidate" || { rm -f "$candidate"; return 1; }
+    if [[ $curState == "true" ]]; then
+      newStateLabel="${YELLOW}$name disabled${cRES}"
+    else
+      newStateLabel="${GREEN}$name enabled${cRES}"
+    fi
+    ;;
+esac
+
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} update failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${newStateLabel}"
+}
+
+
+
+socks5OutboundDisable(){
+local candidate base
+base=$(socks5OutboundSettingsOrDefault) || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if [[ -s $socks5OutboundSettings ]] && jq -e '(.profiles | type) == "array"' "$socks5OutboundSettings" >/dev/null 2>&1; then
+  if ! jq '.profiles |= map(.enabled=false)' "$socks5OutboundSettings" > "$candidate"; then
+    rm -f "$candidate"
+    return 1
+  fi
+elif ! jq '.enabled=false' <<< "$base" > "$candidate"; then
+  rm -f "$candidate"
+  return 1
+fi
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} disable failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 outbound ${RED}disabled${cRES}"
+}
+
+
+
+socks5OutboundDelete(){
+local profiles count number index name candidate baseProfiles
+[[ -s $socks5OutboundSettings ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+socks5OutboundValidate "$socks5OutboundSettings" || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+count=$(jq -r 'length' <<< "$profiles")
+(( count > 0 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+while IFS=$'\t' read -r index name; do
+  echo -e "${GREEN}$((index + 1)). $name${cRES}"
+done < <(jq -r 'to_entries[] | [.key,.value.profile.name] | @tsv' <<< "$profiles")
+read -r -p "Profile number ([a] delete all, [0] cancel): " number
+number=$(socks5Trim "$number")
+[[ -z $number || $number == "0" ]] && return 0
+
+baseProfiles=$(jq -c '[.[].profile]' <<< "$profiles") || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+if [[ $number == "a" || $number == "A" ]]; then
+  printf '%s\n' '{"profiles":[]}' > "$candidate"
+  socks5OutboundApply "$candidate" || {
+    echo -e "${WHITE}SOCKS5 outbound${RED} delete failed; previous configuration kept${cRES}"
+    return 1
+  }
+  echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] All SOCKS5 profiles ${YELLOW}deleted${cRES}"
+  return 0
+fi
+
+[[ $number =~ ^[1-9][0-9]*$ ]] || { rm -f "$candidate"; return 1; }
+index=$((10#$number - 1))
+(( index >= 0 && index < count )) || { rm -f "$candidate"; return 1; }
+name=$(jq -r --argjson index "$index" '.[$index].name' <<< "$baseProfiles")
+jq -n --argjson profiles "$baseProfiles" --arg name "$name" '{profiles: ($profiles | map(select(.name != $name)))}' > "$candidate" || { rm -f "$candidate"; return 1; }
+socks5OutboundApply "$candidate" || {
+  echo -e "${WHITE}SOCKS5 outbound${RED} delete failed; previous configuration kept${cRES}"
+  return 1
+}
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] SOCKS5 profile ${YELLOW}$name${WHITE} deleted${cRES}"
+}
+
+
+
+socks5OutboundReorder(){
+local profiles count index name fromNum toNum fromIdx toIdx baseProfiles candidate
+[[ -s $socks5OutboundSettings ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+socks5OutboundValidate "$socks5OutboundSettings" || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+count=$(jq -r 'length' <<< "$profiles")
+(( count >= 2 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} Need at least 2 profiles to adjust priority${cRES}"
+  return 0
+}
+
+while IFS=$'\t' read -r index name; do
+  echo -e "${GREEN}$((index + 1)). $name${cRES}"
+done < <(jq -r 'to_entries[] | [.key,.value.profile.name] | @tsv' <<< "$profiles")
+
+read -r -p "Move profile number [1-$count] (0 cancel): " fromNum
+fromNum=$(socks5Trim "$fromNum")
+[[ -z $fromNum || $fromNum == "0" ]] && return 0
+[[ $fromNum =~ ^[1-9][0-9]*$ ]] || { echo -e "${RED}Invalid number${cRES}"; return 1; }
+fromIdx=$((10#$fromNum - 1))
+(( fromIdx >= 0 && fromIdx < count )) || { echo -e "${RED}Out of range${cRES}"; return 1; }
+
+read -r -p "Move to position [1-$count]: " toNum
+toNum=$(socks5Trim "$toNum")
+[[ $toNum =~ ^[1-9][0-9]*$ ]] || { echo -e "${RED}Invalid number${cRES}"; return 1; }
+toIdx=$((10#$toNum - 1))
+(( toIdx >= 0 && toIdx < count )) || { echo -e "${RED}Out of range${cRES}"; return 1; }
+(( fromIdx == toIdx )) && return 0
+
+baseProfiles=$(jq -c '[.[].profile]' <<< "$profiles") || return 1
+candidate=$(mktemp /tmp/de_GWD-socks5-outbound.XXXXXX) || return 1
+jq -n --argjson profiles "$baseProfiles" --argjson from "$fromIdx" --argjson to "$toIdx" '
+  ($profiles[$from]) as $item |
+  ([range(0; ($profiles | length)) | select(. != $from) | $profiles[.]]) as $rest |
+  {profiles: ($rest[0:$to] + [$item] + $rest[$to:])}
+' > "$candidate" || { rm -f "$candidate"; return 1; }
+
+if ! socks5OutboundApply "$candidate"; then
+  echo -e "${WHITE}SOCKS5 outbound${RED} reorder failed; previous configuration kept${cRES}"
+  return 1
+fi
+echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] Routing priority ${GREEN}updated${cRES}"
+}
+
+
+
+socks5CurlEscape(){
+local s="${1:-}"
+s=${s//\\/\\\\}
+s=${s//\"/\\\"}
+printf '%s' "$s"
+}
+
+
+
+socks5OutboundTestProfile(){
+local profileJson="$1"
+local name address port username password endpoint proxyUrl curlCfg out rc=0 rawTime rttMs exitIp exitLoc="" testUrls=() url
+name=$(jq -r '.name // "default"' <<< "$profileJson")
+address=$(jq -r '.server.address // empty' <<< "$profileJson")
+port=$(jq -r 'if (.server.port | type) == "number" or (.server.port | type) == "string" then (.server.port | tostring) else "" end' <<< "$profileJson")
+username=$(jq -r '.server.username // empty' <<< "$profileJson")
+password=$(jq -r '.server.password // empty' <<< "$profileJson")
+
+if [[ -z $address || -z $port ]]; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}] ${WHITE}$name${cRES}: invalid endpoint"
+  return 1
+fi
+endpoint=$(socks5FormatEndpoint "$address" "$port")
+proxyUrl="socks5h://${endpoint}"
+
+curlCfg="proxy = \"$(socks5CurlEscape "$proxyUrl")\""$'\n'
+if [[ -n $username ]]; then
+  curlCfg+="proxy-user = \"$(socks5CurlEscape "${username}:${password}")\""$'\n'
+fi
+
+if [[ -n ${SOCKS5_TEST_URL:-} ]]; then
+  testUrls=("$SOCKS5_TEST_URL")
+else
+  testUrls=("https://www.cloudflare.com/cdn-cgi/trace" "https://api.ip.sb/ip")
+fi
+
+for url in "${testUrls[@]}"; do
+  out=$(printf '%s' "$curlCfg" | curl -fsSL --connect-timeout 6 --max-time 12 -K - -w '\n__SOCKS5_TIME__:%{time_total}\n' "$url" 2>&1) && rc=0 || rc=$?
+  if (( rc == 0 )); then
+    rawTime=$(awk -F: '/^__SOCKS5_TIME__:/ {print $2; exit}' <<< "$out")
+    rttMs=$(awk -v t="${rawTime:-0}" 'BEGIN {printf "%d", (t + 0) * 1000 + 0.5}')
+    exitIp=$(awk -F= '/^ip=/ {print $2; exit}' <<< "$out" | tr -d '\r ')
+    exitLoc=$(awk -F= '/^loc=/ {print $2; exit}' <<< "$out" | tr -d '\r ')
+    if [[ -z $exitIp ]]; then
+      exitIp=$(grep -v '^__SOCKS5_TIME__:' <<< "$out" | awk 'NF {print $1; exit}' | tr -d '\r ')
+    fi
+    if [[ -n $exitIp ]]; then
+      if [[ -n $exitLoc ]]; then
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] ${WHITE}$name${cRES} (${YELLOW}$endpoint${cRES}): IP=${GREEN}$exitIp${cRES} (${CYAN}$exitLoc${cRES}), RTT=${YELLOW}${rttMs}ms${cRES}"
+      else
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] ${WHITE}$name${cRES} (${YELLOW}$endpoint${cRES}): IP=${GREEN}$exitIp${cRES}, RTT=${YELLOW}${rttMs}ms${cRES}"
+      fi
+      return 0
+    fi
+  fi
+done
+
+echo -e "${WHITE}[ ${RED}✕ ${WHITE}] ${WHITE}$name${cRES} (${YELLOW}$endpoint${cRES}): ${RED}connection failed${cRES}"
+return 1
+}
+
+
+
+socks5OutboundTestMenu(){
+local profiles count index name choice item anyFailed=0
+[[ -s $socks5OutboundSettings ]] || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+socks5OutboundValidate "$socks5OutboundSettings" || return 1
+profiles=$(socks5OutboundProfiles "$socks5OutboundSettings") || return 1
+count=$(jq -r 'length' <<< "$profiles")
+(( count > 0 )) || {
+  echo -e "${WHITE}SOCKS5 outbound${YELLOW} No profiles configured${cRES}"
+  return 0
+}
+
+while IFS=$'\t' read -r index name; do
+  echo -e "${GREEN}$((index + 1)). $name${cRES}"
+done < <(jq -r 'to_entries[] | [.key,.value.profile.name] | @tsv' <<< "$profiles")
+
+read -r -p "Select profile to test ([a] all, [0] cancel) [a]: " choice
+choice=$(socks5Trim "${choice:-a}")
+[[ $choice == "0" ]] && return 0
+
+if [[ $choice == "a" || $choice == "A" ]]; then
+  while IFS= read -r item; do
+    socks5OutboundTestProfile "$item" || anyFailed=1
+  done < <(jq -c '.[].profile' <<< "$profiles")
+  return $anyFailed
+fi
+
+[[ $choice =~ ^[1-9][0-9]*$ ]] || { echo -e "${RED}Invalid selection${cRES}"; return 1; }
+index=$((10#$choice - 1))
+(( index >= 0 && index < count )) || { echo -e "${RED}Selection out of range${cRES}"; return 1; }
+item=$(jq -c --argjson i "$index" '.[$i].profile' <<< "$profiles")
+socks5OutboundTestProfile "$item"
+}
+
+
+
+socks5OutboundMenu(){
+while true; do
+  socks5OutboundStatus
+  echo -e "${GREEN}1. Add or edit exit${cRES}"
+  echo -e "${GREEN}2. Enable / Disable exit${cRES}"
+  echo -e "${GREEN}3. Delete exit${cRES}"
+  echo -e "${GREEN}4. Adjust exit routing priority${cRES}"
+  echo -e "${GREEN}5. Test exit connectivity & outbound IP${cRES}"
+  echo -e "${GREEN}6. Update GeoIP / GeoSite data${cRES}"
+  echo -e "${GREEN}0. Return${cRES}"
+  read -r -p "Select: " choice || return
+  case "$choice" in
+    1) socks5OutboundConfigure ;;
+    2) socks5OutboundToggle ;;
+    3) socks5OutboundDelete ;;
+    4) socks5OutboundReorder ;;
+    5) socks5OutboundTestMenu ;;
+    6)
+      if socks5OutboundEnsureGeodata "$socks5OutboundSettings" "force"; then
+        systemctl is-active --quiet vtrui 2>/dev/null && systemctl restart vtrui >/dev/null 2>&1 || true
+        echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}] GeoIP / GeoSite data ${GREEN}updated${cRES}"
+      else
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}] GeoIP / GeoSite update ${RED}failed${cRES}"
+      fi
+      ;;
+    0) return ;;
+    *) echo -e "${RED}Wrong number${cRES}" ;;
+  esac
+done
 }
 
 
@@ -1636,12 +3200,12 @@ fi
 
 cat << "EOF" >/opt/de_GWD/Q2H
 #!/bin/bash
+PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 if ! systemd-detect-virt --container >/dev/null 2>&1; then
   /opt/de_GWD/tcpTime
 fi
 
-rm -rf ~/server*
-rm -rf ~/wget-log
+rm -f ~/wget-log
 find /var/log -maxdepth 2 -type f \( -name '*.gz' -o -name '*.old' \) -mtime +7 -delete 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/Q2H
@@ -1650,6 +3214,7 @@ chmod +x /opt/de_GWD/Q2H
 
 cat << "EOF" >/opt/de_GWD/Qday
 #!/bin/bash
+PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 if [[ -f /var/www/ssl/de_GWD.cer ]] && [[ -n $(openssl x509 -enddate -noout -in /var/www/ssl/de_GWD.cer -checkend 259200 2>/dev/null | grep "Certificate will expire") ]] && [[ -d "/root/.acme.sh" ]]; then
   "/root/.acme.sh"/acme.sh --set-default-ca --server letsencrypt
   "/root/.acme.sh"/acme.sh --cron --force --home "/root/.acme.sh"
@@ -1719,13 +3284,13 @@ fallbackVer=${fallbackPkg#linux-image-}
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 update-grub >/dev/null 2>&1 || true
@@ -1762,41 +3327,21 @@ service cron restart
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Post Install${cRES}"
 
-local tmpComRestart
-tmpComRestart=$(mktemp /tmp/de_GWD-comRestart.XXXXXX)
-if [[ -n "$tmpComRestart" ]]; then
-  cat << 'EOF' >"$tmpComRestart"
-#!/bin/bash
-systemctl restart doh-server
-if [[ $? -ne 0 ]]; then
-sed -i '/Nice=/d' /etc/systemd/system/doh-server.service
-systemctl daemon-reload >/dev/null
-systemctl restart doh-server
-fi
-systemctl enable vtrui >/dev/null 2>&1
-
-systemctl restart vtrui
-if [[ $? -ne 0 ]]; then
-sed -i '/Nice=/d' /etc/systemd/system/vtrui.service
-systemctl daemon-reload >/dev/null
-systemctl restart vtrui
-fi
-systemctl enable vtrui >/dev/null 2>&1
-
-systemctl restart nginx
-if [[ $? -ne 0 ]]; then
-sed -i '/Nice=/d' /etc/systemd/system/nginx.service
-systemctl daemon-reload >/dev/null
-systemctl restart nginx
-fi
-systemctl enable nginx >/dev/null 2>&1
-
-rm -f "$0"
-EOF
-  chmod 700 "$tmpComRestart"
-  screen -dmS comRestart "$tmpComRestart"
-  sleep 3
-fi
+local svc svcUnit
+for svc in doh-server vtrui nginx; do
+  if ! systemctl restart "$svc" >/dev/null 2>&1; then
+    svcUnit="/etc/systemd/system/${svc}.service"
+    if [[ -f "$svcUnit" ]]; then
+      sed -i '/^Nice=/d' "$svcUnit"
+      if systemd-detect-virt --container >/dev/null 2>&1; then
+        sed -i '/^AmbientCapabilities=/d;/^CapabilityBoundingSet=/d' "$svcUnit"
+      fi
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      systemctl restart "$svc" >/dev/null 2>&1 || true
+    fi
+  fi
+  systemctl enable "$svc" >/dev/null 2>&1 || true
+done
 }
 
 
@@ -1833,12 +3378,25 @@ changeDomain(){
     echo -e "${GREEN}================== ${cRES}"
     echo -e "${GREEN} Input new domain${cRES}"
     echo -e "${GREEN}================== ${cRES}"
-    read vpsdomainP
+    read -r vpsdomainP
 
-domain=$(echo $vpsdomainP | cut -d: -f1)
-topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
-port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
+vpsdomainP=$(echo "$vpsdomainP" | sed -E 's#^https?://##; s#/.*$##' | tr -d '[:space:]')
+domain="${vpsdomainP%%:*}"
+if [[ -z "$domain" || "$domain" == "localhost" || ! "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]]; then
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid domain: ${domain:-empty}${cRES}"
+    return 1
+fi
+topDomain=$(echo "$domain" | rev | awk -F. '{print $1"."$2}' | rev)
+port="${vpsdomainP#"$domain"}"
+port="${port#:}"
+if [[ -n "$port" ]]; then
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid port: $port${cRES}"
+        return 1
+    fi
+else
+    port="443"
+fi
 
 path=$(jq -r '([.inbounds[]? | select((.tag // "") | startswith("inbound-") | not)][0] // .inbounds[0]) | .streamSettings.xhttpSettings.path // .streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
@@ -1864,12 +3422,16 @@ fi
 if [[ "$sslMode" == "3" && -f "/var/www/ssl/de_GWD.cer" && -f "/var/www/ssl/de_GWD.key" ]]; then
     echo -e "${GREEN}Using existing SSL certificate.${cRES}"
 else
-    makeSSL_D
+    if ! makeSSL_D; then
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}SSL Certificate setup failed${cRES}"
+        return 1
+    fi
 fi
 
 nginxWebConf
 
 systemctl force-reload nginx
+systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Domain and Certificates ${GREEN}Changed${cRES}"
 }
@@ -1880,19 +3442,26 @@ changeXrayVerify(){
     echo -e "${GREEN}========== ${cRES}"
     echo -e "${GREEN} New UUID${cRES}"
     echo -e "${GREEN}========== ${cRES}"
-    read nuuid
+    read -r nuuid
+    nuuid=$(printf '%s' "$nuuid" | tr -d '[:space:]')
     [[ -z "$nuuid" ]] && nuuid=$(cat /proc/sys/kernel/random/uuid)
 
     echo -e "${GREEN}========== ${cRES}"
     echo -e "${GREEN} New Path [Default: /${nuuid%%-*}]${cRES}"
     echo -e "${GREEN}========== ${cRES}"
-    read npath
+    read -r npath
+    npath=$(printf '%s' "$npath" | tr -d '[:space:]')
     [[ -z "$npath" ]] && npath="/${nuuid%%-*}"
     [[ "${npath:0:1}" != "/" ]] && npath="/$npath"
+    if [[ "$npath" == "/dq" || "$npath" == "/dq/"* ]]; then
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Path cannot be /dq (reserved for DoH)${cRES}"
+        return 1
+    fi
 
 domain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
-port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$')
+port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n 1)
+[[ -z "$port" ]] && port="443"
 
 path=$npath
 uuids=$nuuid
@@ -1926,7 +3495,8 @@ ethernetnum=$(detect_primary_nic)
 if [[ $(printf '%s\n5.6\n' "$(uname -r 2>&1 | grep -oE '^[0-9]+(\.[0-9]+)*')" | sort -rV | head -n 1) = "5.6" ]]; then
 echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Update kernel first! ${cRES}"
 else
-localAddrIPv4=$(ip -4 a | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
+localAddrIPv4=$(ip -4 -o addr show dev "$ethernetnum" scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1)
+[[ -z $localAddrIPv4 ]] && localAddrIPv4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}')
 if [[ -n $localAddrIPv4 ]]; then
 unset aptPKG
 dpkg-query -W -f='${db:Status-Abbrev}\n' wireguard-tools 2>/dev/null | grep -q '^ii' || aptPKG+=(wireguard-tools)
@@ -1934,24 +3504,45 @@ dpkg-query -W -f='${db:Status-Abbrev}\n' wireguard-tools 2>/dev/null | grep -q '
 
 ghREPO="ViRb3/wgcf"
 ghPackage="linux_$architecture"
-wgcfUrl=$(curl -fsSL "https://api.github.com/repos/${ghREPO}/releases/latest" | grep -E 'browser_download_url' | grep "$ghPackage" | cut -d '"' -f 4 | head -n 1)
+local wgcfRelease wgcfUrl wgcfSumUrl wgcfExpectedSum
+wgcfRelease=$(curl -fsSL "https://api.github.com/repos/${ghREPO}/releases/latest")
+wgcfUrl=$(printf '%s\n' "$wgcfRelease" | grep -E 'browser_download_url' | grep "$ghPackage" | cut -d '"' -f 4 | head -n 1)
+wgcfSumUrl=$(printf '%s\n' "$wgcfRelease" | grep -E 'browser_download_url' | grep -iE 'sha256|checksum' | cut -d '"' -f 4 | head -n 1)
 if [[ -n "$wgcfUrl" ]]; then
   tmpWgcf=$(mktemp /tmp/de_GWD-wgcf.XXXXXX)
-  if [[ -n "$tmpWgcf" ]] && wget --show-progress -qO "$tmpWgcf" "$wgcfUrl" && [[ $(du -sk "$tmpWgcf" 2>/dev/null | awk '{print$1}') -gt 8000 ]] && isElfBinary "$tmpWgcf"; then
-    mv -f "$tmpWgcf" /usr/local/bin/wgcf && chmod 0755 /usr/local/bin/wgcf
+  if [[ -n "$tmpWgcf" ]] && curl -fsSL -o "$tmpWgcf" "$wgcfUrl" && [[ $(du -sk "$tmpWgcf" 2>/dev/null | awk '{print$1}') -gt 8000 ]] && isElfBinary "$tmpWgcf"; then
+    local wgcfOk=1
+    if [[ -n "$wgcfSumUrl" ]]; then
+      wgcfExpectedSum=$(curl -fsSL "$wgcfSumUrl" | awk -v pat="$(basename "$wgcfUrl")" '$0 ~ pat {print $1; exit}')
+      if [[ -n "$wgcfExpectedSum" ]] && ! echo "${wgcfExpectedSum}  ${tmpWgcf}" | sha256sum -c --status 2>/dev/null; then
+        wgcfOk=0
+      fi
+    fi
+    if (( wgcfOk == 1 )); then
+      mv -f "$tmpWgcf" /usr/local/bin/wgcf && chmod 0755 /usr/local/bin/wgcf
+    else
+      rm -f "$tmpWgcf"
+    fi
   else
     rm -f "$tmpWgcf"
   fi
 fi
 
 if [[ -x "/usr/local/bin/wgcf" ]]; then
-echo | wgcf register
-wgcf generate
-
-PrivateKey=$(cat wgcf-profile.conf | awk '/PrivateKey/{print$3}')
-PublicKey=$(cat wgcf-profile.conf | awk '/PublicKey/{print$3}')
-
-cat << EOF >/etc/wireguard/wgcf.conf
+local wgcfWorkDir
+wgcfWorkDir=$(mktemp -d /tmp/de_GWD-wgcf-work.XXXXXX)
+if [[ -n "$wgcfWorkDir" ]]; then
+  (
+    cd "$wgcfWorkDir" || exit 1
+    echo | /usr/local/bin/wgcf register
+    /usr/local/bin/wgcf generate
+  )
+  PrivateKey=$(awk '/PrivateKey/{print$3}' "$wgcfWorkDir/wgcf-profile.conf" 2>/dev/null)
+  PublicKey=$(awk '/PublicKey/{print$3}' "$wgcfWorkDir/wgcf-profile.conf" 2>/dev/null)
+  rm -rf "$wgcfWorkDir"
+  if [[ -n "$PrivateKey" && -n "$PublicKey" ]]; then
+    mkdir -p /etc/wireguard
+    cat << EOF >/etc/wireguard/wgcf.conf
 [Interface]
 PrivateKey = $PrivateKey
 Address = 172.16.0.2/24
@@ -1966,9 +3557,12 @@ AllowedIPs = 0.0.0.0/0
 AllowedIPs = ::/0
 PersistentKeepalive = 15
 EOF
-
-rm -rf wgcf-account.toml >/dev/null 2>&1
-rm -rf wgcf-profile.conf >/dev/null 2>&1
+    chmod 600 /etc/wireguard/wgcf.conf
+  else
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Failed to generate valid wgcf keys${cRES}"
+    return 1
+  fi
+fi
 fi
 
 rm -rf /lib/systemd/system/wg-quick@.service
@@ -1995,8 +3589,12 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
 
-cat << "EOF" >/tmp/WGCFstart
+local tmpWgcfStart
+tmpWgcfStart=$(mktemp /tmp/de_GWD-wgcf-start.XXXXXX)
+if [[ -n "$tmpWgcfStart" ]]; then
+  cat << "EOF" >"$tmpWgcfStart"
 #!/bin/bash
+PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 systemctl enable wg-quick@wgcf
 systemctl restart wg-quick@wgcf
 
@@ -2013,13 +3611,11 @@ rm -rf /run/resolvconf/interface
 resolvconf -u
 
 /etc/rc_online.local
-
-rm -rf /tmp/WGCFstart
 EOF
-chmod +x /tmp/WGCFstart
-
-screen -dmS WGCFstart /tmp/WGCFstart
-sleep 3
+  chmod 700 "$tmpWgcfStart"
+  bash "$tmpWgcfStart"
+  rm -f "$tmpWgcfStart"
+fi
 
 wanIP=$(curl -4sSL whatismyip.akamai.com | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
 [[ -z $wanIP ]] && wanIP=$(curl -4sSL ifconfig.me | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
@@ -2033,8 +3629,12 @@ echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}This vps has no IP
 fi
 fi
 elif [[ $WGCFswitch = "2" ]]; then
-cat << "EOF" >/tmp/WGCFstop
+local tmpWgcfStop
+tmpWgcfStop=$(mktemp /tmp/de_GWD-wgcf-stop.XXXXXX)
+if [[ -n "$tmpWgcfStop" ]]; then
+  cat << "EOF" >"$tmpWgcfStop"
 #!/bin/bash
+PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 systemctl stop wg-quick@wgcf
 systemctl disable wg-quick@wgcf
 
@@ -2043,12 +3643,11 @@ rm -rf /run/resolvconf/interface
 resolvconf -u
 
 /etc/rc_online.local
-
-rm -rf /tmp/WGCFstop
 EOF
-chmod +x /tmp/WGCFstop
-
-screen -dmS WGCFstop /tmp/WGCFstop
+  chmod 700 "$tmpWgcfStop"
+  bash "$tmpWgcfStop"
+  rm -f "$tmpWgcfStop"
+fi
 
 echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Cloudflare wireguard upstream (WARP) ${RED}Disabled${cRES}"
 fi
@@ -2076,6 +3675,8 @@ initHaproxyBase(){
         mkdir -p /etc/haproxy
         cat << "EOF" >/etc/haproxy/haproxy.cfg
 global
+  user                  haproxy
+  group                 haproxy
   ulimit-n              500000
   maxconn               200000
 
@@ -2132,22 +3733,38 @@ changeTCPPF(){
 if [[ "$tcpPFsw" == "1" ]]; then
     echo
     read -p "Enter Target Domain/IP & Port (e.g. 1.2.3.4:443 or hk.example.com:443): " upDomainP
-    upDomainP=$(echo "$upDomainP" | tr -d ' ')
+    upDomainP=$(echo "$upDomainP" | tr -d '[:space:]')
     if [[ -z "$upDomainP" ]]; then
         echo -e "${RED}Target address cannot be empty!${cRES}"
         sleep 2s
         return 1
     fi
-    if [[ "$upDomainP" != *:* ]]; then
+    if [[ "$upDomainP" =~ ^\[([^\]]+)\]:([0-9]+)$ ]]; then
+        upDomain="${BASH_REMATCH[1]}"
+        upPort="${BASH_REMATCH[2]}"
+    elif [[ "$upDomainP" =~ ^\[([^\]]+)\]$ ]]; then
+        upDomain="${BASH_REMATCH[1]}"
         echo -e "${YELLOW}No port specified, defaulting to 443.${cRES}"
-        upDomainP="${upDomainP}:443"
+        upPort="443"
+    else
+        if [[ "$upDomainP" != *:* ]]; then
+            echo -e "${YELLOW}No port specified, defaulting to 443.${cRES}"
+            upDomainP="${upDomainP}:443"
+        fi
+        upDomain="${upDomainP%:*}"
+        upPort="${upDomainP##*:}"
     fi
-    upDomain="${upDomainP%%:*}"
-    upPort="${upDomainP##*:}"
-    if [[ -z "$upDomain" || ! "$upPort" =~ ^[0-9]+$ ]] || [[ "$upPort" -lt 1 || "$upPort" -gt 65535 ]]; then
+    upDomain="${upDomain#[}"
+    upDomain="${upDomain%]}"
+    if ! socks5OutboundIsValidAddress "$upDomain" || [[ ! "$upPort" =~ ^[0-9]+$ ]] || [[ "$upPort" -lt 1 || "$upPort" -gt 65535 ]]; then
         echo -e "${RED}Invalid Target Address or Port: $upDomainP${cRES}"
         sleep 2s
         return 1
+    fi
+    if [[ "$upDomain" == *:* ]]; then
+        upDomainP="[${upDomain}]:${upPort}"
+    else
+        upDomainP="${upDomain}:${upPort}"
     fi
 
     echo
@@ -2177,7 +3794,7 @@ if [[ "$tcpPFsw" == "1" ]]; then
             return 0
         fi
     else
-        conflict=$(ss -tulpn 2>/dev/null | grep -E ":${localP}\s" | grep -v 'haproxy')
+        conflict=$(ss -tulpn 2>/dev/null | grep -E "(:|\.)${localP}[[:space:]]" | grep -v 'haproxy')
         if [[ -n "$conflict" ]]; then
             echo -e "${RED}Port ${localP} is already in use by another service!${cRES}"
             echo -e "$conflict"
@@ -2188,6 +3805,7 @@ if [[ "$tcpPFsw" == "1" ]]; then
 
     echo -e "${WHITE}[...]\tChecking and installing HAProxy...${cRES}"
     if ! command -v haproxy >/dev/null 2>&1 && [[ ! -x "/usr/sbin/haproxy" ]]; then
+        wait_apt_lock
         apt-get update -qq && apt-get install -y -q haproxy
     fi
 
@@ -2207,7 +3825,7 @@ frontend ft_${localP}
   default_backend       bk_${localP}
 
 backend bk_${localP}
-  server endpoint ${upDomainP} check resolvers local init-addr none
+  server endpoint ${upDomainP} check resolvers local init-addr last,libc,none
 # END_RULE_${localP}
 EOF
 
@@ -2337,6 +3955,10 @@ checkPortAvailable() {
         echo "invalid"
         return 1
     fi
+    if [ "$targetPort" -eq 53 ] || [ "$targetPort" -eq 4711 ]; then
+        echo "in_use"
+        return 1
+    fi
     if [ "$targetPort" -eq 443 ]; then
         if [[ "$allow443" == "true" ]]; then
             echo "ok"
@@ -2350,7 +3972,7 @@ checkPortAvailable() {
         echo "ok"
         return 0
     fi
-    if ss -tulpn 2>/dev/null | grep -qE "[: ]${targetPort}[ \t]"; then
+    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "(^|:)${targetPort}$"; then
         echo "in_use"
         return 1
     fi
@@ -2447,6 +4069,7 @@ ${ipv6Listen}
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Early-Data \$ssl_early_data;
         proxy_buffering off;
         proxy_read_timeout 600s;
     }
@@ -2459,6 +4082,7 @@ ${connHeaders}
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Early-Data \$ssl_early_data;
         proxy_connect_timeout 600s;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
@@ -2537,7 +4161,7 @@ parseDomainAndPort() {
             echo -e "${CYAN}Tip: You can enter [Domain:Port] (e.g. sub.domain.com:$rec_port) or just [Port].${cRES}"
             read -r -p "Enter Domain:Port [Default: ${use_domain}:${rec_port}] (443 reserved): " user_input
         fi
-        user_input=$(echo "$user_input" | tr -d ' ')
+        user_input=$(echo "$user_input" | sed -E 's#^https?://##; s#/.*$##' | tr -d '[:space:]')
 
         local parsed_d=""
         local parsed_p=""
@@ -2546,22 +4170,42 @@ parseDomainAndPort() {
             parsed_d="$use_domain"
             parsed_p="$rec_port"
         elif [[ "$user_input" == *":"* ]]; then
-            parsed_d="${user_input%%:*}"
+            parsed_d="${user_input%:*}"
             parsed_p="${user_input##*:}"
         else
             parsed_d="$use_domain"
             parsed_p="$user_input"
         fi
+        parsed_d="${parsed_d#[}"
+        parsed_d="${parsed_d%]}"
 
         local chk=$(checkPortAvailable "$parsed_p" "$cur_port" "$allow_443")
+        local collision443=0
+        if [[ "$allow_443" == "true" && "$parsed_p" == "443" ]]; then
+            if [[ "$parsed_d" == "$default_domain" ]]; then
+                collision443=1
+            else
+                local ownConf="$(getNginxConfName "$in_tag").conf"
+                local cf
+                for cf in /etc/nginx/conf.d/*.conf; do
+                    [[ -f "$cf" && "$(basename "$cf")" != "$ownConf" ]] || continue
+                    if grep -qE 'listen[[:space:]]+(\[::\]:)?443\b' "$cf" 2>/dev/null && grep -qE "server_name[[:space:]]+${parsed_d//./\\.}(;|\s)" "$cf" 2>/dev/null; then
+                        collision443=1
+                        break
+                    fi
+                done
+            fi
+        fi
         if [[ "$chk" == "reserved_443" ]]; then
             echo -e "${RED}Port 443 is reserved for reverse proxy/web services! Please choose another port.${cRES}"
         elif [[ "$chk" == "invalid" ]]; then
             echo -e "${RED}Invalid port number: '$parsed_p'. Must be between 1 and 65535.${cRES}"
         elif [[ "$chk" == "in_use" ]]; then
             echo -e "${RED}Port $parsed_p is already in use by another process. Please choose another port.${cRES}"
-        elif [[ -z "$parsed_d" ]]; then
-            echo -e "${RED}Domain cannot be empty.${cRES}"
+        elif ! socks5OutboundIsValidAddress "$parsed_d"; then
+            echo -e "${RED}Invalid domain/host: '$parsed_d'.${cRES}"
+        elif (( collision443 == 1 )); then
+            echo -e "${RED}Domain '$parsed_d' already uses port 443 in Nginx. Use a distinct subdomain for port 443.${cRES}"
         else
             target_domain="$parsed_d"
             target_port="$parsed_p"
@@ -2577,8 +4221,14 @@ parseDomainAndPort() {
 
 removeXrayInbound() {
     local tag="$1"
-    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
-    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+    local cfg="/opt/de_GWD/vtrui/config.json"
+    cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
+    if [[ "$tag" == "inbound-dokodemo" ]]; then
+        jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag)) | del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | if (.routing.rules | type) == "array" then .routing.rules |= map(select(.inboundTag != ["inbound-dokodemo"])) else . end' "$cfg" | sponge "$cfg"
+    else
+        jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' "$cfg" | sponge "$cfg"
+    fi
+    if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
     if [[ "$tag" == "inbound-vless-reality" ]]; then
         rm -f /opt/de_GWD/vtrui/reality.info
     fi
@@ -2589,12 +4239,13 @@ removeXrayInbound() {
         jq --arg tag "$tag" 'del(.[$tag])' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json 2>/dev/null || true
     fi
     removeNginxWebProxy "$tag"
-    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+    if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >/dev/null 2>&1; then
         systemctl restart vtrui
-        rm -f /opt/de_GWD/vtrui/config.json.bak
+        rm -f "${cfg}.bak"
         return 0
     else
-        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         systemctl restart vtrui
         return 1
     fi
@@ -2603,18 +4254,35 @@ removeXrayInbound() {
 applyXrayInbound() {
     local newInboundJson="$1"
     local tag="$2"
-    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
-    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json |\
-    jq --argjson n "$newInboundJson" '.inbounds += [$n]' | sponge /opt/de_GWD/vtrui/config.json
+    local extraOutboundJson="${3:-}"
+    local extraRuleJson="${4:-}"
+    local cfg="/opt/de_GWD/vtrui/config.json"
+    local testLog
+    cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
+    if [[ -n "$extraOutboundJson" && -n "$extraRuleJson" ]]; then
+        jq --arg tag "$tag" --argjson n "$newInboundJson" --argjson o "$extraOutboundJson" --argjson r "$extraRuleJson" '
+          del(.inbounds[] | select(.tag == $tag))
+          | .inbounds += [$n]
+          | .outbounds = ((.outbounds // []) | map(select(.tag != $o.tag)) + [$o])
+          | .routing = (.routing // {})
+          | .routing.rules = ([$r] + ((.routing.rules // []) | map(select(.inboundTag != [$tag]))))
+        ' "$cfg" | sponge "$cfg"
+    else
+        jq --arg tag "$tag" --argjson n "$newInboundJson" 'del(.inbounds[] | select(.tag == $tag)) | .inbounds += [$n]' "$cfg" | sponge "$cfg"
+    fi
+    if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
 
-    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/tmp/vtrui_test.log 2>&1; then
+    testLog=$(mktemp /tmp/de_GWD-vtrui-test.XXXXXX)
+    if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >"${testLog:-/dev/null}" 2>&1; then
+        [[ -n "$testLog" ]] && rm -f "$testLog"
         systemctl restart vtrui
-        rm -f /opt/de_GWD/vtrui/config.json.bak
+        rm -f "${cfg}.bak"
         return 0
     else
         echo -e "${RED}Xray configuration validation failed!${cRES}"
-        cat /tmp/vtrui_test.log
-        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        [[ -n "$testLog" ]] && { cat "$testLog"; rm -f "$testLog"; }
+        mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         systemctl restart vtrui
         return 1
     fi
@@ -2880,7 +4548,8 @@ setupReality() {
     local vpsdomain="$target_domain"
 
     echo
-    read -p "Enter SNI camouflage domain [Default: $vpsdomain]: " inputSni
+    read -r -p "Enter SNI camouflage domain [Default: $vpsdomain]: " inputSni
+    inputSni=$(echo "$inputSni" | tr -d '[:space:]')
     [[ -z "$inputSni" ]] && inputSni="$vpsdomain"
 
     local recDest="127.0.0.1:$nginxPort"
@@ -2888,7 +4557,8 @@ setupReality() {
         recDest="127.0.0.1:443"
     fi
     echo
-    read -p "Enter Fallback dest [Default: $recDest]: " inputDest
+    read -r -p "Enter Fallback dest [Default: $recDest]: " inputDest
+    inputDest=$(echo "$inputDest" | tr -d '[:space:]')
     [[ -z "$inputDest" ]] && inputDest="$recDest"
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
@@ -2896,47 +4566,45 @@ setupReality() {
     local priKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Private key|PrivateKey):/ {print $2; exit}' | tr -d '\r\n ')
     local pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)): / {print $2; exit}' | tr -d '\r\n ')
     [[ -z "$pubKey" ]] && pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)):/ {print $2; exit}' | tr -d '\r\n ')
+    if [[ -z "$priKey" || -z "$pubKey" ]]; then
+        echo -e "${RED}Failed to generate x25519 keys for Reality.${cRES}"
+        return 1
+    fi
     local shortId=$(openssl rand -hex 8)
 
-    local inboundJson=$(cat << EOF
-{
-  "tag": "inbound-vless-reality",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "vless",
-  "settings": {
-    "clients": [
+    local inboundJson=$(jq -nc \
+      --argjson port "$port" \
+      --arg uuid "$uuid" \
+      --arg dest "$inputDest" \
+      --arg sni "$inputSni" \
+      --arg pri "$priKey" \
+      --arg pub "$pubKey" \
+      --arg sid "$shortId" '
       {
-        "id": "$uuid",
-        "flow": "xtls-rprx-vision"
-      }
-    ],
-    "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-      "show": false,
-      "dest": "$inputDest",
-      "xver": 0,
-      "serverNames": ["$inputSni"],
-      "privateKey": "$priKey",
-      "shortIds": ["$shortId"],
-      "publicKey": "$pubKey"
-    },
-    "sockopt": {
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  },
-  "sniffing": {
-    "enabled": true,
-    "destOverride": ["http", "tls", "quic"]
-  }
-}
-EOF
-)
+        tag: "inbound-vless-reality",
+        listen: "0.0.0.0",
+        port: $port,
+        protocol: "vless",
+        settings: {
+          clients: [{id: $uuid, flow: "xtls-rprx-vision"}],
+          decryption: "none"
+        },
+        streamSettings: {
+          network: "tcp",
+          security: "reality",
+          realitySettings: {
+            show: false,
+            dest: $dest,
+            xver: 0,
+            serverNames: [$sni],
+            privateKey: $pri,
+            shortIds: [$sid],
+            publicKey: $pub
+          },
+          sockopt: {tcpFastOpen: true, tcpNoDelay: true}
+        },
+        sniffing: {enabled: true, destOverride: ["http", "tls", "quic"]}
+      }')
 
     if applyXrayInbound "$inboundJson" "inbound-vless-reality"; then
         cat << EOF > /opt/de_GWD/vtrui/reality.info
@@ -2948,6 +4616,7 @@ PUBKEY=$pubKey
 PRIKEY=$priKey
 SHORTID=$shortId
 EOF
+        chmod 600 /opt/de_GWD/vtrui/reality.info
         echo -e "${GREEN}VLESS + TCP + Reality + Vision successfully configured!${cRES}"
         echo
         showRealityNode "wait"
@@ -3033,8 +4702,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-xhttp"; then
+        if ! setupNginxWebProxy "inbound-vless-xhttp" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vless-xhttp"
+            echo -e "${RED}Nginx configuration failed for VLESS + XHTTP + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vless-xhttp" "$port"
-        setupNginxWebProxy "inbound-vless-xhttp" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + XHTTP + TLS successfully configured!${cRES}"
         echo
         showXHTTPNode "wait"
@@ -3122,8 +4796,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-ws"; then
+        if ! setupNginxWebProxy "inbound-vless-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vless-ws"
+            echo -e "${RED}Nginx configuration failed for VLESS + WS + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vless-ws" "$port"
-        setupNginxWebProxy "inbound-vless-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + WS + TLS successfully configured!${cRES}"
         echo
         showVlessWSNode "wait"
@@ -3211,8 +4890,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vmess-ws"; then
+        if ! setupNginxWebProxy "inbound-vmess-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vmess-ws"
+            echo -e "${RED}Nginx configuration failed for VMess + WS + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vmess-ws" "$port"
-        setupNginxWebProxy "inbound-vmess-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VMess + WS + TLS successfully configured!${cRES}"
         echo
         showVMessWSNode "wait"
@@ -3249,47 +4933,78 @@ setupSocks5() {
     local port="$target_port"
     local vpsdomain="$target_domain"
 
+    local nicIp=$(ip -4 -o addr show dev "$(detect_primary_nic)" scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1)
+    local publicIp=""
+    if [[ -n "$nicIp" && ! "$nicIp" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.) ]]; then
+        publicIp="$nicIp"
+    else
+        publicIp=$(curl -4s --connect-timeout 3 ip.sb 2>/dev/null | tr -d '[:space:]')
+        [[ "$publicIp" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || publicIp="$nicIp"
+    fi
+
+    if [[ -s "${socks5OutboundSettings:-/opt/de_GWD/socks5-outbound.json}" ]]; then
+        local outAddr outPort
+        while IFS=$'\t' read -r outAddr outPort; do
+            [[ -n "$outAddr" && "$outPort" == "$port" ]] || continue
+            local lowerOut=$(printf '%s' "$outAddr" | tr 'A-Z' 'a-z')
+            lowerOut="${lowerOut#[}"
+            lowerOut="${lowerOut%]}"
+            if [[ "$lowerOut" == 127.* || "$lowerOut" == "::1" || "$lowerOut" == "localhost" || "$lowerOut" == localhost.* || "$lowerOut" == "0.0.0.0" || "$lowerOut" == "::" || "$lowerOut" == "$(printf '%s' "$vpsdomain" | tr 'A-Z' 'a-z')" ]]; then
+                echo -e "${RED}Port $port conflicts with enabled SOCKS5 outbound ($outAddr:$outPort) and would create a routing loop!${cRES}"
+                return 1
+            fi
+            local hostIp
+            for hostIp in $publicIp $(hostname -I 2>/dev/null || true); do
+                if [[ -n "$hostIp" && "$lowerOut" == "$(printf '%s' "$hostIp" | tr 'A-Z' 'a-z')" ]]; then
+                    echo -e "${RED}Port $port conflicts with enabled SOCKS5 outbound ($outAddr:$outPort) and would create a routing loop!${cRES}"
+                    return 1
+                fi
+            done
+        done < <(jq -r 'if (.profiles | type) == "array" then .profiles[] | select(.enabled == true) else select(.enabled == true) end | "\(.server.address // "")\t\(.server.port // "")"' "${socks5OutboundSettings:-/opt/de_GWD/socks5-outbound.json}" 2>/dev/null)
+    fi
+
     echo
-    read -p "Enable Username & Password Authentication? [y/N]: " needAuth
+    read -r -p "Enable Username & Password Authentication? [y/N]: " needAuth
     local inboundJson=""
     if [[ "$needAuth" =~ ^[yY] ]]; then
-        read -p "Enter Username: " sUser
+        read -r -p "Enter Username: " sUser
         [[ -z "$sUser" ]] && sUser="user$(openssl rand -hex 2)"
-        read -p "Enter Password: " sPass
+        read -r -p "Enter Password: " sPass
         [[ -z "$sPass" ]] && sPass="$(openssl rand -hex 6)"
-        inboundJson=$(cat << EOF
-{
-  "tag": "inbound-socks5",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "socks",
-  "settings": {
-    "auth": "password",
-    "accounts": [
-      {
-        "user": "$sUser",
-        "pass": "$sPass"
-      }
-    ],
-    "udp": true
-  }
-}
-EOF
-)
+        inboundJson=$(jq -nc \
+          --argjson port "$port" \
+          --arg user "$sUser" \
+          --arg pass "$sPass" \
+          --arg ip "$publicIp" '
+          {
+            tag: "inbound-socks5",
+            listen: "0.0.0.0",
+            port: $port,
+            protocol: "socks",
+            settings: (
+              {
+                auth: "password",
+                accounts: [{user: $user, pass: $pass}],
+                udp: true
+              } + (if ($ip | length) > 0 then {ip: $ip} else {} end)
+            )
+          }')
     else
-        inboundJson=$(cat << EOF
-{
-  "tag": "inbound-socks5",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "socks",
-  "settings": {
-    "auth": "noauth",
-    "udp": true
-  }
-}
-EOF
-)
+        inboundJson=$(jq -nc \
+          --argjson port "$port" \
+          --arg ip "$publicIp" '
+          {
+            tag: "inbound-socks5",
+            listen: "0.0.0.0",
+            port: $port,
+            protocol: "socks",
+            settings: (
+              {
+                auth: "noauth",
+                udp: true
+              } + (if ($ip | length) > 0 then {ip: $ip} else {} end)
+            )
+          }')
     fi
 
     if applyXrayInbound "$inboundJson" "inbound-socks5"; then
@@ -3347,39 +5062,60 @@ setupDokodemo() {
     local tgtAddr=""
     echo
     while true; do
-        read -p "Enter Target IP/Domain: " tgtAddr
-        tgtAddr=$(echo "$tgtAddr" | tr -d ' ')
-        [[ -n "$tgtAddr" ]] && break
-        echo -e "${RED}Target IP/Domain cannot be empty.${cRES}"
+        read -r -p "Enter Target IP/Domain: " tgtAddr
+        tgtAddr=$(echo "$tgtAddr" | tr -d '[:space:]')
+        tgtAddr="${tgtAddr#[}"
+        tgtAddr="${tgtAddr%]}"
+        if socks5OutboundIsValidAddress "$tgtAddr"; then
+            break
+        fi
+        echo -e "${RED}Invalid target IP/Domain: ${tgtAddr:-empty}.${cRES}"
     done
 
     local tgtPort=""
     echo
     while true; do
-        read -p "Enter Target Port: " tgtPort
-        tgtPort=$(echo "$tgtPort" | tr -d ' ')
+        read -r -p "Enter Target Port: " tgtPort
+        tgtPort=$(echo "$tgtPort" | tr -d '[:space:]')
         if [[ "$tgtPort" =~ ^[0-9]+$ ]] && [ "$tgtPort" -ge 1 ] && [ "$tgtPort" -le 65535 ]; then
             break
         fi
         echo -e "${RED}Invalid port number.${cRES}"
     done
 
-    local inboundJson=$(cat << EOF
-{
-  "tag": "inbound-dokodemo",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "dokodemo-door",
-  "settings": {
-    "address": "$tgtAddr",
-    "port": $tgtPort,
-    "network": "tcp,udp"
-  }
-}
-EOF
-)
+    local inboundJson=$(jq -nc \
+      --argjson port "$port" \
+      --arg addr "$tgtAddr" \
+      --argjson tport "$tgtPort" '
+      {
+        tag: "inbound-dokodemo",
+        listen: "0.0.0.0",
+        port: $port,
+        protocol: "dokodemo-door",
+        settings: {
+          address: $addr,
+          port: $tport,
+          network: "tcp,udp"
+        }
+      }')
 
-    if applyXrayInbound "$inboundJson" "inbound-dokodemo"; then
+    local outboundJson=$(jq -nc '
+      {
+        tag: "outbound-dokodemo",
+        protocol: "freedom",
+        settings: {
+          finalRules: [{"action": "allow", "ip": ["geoip:private", "0.0.0.0/0", "::/0"]}]
+        }
+      }')
+
+    local ruleJson=$(jq -nc '
+      {
+        type: "field",
+        inboundTag: ["inbound-dokodemo"],
+        outboundTag: "outbound-dokodemo"
+      }')
+
+    if applyXrayInbound "$inboundJson" "inbound-dokodemo" "$outboundJson" "$ruleJson"; then
         echo -e "${GREEN}Dokodemo-door successfully configured!${cRES}"
         echo
         showDokodemoNode "wait"
@@ -3390,18 +5126,28 @@ disableAllExtraProtocols() {
     clear 2>/dev/null || true
     read -p "Are you sure you want to disable ALL extra protocols? (Default VLESS node will be kept) [y/N]: " confirm
     if [[ "$confirm" =~ ^[yY] ]]; then
+        local cfg="/opt/de_GWD/vtrui/config.json"
+        cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
         local tags=("inbound-vless-reality" "inbound-vless-xhttp" "inbound-vless-ws" "inbound-vmess-ws" "inbound-socks5" "inbound-dokodemo")
         for t in "${tags[@]}"; do
             if hasXrayInbound "$t"; then
-                jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+                jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' "$cfg" | sponge "$cfg"
             fi
             removeNginxWebProxy "$t"
         done
+        jq 'del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | if (.routing.rules | type) == "array" then .routing.rules |= map(select(.inboundTag != ["inbound-dokodemo"])) else . end' "$cfg" | sponge "$cfg"
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         rm -f /opt/de_GWD/vtrui/reality.info
         rm -f /opt/de_GWD/extra_domains.json /opt/de_GWD/extra_ports.json
-        if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+        if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >/dev/null 2>&1; then
+            rm -f "${cfg}.bak"
             systemctl restart vtrui
             echo -e "${GREEN}All extra protocols disabled successfully.${cRES}"
+        else
+            mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+            if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
+            systemctl restart vtrui
+            echo -e "${RED}Failed to disable extra protocols cleanly; restored previous Xray config.${cRES}"
         fi
         sleep 2s
     fi
@@ -3494,7 +5240,8 @@ manageProtocols() {
 
 printNode(){
 vpsdomain=$(awk '/server_name/ {print$2;exit}' /etc/nginx/conf.d/default.conf | sed 's/.$//')
-port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf)
+port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n 1)
+[[ -z "$port" ]] && port="443"
 
 if [[ $port = "443" ]]; then
 vpsdomainP=$vpsdomain
@@ -3514,7 +5261,9 @@ local idx=1
 for r in "${haproxyRules[@]}"; do
     local p="${r%%|*}"
     local tgt="${r##*|}"
-    local upD="${tgt%%:*}"
+    local upD="${tgt%:*}"
+    upD="${upD#[}"
+    upD="${upD%]}"
     echo -e "${BLUE}Rule ${idx}:${cRES}"
     echo -e "  ${BLUE}Address:       ${YELLOW}$vpsdomain:$p${cRES}"
     echo -e "  ${BLUE}Target:        ${YELLOW}$tgt${cRES}"
@@ -3541,6 +5290,10 @@ echo
 echo -e "${BLUE}Link:        ${YELLOW}${subUrl}${cRES}"
 echo -e "${BLUE}-------------------------------------------------- ${cRES}"
 
+if [[ -s "$socks5OutboundSettings" ]] && jq -e 'if (.profiles | type) == "array" then any(.profiles[]; .enabled == true) else .enabled == true end' "$socks5OutboundSettings" >/dev/null 2>&1; then
+    socks5OutboundStatus
+fi
+
 # Print active extra protocols if any
 showAllExtraNodes
 }
@@ -3549,14 +5302,28 @@ showAllExtraNodes
 
 saveCommand(){
 mkdir -p /opt/de_GWD
-if [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/server" && "$0" != *"/bin/dex" && "$0" != *"/bin/de_GWD" ]]; then
+if [[ "$0" == *"/opt/de_GWD/server" || "$0" == *"/bin/dex" || "$0" == *"/bin/de_GWD" ]] && \
+   [[ -f /opt/de_GWD/server ]] && [[ $(wc -l < /opt/de_GWD/server 2>/dev/null || echo 0) -gt 500 ]] && \
+   grep -q 'installGWD()' /opt/de_GWD/server 2>/dev/null && bash -n /opt/de_GWD/server 2>/dev/null; then
+  :
+elif [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/server" && "$0" != *"/bin/dex" && "$0" != *"/bin/de_GWD" ]] && \
+     bash -n "$0" 2>/dev/null; then
   cp -f "$0" /opt/de_GWD/server
 else
-  local tmpServerNew
+  local tmpServerNew expectedSha actualSha
   tmpServerNew=$(mktemp /tmp/de_GWD-server-new.XXXXXX) || return 1
   if { gh_download "$tmpServerNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 30 || \
        curl -fsSL -o "$tmpServerNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null; } && \
      [[ $(wc -l < "$tmpServerNew") -gt 500 ]] && grep -q 'installGWD()' "$tmpServerNew" && bash -n "$tmpServerNew" 2>/dev/null; then
+    expectedSha=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server.sha256sum" 2>/dev/null | awk 'NR==1 {print $1}' | tr -d '\r ' | tr 'A-F' 'a-f')
+    if [[ "$expectedSha" =~ ^[0-9a-f]{64}$ ]]; then
+      actualSha=$(sha256sum "$tmpServerNew" 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f')
+      if [[ "$actualSha" != "$expectedSha" ]]; then
+        echo -e "${RED}server checksum verification failed!${cRES}" >&2
+        rm -f "$tmpServerNew"
+        return 1
+      fi
+    fi
     mv -f "$tmpServerNew" /opt/de_GWD/server
   else
     rm -f "$tmpServerNew"
@@ -3579,12 +5346,25 @@ installGWD(){
     echo -e "${GREEN}================== ${cRES}"
     echo -e "${GREEN} Input VPS domain${cRES}"
     echo -e "${GREEN}================== ${cRES}"
-    [[ -z "$vpsdomainP" ]] && read vpsdomainP
+    [[ -z "$vpsdomainP" ]] && read -r vpsdomainP
 
-domain=$(echo $vpsdomainP | cut -d: -f1)
+vpsdomainP=$(echo "$vpsdomainP" | sed -E 's#^https?://##; s#/.*$##' | tr -d '[:space:]')
+domain="${vpsdomainP%%:*}"
+if [[ -z "$domain" || "$domain" == "localhost" || ! "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]]; then
+    echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid domain: ${domain:-empty}${cRES}"
+    return 1
+fi
 topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
-port=$(echo $vpsdomainP | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
+port="${vpsdomainP#"$domain"}"
+port="${port#:}"
+if [[ -n "$port" ]]; then
+    if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+        echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid port: $port${cRES}"
+        return 1
+    fi
+else
+    port="443"
+fi
 
 if [[ -z "$sslMode" ]]; then
     sslMode="2"
@@ -3633,11 +5413,15 @@ else
     makeSSL_D
 fi
 
-nginxWebConf
-
 XrayInbound
 
 XrayOutboundDirect
+
+nginxWebConf
+
+if [[ -s "$socks5OutboundSettings" ]]; then
+  socks5OutboundEnsureGeodata "$socks5OutboundSettings" "auto" >/dev/null 2>&1 || true
+fi
 
 postInstall
 
@@ -3669,11 +5453,15 @@ installNginx
 
 installXray
 
-nginxWebConf
-
 XrayInbound
 
 XrayOutboundDirect
+
+nginxWebConf
+
+if [[ -s "$socks5OutboundSettings" ]]; then
+  socks5OutboundEnsureGeodata "$socks5OutboundSettings" "auto" >/dev/null 2>&1 || true
+fi
 
 postInstall
 
@@ -3691,10 +5479,13 @@ checkKernel
 
 
 enableAutoUpdate(){
-cat << "EOF" >/opt/de_GWD/autoUpdate
-#!/bin/bash
-localVer=$(awk 'NR==1' /opt/de_GWD/version.php)
-remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1 | tr -d '\r ')
+{
+  printf '%s\n' '#!/bin/bash'
+  printf '%s\n' "PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'"
+  printf 'branch=%q\n' "${branch:-v2}"
+  cat << "EOF"
+localVer=$(awk 'NR==1' /opt/de_GWD/version.php 2>/dev/null | tr -d '\r ')
+remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/version.php" | head -n 1 | tr -d '\r ')
 
 if [[ -z "$remoteVer" ]] || [[ ! "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] || [[ "$remoteVer" == "$localVer" ]]; then
   exit 0
@@ -3707,9 +5498,14 @@ if [[ "$VerCP" == "$localVer" ]]; then
   tmpClean=$(mktemp /tmp/de_GWD-autoUpdate-clean.XXXXXX) || { rm -f "$tmpAuto"; exit 1; }
   trap 'rm -f "$tmpAuto" "$tmpClean"' EXIT
 
-  if wget -t 5 -T 10 -cqO "$tmpAuto" https://raw.githubusercontent.com/stuinxo/de_GWD/v2/server &&
+  if curl -fsSL --connect-timeout 10 -m 60 -o "$tmpAuto" "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/server" &&
      [[ $(du -sk "$tmpAuto" 2>/dev/null | awk '{print $1}') -gt 70 ]] &&
      grep -q 'updateGWD()' "$tmpAuto"; then
+    expectedSha=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/server.sha256sum" 2>/dev/null | awk 'NR==1 {print $1}' | tr -d '\r ' | tr 'A-F' 'a-f')
+    if [[ "$expectedSha" =~ ^[0-9a-f]{64}$ ]]; then
+      actualSha=$(sha256sum "$tmpAuto" 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f')
+      [[ "$actualSha" == "$expectedSha" ]] || exit 1
+    fi
     awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' "$tmpAuto" >"$tmpClean"
     printf '%s\n' 'updateGWD' >>"$tmpClean"
     if bash -n "$tmpClean" 2>/dev/null; then
@@ -3719,6 +5515,7 @@ if [[ "$VerCP" == "$localVer" ]]; then
   fi
 fi
 EOF
+} >/opt/de_GWD/autoUpdate
 chmod +x /opt/de_GWD/autoUpdate
 
 local tmpCron
@@ -3762,19 +5559,34 @@ fi
 
 
 CFspeedTest(){
-ghREPO="makotom/cfspeed"
-ghPackage="linux-$architecture.tar.gz"
+local ghREPO="makotom/cfspeed"
+local ghPackage="linux-$architecture.tar.gz"
+local cfspeedBin="/opt/de_GWD/cfspeed"
+local latestTag curVer dlUrl tmpDir
 
-if [[ $(/var/www/html/cfspeed -v 2>/dev/null | awk '{print$2}') != $(curl -fsSL https://api.github.com/repos/${ghREPO}/releases/latest | grep -E 'tag_name' | cut -d '"' -f 4) ]]; then
-rm -rf /tmp/cfspeed*
-curl -fsSL https://api.github.com/repos/${ghREPO}/releases/latest | grep -E 'browser_download_url' | grep $ghPackage | cut -d '"' -f 4 | wget --show-progress -qi - -O /tmp/cfspeed.tar.gz
+rm -f /var/www/html/cfspeed 2>/dev/null || true
+latestTag=$(curl -fsSL "https://api.github.com/repos/${ghREPO}/releases/latest" | grep -E 'tag_name' | cut -d '"' -f 4 | head -n 1)
+curVer=$("$cfspeedBin" -v 2>/dev/null | awk '{print$2}')
 
-tar -zxvf /tmp/cfspeed.tar.gz -C /tmp >/dev/null 2>&1
-mv -f /tmp/cfspeed /var/www/html/cfspeed >/dev/null 2>&1
-chmod +x /var/www/html/cfspeed >/dev/null 2>&1
+if [[ ! -x "$cfspeedBin" ]] || [[ -n "$latestTag" && "$curVer" != "$latestTag" ]]; then
+  dlUrl=$(curl -fsSL "https://api.github.com/repos/${ghREPO}/releases/latest" | grep -E 'browser_download_url' | grep "$ghPackage" | cut -d '"' -f 4 | head -n 1)
+  if [[ -n "$dlUrl" ]]; then
+    tmpDir=$(mktemp -d /tmp/de_GWD-cfspeed.XXXXXX) || return 1
+    if curl -fsSL -o "$tmpDir/cfspeed.tar.gz" "$dlUrl" && tar -zxvf "$tmpDir/cfspeed.tar.gz" -C "$tmpDir" >/dev/null 2>&1 && [[ -f "$tmpDir/cfspeed" ]]; then
+      mkdir -p /opt/de_GWD
+      mv -f "$tmpDir/cfspeed" "$cfspeedBin"
+      chmod +x "$cfspeedBin"
+    fi
+    rm -rf "$tmpDir"
+  fi
 fi
-/var/www/html/cfspeed
-exit
+if [[ -x "$cfspeedBin" ]]; then
+  "$cfspeedBin"
+else
+  echo -e "${RED}Failed to run cfspeed${cRES}"
+  return 1
+fi
+return 0
 }
 
 
@@ -3789,6 +5601,7 @@ local RproxySmappingList=$(jq -c '.mapping // []' "$settings" 2>/dev/null)
 
 [[ ! -x /opt/de_GWD/vtrui/vtrui ]] && return 1
 [[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) || return 1
+[[ $RproxyStunnelPort != "53" && $RproxyStunnelPort != "4711" ]] || return 1
 [[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || return 1
 
 local len=$(echo "$RproxySmappingList" | jq length)
@@ -3796,6 +5609,7 @@ for (( i=0; i<len; i++ )); do
   local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
   local protocol=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].protocol')
   [[ $port =~ ^[1-9][0-9]{0,4}$ ]] && (( port <= 65535 )) || return 1
+  [[ $port != "53" && $port != "4711" ]] || return 1
   [[ $protocol = "tcp" || $protocol = "udp" || $protocol = "tcp,udp" ]] || return 1
 done
 
@@ -3873,7 +5687,8 @@ LimitNOFILE=10000000
 LimitNPROC=10000000
 LimitCORE=10000000
 
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 
 [Install]
@@ -3881,23 +5696,15 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
 systemctl enable RproxyS >/dev/null 2>&1
-systemctl restart RproxyS
-
-if systemctl is-active --quiet nftables; then
-  nft add rule inet filter INPUT tcp dport $RproxyStunnelPort accept 2>/dev/null || true
-  for (( i=0; i<len; i++ )); do
-    local port=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].port')
-    local protocol=$(echo "$RproxySmappingList" | jq -r --argjson i "$i" '.[$i].protocol')
-    if [[ "$protocol" == "tcp" ]]; then
-      nft add rule inet filter INPUT tcp dport $port accept 2>/dev/null || true
-    elif [[ "$protocol" == "udp" ]]; then
-      nft add rule inet filter INPUT udp dport $port accept 2>/dev/null || true
-    else
-      nft add rule inet filter INPUT meta l4proto { tcp, udp } th dport $port accept 2>/dev/null || true
-    fi
-  done
+if ! systemctl restart RproxyS >/dev/null 2>&1; then
+  if systemd-detect-virt --container >/dev/null 2>&1; then
+    sed -i '/^AmbientCapabilities=/d;/^CapabilityBoundingSet=/d' /etc/systemd/system/RproxyS.service
+    systemctl daemon-reload >/dev/null
+    systemctl restart RproxyS >/dev/null 2>&1 || true
+  fi
 fi
 
+sleep 1
 systemctl is-active --quiet RproxyS || return 1
 }
 
@@ -3926,12 +5733,17 @@ echo -e "${GREEN}RproxyS base settings${cRES}"
 echo -e "${GREEN}============================ ${cRES}"
 read -r -p "RproxyS listen port [20000]: " RproxyStunnelPort
 RproxyStunnelPort=${RproxyStunnelPort:-20000}
-[[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
+[[ $RproxyStunnelPort =~ ^[1-9][0-9]{0,4}$ ]] && (( RproxyStunnelPort <= 65535 )) && [[ $RproxyStunnelPort != "53" && $RproxyStunnelPort != "4711" ]] || { echo -e "${RED}Invalid or reserved port${cRES}"; return 1; }
+if [[ $(checkPortAvailable "$RproxyStunnelPort" "" "false") != "ok" ]]; then
+  echo -e "${RED}Port $RproxyStunnelPort is already in use or reserved${cRES}"
+  return 1
+fi
 read -r -p "RproxyS UUID [auto]: " RproxyStunnelUUID
 RproxyStunnelUUID=${RproxyStunnelUUID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || /opt/de_GWD/vtrui/vtrui uuid 2>/dev/null)}
 [[ $RproxyStunnelUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
 
-local temp=/tmp/RproxyS.settings.$$
+local temp
+temp=$(mktemp /tmp/RproxyS.settings.XXXXXX) || return 1
 jq -n --argjson port "$RproxyStunnelPort" --arg uuid "$RproxyStunnelUUID" \
   '{port:$port,uuid:$uuid,mapping:[]}' >"$temp" || { rm -f "$temp"; return 1; }
 mkdir -p /opt/de_GWD/RproxyS
@@ -3948,10 +5760,14 @@ local mappingPort mappingProtocol
 echo -e "${GREEN}1. Port${cRES}"
 read -r -p "Mapping port: " mappingPort
 mappingPort=${mappingPort//[[:space:]]/}
-[[ $mappingPort =~ ^[1-9][0-9]{0,4}$ ]] && (( mappingPort <= 65535 )) || { echo -e "${RED}Invalid mapping port${cRES}"; return 1; }
+[[ $mappingPort =~ ^[1-9][0-9]{0,4}$ ]] && (( mappingPort <= 65535 )) && [[ $mappingPort != "53" && $mappingPort != "4711" ]] || { echo -e "${RED}Invalid or reserved mapping port${cRES}"; return 1; }
 [[ $mappingPort != "$listenPort" ]] || { echo -e "${RED}Mapping port conflicts with RproxyS listen port${cRES}"; return 1; }
 if jq -e --argjson port "$mappingPort" 'any(.mapping[]?; .port == $port)' "$settings" >/dev/null 2>&1; then
   echo -e "${YELLOW}Mapping port already exists${cRES}"
+  return 1
+fi
+if [[ $(checkPortAvailable "$mappingPort" "" "false") != "ok" ]]; then
+  echo -e "${RED}Port $mappingPort is already in use or reserved${cRES}"
   return 1
 fi
 echo -e "${GREEN}2. Protocol (default tcp+udp)${cRES}"
@@ -3960,7 +5776,8 @@ mappingProtocol=${mappingProtocol:-tcp+udp}
 mappingProtocol=${mappingProtocol//+/,}
 [[ $mappingProtocol = "tcp" || $mappingProtocol = "udp" || $mappingProtocol = "tcp,udp" ]] || { echo -e "${RED}Invalid mapping protocol${cRES}"; return 1; }
 
-local temp=/tmp/RproxyS.settings.$$.add
+local temp
+temp=$(mktemp /tmp/RproxyS.settings.add.XXXXXX) || return 1
 jq --argjson port "$mappingPort" --arg protocol "$mappingProtocol" \
   '.mapping += [{port:$port,protocol:$protocol}]' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
 mv -f "$temp" "$settings"
@@ -3984,7 +5801,8 @@ if ! jq -e --argjson port "$mappingPort" 'any(.mapping[]?; .port == $port)' "$se
   echo -e "${YELLOW}Mapping port does not exist${cRES}"
   return 1
 fi
-local temp=/tmp/RproxyS.settings.$$.delete
+local temp
+temp=$(mktemp /tmp/RproxyS.settings.delete.XXXXXX) || return 1
 jq --argjson port "$mappingPort" '.mapping |= map(select(.port != $port))' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
 mv -f "$temp" "$settings"
 chmod 600 "$settings"
@@ -4052,7 +5870,11 @@ echo -e "${GREEN}============================ ${cRES}"
 read -r -p "RproxyS tunnel listen port [$curPort]: " newPort
 newPort=${newPort:-$curPort}
 newPort=${newPort//[[:space:]]/}
-[[ $newPort =~ ^[1-9][0-9]{0,4}$ ]] && (( newPort <= 65535 )) || { echo -e "${RED}Invalid port${cRES}"; return 1; }
+[[ $newPort =~ ^[1-9][0-9]{0,4}$ ]] && (( newPort <= 65535 )) && [[ $newPort != "53" && $newPort != "4711" ]] || { echo -e "${RED}Invalid or reserved port${cRES}"; return 1; }
+if [[ "$newPort" != "$curPort" && $(checkPortAvailable "$newPort" "$curPort" "false") != "ok" ]]; then
+  echo -e "${RED}Port $newPort is already in use or reserved${cRES}"
+  return 1
+fi
 
 if jq -e --argjson port "$newPort" 'any(.mapping[]?; .port == $port)' "$settings" >/dev/null 2>&1; then
   echo -e "${RED}Tunnel port conflicts with an existing mapping port ($newPort)${cRES}"
@@ -4064,7 +5886,8 @@ newUUID=${newUUID:-$curUUID}
 newUUID=${newUUID//[[:space:]]/}
 [[ $newUUID =~ ^[0-9a-fA-F-]{36}$ ]] || { echo -e "${RED}Invalid UUID${cRES}"; return 1; }
 
-local temp=/tmp/RproxyS.settings.$$.base
+local temp
+temp=$(mktemp /tmp/RproxyS.settings.base.XXXXXX) || return 1
 jq --argjson port "$newPort" --arg uuid "$newUUID" \
   '.port = $port | .uuid = $uuid' "$settings" >"$temp" || { rm -f "$temp"; return 1; }
 mv -f "$temp" "$settings"
@@ -4151,6 +5974,7 @@ echo -e "${BLUE}$virt${cRES}"
 [[ $(systemctl is-active 'wg-quick@wgcf') = "active" ]] && echo -e "${PURPLE}[Enabled] Cloudflare wireguard upstream (WARP) ${cRES}"
 [[ $(systemctl is-active 'haproxy') = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
 [[ $(systemctl is-active 'RproxyS') = "active" ]] && echo -e "${PURPLE}[Enabled] RproxyS reverse proxy${cRES}"
+[[ -s "$socks5OutboundSettings" ]] && jq -e 'if (.profiles | type) == "array" then any(.profiles[]; .enabled == true) else .enabled == true end' "$socks5OutboundSettings" >/dev/null 2>&1 && echo -e "${PURPLE}[Enabled] SOCKS5 outbound${cRES}"
 
 if [[ $virt_type = "container" ]]; then
  echo -e "${BLUE}---------------------------------------------------------------- ${cRES}"
@@ -4178,6 +6002,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}11.Print Xray node information${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
+  echo -e "${CYAN}35.Set SOCKS5 outbound${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
   echo -e "${CYAN}55.Manage Extra Protocols${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -4214,6 +6039,10 @@ read -p "Select:" num || exit
     ;;
     22)
     changeRproxyS
+    start_menu
+    ;;
+    35)
+    socks5OutboundMenu
     start_menu
     ;;
     44)
@@ -4260,6 +6089,7 @@ echo -e "${YELLOW}0. Update de_GWD${cRES}"
  echo -e "${GREEN}12.Localhost cloudflare speedtest${cRES}"
   echo -e "${CYAN}22.Set RproxyS reverse proxy${cRES}"
   echo -e "${CYAN}33.Set Cloudflare wireguard upstream (WARP) ${cRES}"
+  echo -e "${CYAN}35.Set SOCKS5 outbound${cRES}"
   echo -e "${CYAN}44.Set TCP Port Forward${cRES}"
   echo -e "${CYAN}55.Manage Extra Protocols${cRES}"
 echo -e "${RED}CTRL+C EXIT${cRES}"
@@ -4304,6 +6134,10 @@ read -p "Select:" num || exit
     ;;
     33)
     changeWGCF
+    start_menu
+    ;;
+    35)
+    socks5OutboundMenu
     start_menu
     ;;
     44)
