@@ -1,15 +1,20 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$DoGsPort = $_GET['DoGsPort'];
+gwd_require_post_csrf();
+$DoGsPort = trim((string)gwd_param('DoGsPort', ''));
 
-$data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$data['FORWARD']['DoGs'] = array();
-$data['FORWARD']['DoGs']['status'] = "on";
-$data['FORWARD']['DoGs']['port'] = $DoGsPort;
-$newJsonString = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($DoGsPort): array {
+    if (!isset($conf['FORWARD']) || !is_array($conf['FORWARD'])) {
+        $conf['FORWARD'] = [];
+    }
+    $conf['FORWARD']['DoGs'] = [
+        'status' => 'on',
+        'port' => $DoGsPort,
+    ];
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-DoGsSave &');
+exec('sudo /opt/de_GWD/ui-DoGsSave >/dev/null 2>&1 &');
 ?>
 <?php }?>

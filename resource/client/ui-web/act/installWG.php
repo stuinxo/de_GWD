@@ -1,6 +1,7 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-exec('sudo nohup /usr/bin/ttyd -p 3000 -W -o /opt/de_GWD/ui-installWG &');
+gwd_require_post_csrf();
+exec('sudo nohup /usr/bin/ttyd -i lo -p 3000 -W -o /opt/de_GWD/ui-installWG >/dev/null 2>&1 &');
 ?>
 <?php }?>

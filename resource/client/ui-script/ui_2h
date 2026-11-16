@@ -1,24 +1,19 @@
 #!/bin/bash
 rm -rf /opt/de_GWD/update
 rm -rf /opt/de_GWD/__MACOSX
-rm -rf ~/client*
 rm -rf ~/wget-log*
-find /var/log -maxdepth 2 -type f \( -name '*.1' -o -name '*.2' -o -name '*.gz' -o -name '*.old' \) -delete 2>/dev/null || true
-rm -rf /var/log/auth.log
 rm -rf /var/log/lighttpd*
 rm -rf /var/www/html/log.log
 rm -rf /var/www/html/restore/*
+rm -rf /opt/de_GWD/restore/*
 rm -rf /var/www/html/__MACOSX
-rm -rf /tmp/systemd-private-*
-rm -rf /tmp/tmp.*
 
 
 
-sed -i '/^\s*$/d' /opt/de_GWD/0conf
-if [[ -n $(cat /opt/de_GWD/0conf) ]]; then
+if jq -e 'type == "object"' /opt/de_GWD/0conf >/dev/null 2>&1; then
 	cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
 	chmod 600 /opt/de_GWD/0conf_bak
-elif [[ -z $(cat /opt/de_GWD/0conf) ]]; then
+elif jq -e 'type == "object"' /opt/de_GWD/0conf_bak >/dev/null 2>&1; then
 	cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
 	chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
 	chmod 660 /opt/de_GWD/0conf

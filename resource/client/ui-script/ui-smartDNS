@@ -11,11 +11,12 @@ cRES='\E[0m'
 
 
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}SmartDNS action${cRES}\r\c"
-doh1=$(jq -r '.dns.doh[0]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-doh2=$(jq -r '.dns.doh[1]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+source "$(dirname "$0")/ui-confCommon" 2>/dev/null || source /opt/de_GWD/ui-confCommon
+doh1=$(jq -r '.dns.doh[0]' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$')
+doh2=$(jq -r '.dns.doh[1]' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$')
 doh1=${doh1#*//}
 doh2=${doh2#*//}
-DoG=$(jq -r '.dns.dog' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+DoG=$(jq -r '.dns.dog' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$')
 
 touch /opt/de_GWD/coredns/corefile
 if [[ -n $DoG ]]; then
@@ -60,7 +61,7 @@ sed -i '/DoGc_START/,/DoGc_END/d' /opt/de_GWD/coredns/corefile
   fi
 fi
 
-if [[ $(jq -r '.FORWARD.DoGs.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then
+if [[ $(jq -r '.FORWARD.DoGs.status' "$GWD_CONF_FILE" 2>/dev/null) = "on" ]];then
   /opt/de_GWD/ui-DoGsSave >/dev/null 2>&1
 fi
 
@@ -102,6 +103,8 @@ else
 fi
 fi
 
+oldConfHash=$(sha256sum /opt/de_GWD/smartdns/smartdns.conf 2>/dev/null | awk '{print $1}')
+
 cat << EOF >/opt/de_GWD/smartdns/smartdns.conf
 server-name smartdns
 
@@ -114,6 +117,7 @@ bind-tcp 127.0.0.1:5332 -group DNS_global -no-speed-check -no-cache
 speed-check-mode tcp:443,ping,tcp:80
 response-mode first-ping
 force-AAAA-SOA yes
+force-qtype-SOA 65
 dualstack-ip-selection no
 cache-size 32768
 cache-persist yes
@@ -130,13 +134,11 @@ serve-expired-ttl 3600
 serve-expired-reply-ttl 3
 EOF
 
-if [[ -z $(jq -r '.dns.china' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
-  jq --arg dnsChina "114.114.114.114 114.114.115.115 119.29.29.29 119.28.28.28 180.76.76.76 223.5.5.5 223.6.6.6" '.dns.china=$dnsChina' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-  chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+if [[ -z $(jq -r '.dns.china' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$') ]]; then
+  conf_jq --arg dnsChina "114.114.114.114 114.114.115.115 119.29.29.29 119.28.28.28 180.76.76.76 223.5.5.5 223.6.6.6" '.dns.china=$dnsChina'
 fi
 
-for dnsChina in $(jq -r '.dns.china' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$'); do
+for dnsChina in $(jq -r '.dns.china' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$'); do
     echo "server $dnsChina" >>/opt/de_GWD/smartdns/smartdns.conf
 done
 
@@ -150,24 +152,22 @@ echo "server-https https://$doh2Str -host-name $doh2Domain -no-check-certificate
 fi
 
 if [[ -n $DoGcIP ]]; then
-echo "server-tcp 127.0.0.1:5333" >>/opt/de_GWD/smartdns/smartdns.conf
+echo "server-tcp 127.0.0.1:5333 -group DNS_global -exclude-default-group" >>/opt/de_GWD/smartdns/smartdns.conf
 fi
 
-doh1re_origin=$(jq -r '.dns.doh1re' /opt/de_GWD/0conf)
+newConfHash=$(sha256sum /opt/de_GWD/smartdns/smartdns.conf 2>/dev/null | awk '{print $1}')
+
+doh1re_origin=$(jq -r '.dns.doh1re' "$GWD_CONF_FILE" 2>/dev/null)
 if [[ $doh1re_origin != $doh1IP ]]; then
-jq --arg doh1re "$doh1IP" '.dns.doh1re=$doh1re' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+conf_jq --arg doh1re "$doh1IP" '.dns.doh1re=$doh1re'
 fi
 
-doh2re_origin=$(jq -r '.dns.doh2re' /opt/de_GWD/0conf)
+doh2re_origin=$(jq -r '.dns.doh2re' "$GWD_CONF_FILE" 2>/dev/null)
 if [[ $doh2re_origin != $doh2IP ]]; then
-jq --arg doh2re "$doh2IP" '.dns.doh2re=$doh2re' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+conf_jq --arg doh2re "$doh2IP" '.dns.doh2re=$doh2re'
 fi
 
-if [[ $doh1re_origin != $doh1IP ]] || [[ $doh2re_origin != $doh2IP ]]; then
+if [[ $doh1re_origin != $doh1IP ]] || [[ $doh2re_origin != $doh2IP ]] || [[ "$oldConfHash" != "$newConfHash" ]]; then
 rm -f /tmp/smartdns
 systemctl restart smartdns
 fi
@@ -188,5 +188,8 @@ table ip de_GWD {
 EOF
 chmod +x /opt/de_GWD/nftables/SET_GlobalDNS.nft
 /opt/de_GWD/nftables/SET_GlobalDNS.nft
+else
+rm -f /opt/de_GWD/nftables/*GlobalDNS*
+nft flush set ip de_GWD GlobalDNS 2>/dev/null || true
 fi
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}SmartDNS action${cRES}"

@@ -1,4 +1,12 @@
 #!/bin/bash
+supportsSystem(){
+  local osRelease=$1
+  local architecture=$2
+  [[ -r $osRelease ]] || return 1
+  . "$osRelease"
+  [[ ${ID:-} = "debian" && ( ${VERSION_ID:-} = "13" || ${VERSION_ID:-} = "12" ) ]] && [[ $architecture = "amd64" || $architecture = "arm64" ]]
+}
+
 if [[ $EUID -ne 0 ]]; then
   if [[ -f "$0" ]]; then
     if command -v sudo >/dev/null 2>&1; then
@@ -12,6 +20,12 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
   fi
 fi
+
+if ! supportsSystem /etc/os-release "$(dpkg --print-architecture 2>/dev/null)"; then
+  echo "Server requires Debian 12/13 (Bookworm/Trixie) on amd64 or arm64. No system changes were made." >&2
+  exit 1
+fi
+
 clear 2>/dev/null || true
 RED='\E[1;31m'
 GREEN='\E[1;32m'
@@ -22,7 +36,7 @@ CYAN='\E[1;36m'
 WHITE='\E[1;37m'
 cRES='\E[0m'
 
-chmod 777 /tmp
+chmod 1777 /tmp
 architecture=$(dpkg --print-architecture)
 virt=$(systemd-detect-virt 2>/dev/null || true)
 [[ -z "$virt" ]] && virt="none"
@@ -67,16 +81,39 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}System Package
 
 
 
-checkSum(){
-sha256sumL=$(sha256sum $1 2>/dev/null | awk '{print$1}')
-if [[ $sha256sumL = $2 ]]; then 
-  echo "true"
-elif [[ $sha256sumL != $2 ]]; then
-  echo "false"
-fi
+normalizeSha256(){
+  local raw="${1:-}"
+  raw=$(printf '%s\n' "$raw" | awk 'NR==1 {gsub(/\r/, ""); print tolower($1); exit}')
+  if [[ "$raw" =~ ^[0-9a-f]{64}$ ]]; then
+    printf '%s\n' "$raw"
+    return 0
+  fi
+  return 1
 }
 
-
+checkSum(){
+  local file="${1:-}"
+  local expected
+  expected=$(normalizeSha256 "${2:-}") || {
+    echo "false"
+    return 0
+  }
+  if [[ ! -f "$file" ]]; then
+    echo "false"
+    return 0
+  fi
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$file" 2>/dev/null | awk '{print tolower($1); exit}')
+  else
+    actual=$(shasum -a 256 "$file" 2>/dev/null | awk '{print tolower($1); exit}')
+  fi
+  if [[ -n "$actual" && "$actual" == "$expected" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
 
 gh_text(){
   local url="$1"
@@ -90,7 +127,7 @@ gh_text(){
 
   for u in "${urls[@]}"; do
     local content
-    content=$(curl -4 -fsSL -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 5 --max-time 10 "$u" 2>/dev/null | tr -d '\r\n ')
+    content=$(curl -4 -fsSL -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 5 --max-time 10 "$u" 2>/dev/null | awk 'NR==1 {gsub(/\r/, ""); print $1; exit}')
     if [[ -n "$content" ]]; then
       echo "$content"
       return 0
@@ -116,7 +153,7 @@ gh_download(){
 
   for u in "${urls[@]}"; do
     rm -f "$target"
-    wget -4 --no-check-certificate --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
+    wget -4 --header="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" \
       --dns-timeout=5 --connect-timeout=5 --timeout=20 --tries=2 -qO "$target" "$u" 2>/dev/null
     if [[ ! -s "$target" ]] || [[ $(du -sk "$target" 2>/dev/null | awk '{print $1}') -lt "$min_kb" ]]; then
       curl -4 -fsSL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" --connect-timeout 5 -m 30 -o "$target" "$u" 2>/dev/null
@@ -131,84 +168,147 @@ gh_download(){
   return 1
 }
 
+fetchChecksum(){
+  local url="${1:-}"
+  local raw
+  raw=$(gh_text "$url" 2>/dev/null) || return 1
+  normalizeSha256 "$raw"
+}
+
+isElfBinary(){
+  local file="${1:-}"
+  [[ -s "$file" ]] || return 1
+  local magic
+  magic=$(head -c 4 "$file" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+  [[ "$magic" == "7f454c46" ]]
+}
+
+downloadVerifiedResource(){
+  local dest="$1"
+  local url="$2"
+  local expected_raw="$3"
+  local min_kb="${4:-1}"
+  local mode="${5:-raw}"
+
+  local expected
+  expected=$(normalizeSha256 "$expected_raw") || return 1
+
+  local tmpDl
+  tmpDl=$(mktemp /tmp/de_GWD-dl.XXXXXX) || return 1
+  if ! gh_download "$tmpDl" "$url" "$min_kb"; then
+    rm -f "$tmpDl"
+    return 1
+  fi
+  if [[ $(checkSum "$tmpDl" "$expected") != "true" ]]; then
+    rm -f "$tmpDl"
+    return 1
+  fi
+  if [[ "$mode" == "zip" ]] && ! unzip -tq "$tmpDl" >/dev/null 2>&1; then
+    rm -f "$tmpDl"
+    return 1
+  fi
+  if [[ "$mode" == "elf" ]] && ! isElfBinary "$tmpDl"; then
+    rm -f "$tmpDl"
+    return 1
+  fi
+  mkdir -p "$(dirname "$dest")"
+  mv -f "$tmpDl" "$dest"
+}
+
+wait_apt_lock(){
+  local waited=0
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+    if [[ $waited -ge 120 ]]; then
+      echo "Timed out waiting for apt/dpkg lock" >&2
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  dpkg --configure -a
+}
+
+detect_primary_nic(){
+  local nic=""
+  if command -v ip >/dev/null 2>&1; then
+    nic=$(ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    if [[ -z "$nic" ]]; then
+      nic=$(ip -4 route show 2>/dev/null | awk '!/^default/ && !/dev (lo|docker|br-|veth|wg|ifb|tun|tap)/ {for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+    fi
+  fi
+  if [[ -z "$nic" ]] && [[ -d /sys/class/net ]]; then
+    local iface
+    for iface in /sys/class/net/*; do
+      [[ -e "$iface" ]] || continue
+      iface=${iface##*/}
+      case "$iface" in
+        lo|docker*|veth*|br-*|wg*|ifb*|tun*|tap*) continue ;;
+      esac
+      nic="$iface"
+      break
+    done
+  fi
+  [[ -n "$nic" ]] && printf '%s\n' "$nic"
+}
+
 repoDL(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Repository${cRES}\r\c"
-sha256sum_de_GWD=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip.sha256sum")
-sha256sum_don_server=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_${architecture}.sha256sum")
-sha256sum_nginx=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_${architecture}.sha256sum")
-sha256sum_nginxConf=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum")
-sha256sum_sample=$(gh_text "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip.sha256sum")
+sha256sum_de_GWD=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip.sha256sum") || sha256sum_de_GWD=""
+sha256sum_don_server=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_${architecture}.sha256sum") || sha256sum_don_server=""
+sha256sum_nginx=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_${architecture}.sha256sum") || sha256sum_nginx=""
+sha256sum_nginxConf=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip.sha256sum") || sha256sum_nginxConf=""
+sha256sum_sample=$(fetchChecksum "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip.sha256sum") || sha256sum_sample=""
 
 if [[ -f "./resource/doh/doh_s_$architecture" ]]; then
     cp -f ./resource/doh/doh_s_$architecture /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
-elif [[ -z "$sha256sum_don_server" ]] || [[ $(checkSum /opt/de_GWD/doh-server $sha256sum_don_server) = "false" ]]; then
-    rm -rf /tmp/doh-server
-    if gh_download /tmp/doh-server "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_$architecture" 1000; then
-        if [[ -n "$sha256sum_don_server" && $(checkSum /tmp/doh-server $sha256sum_don_server) = "false" ]]; then
-            echo -e "${RED}doh-server Checksum Failed${cRES}" && exit 1
-        fi
-        mv -f /tmp/doh-server /opt/de_GWD/doh-server && chmod +x /opt/de_GWD/doh-server
-    else
-        echo -e "${RED}Download Failed${cRES}" && exit 1
-    fi
+elif [[ -x "/opt/de_GWD/doh-server" && -n "$sha256sum_don_server" && $(checkSum /opt/de_GWD/doh-server "$sha256sum_don_server") == "true" ]]; then
+    :
+elif [[ -n "$sha256sum_don_server" ]] && downloadVerifiedResource /opt/de_GWD/doh-server "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/doh/doh_s_$architecture" "$sha256sum_don_server" 1000 elf; then
+    chmod +x /opt/de_GWD/doh-server
+else
+    echo -e "${RED}doh-server Download or Checksum Failed${cRES}" && exit 1
 fi
 
 if [[ -f "./resource/nginx/nginx_$architecture" ]]; then
     cp -f ./resource/nginx/nginx_$architecture /usr/sbin/nginx && chmod +x /usr/sbin/nginx
-elif [[ -z "$sha256sum_nginx" ]] || [[ $(checkSum /usr/sbin/nginx $sha256sum_nginx) = "false" ]]; then
-    rm -rf /tmp/nginx
-    if gh_download /tmp/nginx "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_$architecture" 10000; then
-        if [[ -n "$sha256sum_nginx" && $(checkSum /tmp/nginx $sha256sum_nginx) = "false" ]]; then
-            echo -e "${RED}NGINX Core Checksum Failed${cRES}" && exit 1
-        fi
-        mv -f /tmp/nginx /usr/sbin/nginx && chmod +x /usr/sbin/nginx
-    else
-        echo -e "${RED}Download Failed${cRES}" && exit 1
-    fi
+elif [[ -x "/usr/sbin/nginx" && -n "$sha256sum_nginx" && $(checkSum /usr/sbin/nginx "$sha256sum_nginx") == "true" ]]; then
+    :
+elif [[ -n "$sha256sum_nginx" ]] && downloadVerifiedResource /usr/sbin/nginx "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginx_$architecture" "$sha256sum_nginx" 10000 elf; then
+    chmod +x /usr/sbin/nginx
+else
+    echo -e "${RED}NGINX Core Download or Checksum Failed${cRES}" && exit 1
 fi
 
 if [[ -f "./de_GWD_$architecture.zip" ]]; then
     cp -f ./de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
 elif [[ -f "./resource/de_GWD_$architecture.zip" ]]; then
     cp -f ./resource/de_GWD_$architecture.zip /opt/de_GWD/.repo/de_GWD.zip
-elif [[ -z "$sha256sum_de_GWD" ]] || [[ $(checkSum /opt/de_GWD/.repo/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
-    rm -rf /tmp/de_GWD.zip
-    if gh_download /tmp/de_GWD.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip" 10000; then
-        if [[ -n "$sha256sum_de_GWD" && $(checkSum /tmp/de_GWD.zip $sha256sum_de_GWD) = "false" ]]; then
-            echo -e "${RED}de_GWD Checksum Failed${cRES}" && exit 1
-        fi
-        mv -f /tmp/de_GWD.zip /opt/de_GWD/.repo/de_GWD.zip
-    else
-        echo -e "${RED}Download Failed${cRES}" && exit 1
-    fi
+elif [[ -f "/opt/de_GWD/.repo/de_GWD.zip" && -n "$sha256sum_de_GWD" && $(checkSum /opt/de_GWD/.repo/de_GWD.zip "$sha256sum_de_GWD") == "true" ]]; then
+    :
+elif [[ -n "$sha256sum_de_GWD" ]] && downloadVerifiedResource /opt/de_GWD/.repo/de_GWD.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/de_GWD_${architecture}.zip" "$sha256sum_de_GWD" 10000 zip; then
+    :
+else
+    echo -e "${RED}de_GWD Download or Checksum Failed${cRES}" && exit 1
 fi
 
 if [[ -f "./resource/nginx/nginxConf.zip" ]]; then
     cp -f ./resource/nginx/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
-elif [[ -z "$sha256sum_nginxConf" ]] || [[ $(checkSum /opt/de_GWD/.repo/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
-    rm -rf /tmp/nginxConf.zip
-    if gh_download /tmp/nginxConf.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip" 5; then
-        if [[ -n "$sha256sum_nginxConf" && $(checkSum /tmp/nginxConf.zip $sha256sum_nginxConf) = "false" ]]; then
-            echo -e "${RED}nginxConf Checksum Failed${cRES}" && exit 1
-        fi
-        mv -f /tmp/nginxConf.zip /opt/de_GWD/.repo/nginxConf.zip
-    else
-        echo -e "${RED}Download Failed${cRES}" && exit 1
-    fi
+elif [[ -f "/opt/de_GWD/.repo/nginxConf.zip" && -n "$sha256sum_nginxConf" && $(checkSum /opt/de_GWD/.repo/nginxConf.zip "$sha256sum_nginxConf") == "true" ]]; then
+    :
+elif [[ -n "$sha256sum_nginxConf" ]] && downloadVerifiedResource /opt/de_GWD/.repo/nginxConf.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/nginx/nginxConf.zip" "$sha256sum_nginxConf" 5 zip; then
+    :
+else
+    echo -e "${RED}nginxConf Download or Checksum Failed${cRES}" && exit 1
 fi
 
 if [[ -f "./resource/server/sample.zip" ]]; then
     cp -f ./resource/server/sample.zip /opt/de_GWD/.repo/sample.zip
-elif [[ -z "$sha256sum_sample" ]] || [[ $(checkSum /opt/de_GWD/.repo/sample.zip $sha256sum_sample) = "false" ]]; then
-    rm -rf /tmp/sample.zip
-    if gh_download /tmp/sample.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip" 100; then
-        if [[ -n "$sha256sum_sample" && $(checkSum /tmp/sample.zip $sha256sum_sample) = "false" ]]; then
-            echo -e "${RED}sample Checksum Failed${cRES}" && exit 1
-        fi
-        mv -f /tmp/sample.zip /opt/de_GWD/.repo/sample.zip
-    else
-        echo -e "${RED}Download Failed${cRES}" && exit 1
-    fi
+elif [[ -f "/opt/de_GWD/.repo/sample.zip" && -n "$sha256sum_sample" && $(checkSum /opt/de_GWD/.repo/sample.zip "$sha256sum_sample") == "true" ]]; then
+    :
+elif [[ -n "$sha256sum_sample" ]] && downloadVerifiedResource /opt/de_GWD/.repo/sample.zip "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/server/sample.zip" "$sha256sum_sample" 100 zip; then
+    :
+else
+    echo -e "${RED}sample Download or Checksum Failed${cRES}" && exit 1
 fi
 
 localVer=$(awk 'NR==1' /opt/de_GWD/version.php 2>/dev/null)
@@ -217,10 +317,13 @@ if [[ -f "./version.php" ]]; then
 else
   remoteVer=$(curl -fsSLo- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null | head -n 1)
   if [[ -n "$remoteVer" ]] && [[ $localVer != $remoteVer ]]; then
-    rm -rf /tmp/version.php
-    wget --show-progress -cqO /tmp/version.php "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php"
-    [[ $? -ne 0 ]] && echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit
-    [[ -s /tmp/version.php ]] && mv -f /tmp/version.php /opt/de_GWD/version.php
+    tmpVer=$(mktemp /tmp/de_GWD-ver.XXXXXX)
+    if [[ -n "$tmpVer" ]] && curl -fsSL --connect-timeout 5 -m 15 -o "$tmpVer" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null && [[ -s "$tmpVer" ]]; then
+      mv -f "$tmpVer" /opt/de_GWD/version.php
+    else
+      rm -f "$tmpVer"
+      echo -e "${WHITE}Version File${RED} Download Failed${cRES}" && exit 1
+    fi
   fi
 fi
 
@@ -264,7 +367,6 @@ fi
 
 [[ -f "/etc/nginx/conf.d/merge.sh" ]] && rm -rf /etc/nginx/conf.d/*
 
-rm -rf /var/log/auth.log
 rm -rf /usr/local/bin/autoUpdate
 rm -rf /usr/local/bin/iptablesrules*
 rm -rf /usr/local/bin/Q2H
@@ -290,7 +392,7 @@ fi
 
 service cron stop
 
-ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
+ethernetnum=$(detect_primary_nic)
 localAddrCIDR=$(ip -4 a | grep "$ethernetnum" | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}\b' | head -n 1)
 localAddr=$(echo $localAddrCIDR | cut -d/ -f1)
 
@@ -299,8 +401,8 @@ topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(awk '/ssl .* reuseport/ {print$2}' /etc/nginx/conf.d/default.conf | grep '^[[:digit:]]*$' | head -n1)
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '([.inbounds[]? | select((.tag // "") | startswith("inbound-") | not)][0] // .inbounds[0]) | .streamSettings.xhttpSettings.path // .streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+uuids=$(jq -r '([.inbounds[]? | select((.tag // "") | startswith("inbound-") | not)][0] // .inbounds[0]) | .settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 }
 
 
@@ -431,12 +533,8 @@ DefaultLimitNPROC=1000000
 EOF
 systemctl daemon-reload
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
 export DEBIAN_FRONTEND=noninteractive
-dpkg --configure -a
+wait_apt_lock
 
 for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
   [[ -f "$f" ]] || continue
@@ -739,7 +837,7 @@ net.ipv4.tcp_keepalive_time = 300
 net.ipv4.tcp_keepalive_intvl = 30
 net.ipv4.tcp_keepalive_probes = 5
 net.ipv4.tcp_timestamps = 1
-net.ipv4.tcp_syncookies = 0
+net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_tw_reuse = 0
 net.ipv4.tcp_syn_retries = 3
 net.ipv4.tcp_synack_retries = 2
@@ -1150,7 +1248,7 @@ Type=forking
 PIDFile=/run/nginx.pid
 ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx.conf
 ExecReload=/usr/sbin/nginx -s reload
-ExecStop=$(which kill) -s QUIT \$MAINPID
+ExecStop=/bin/kill -s QUIT \$MAINPID
 KillMode=process
 Restart=always
 RestartSec=2
@@ -1177,10 +1275,14 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install NGINX$
 
 
 makeSSL_D(){
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/acme.sh/d' /tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+local tmpCron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX)
+if [[ -n "$tmpCron" ]]; then
+  crontab -l 2>/dev/null >"$tmpCron" || true
+  sed -i '/acme.sh/d' "$tmpCron"
+  crontab "$tmpCron"
+  rm -f "$tmpCron"
+fi
 
 export CF_Token="$CFtoken"
 unset CF_Key CF_Email
@@ -1204,15 +1306,25 @@ else
 systemctl force-reload nginx
 fi
 
-find /var/www/ssl/*.pem | grep -v "dhparam.pem" | xargs -I {} rm -rf {} 2>/dev/null || true
+find /var/www/ssl/*.pem 2>/dev/null | grep -v "dhparam.pem" | xargs -I {} rm -rf {} 2>/dev/null || true
 if [[ ! -f /var/www/ssl/de_GWD.cer || ! -f /var/www/ssl/de_GWD.key ]]; then
   mkdir -p /var/www/ssl
-  openssl req -x509 -nodes -days 365 \
+  local selfStage
+  selfStage=$(mktemp -d /tmp/de_GWD-ssl-init.XXXXXX)
+  if [[ -n "$selfStage" ]] && openssl req -x509 -nodes -days 365 \
     -subj "/C=CA/ST=QC/O=Company, Inc./CN=$domain" \
     -newkey rsa:2048 \
-    -keyout /var/www/ssl/de_GWD.key \
-    -out /var/www/ssl/de_GWD.cer >/dev/null 2>&1
-  chmod 644 /var/www/ssl/de_GWD.key 2>/dev/null || true
+    -keyout "$selfStage/de_GWD.key" \
+    -out "$selfStage/de_GWD.cer" >/dev/null 2>&1; then
+    chmod 640 "$selfStage/de_GWD.key" 2>/dev/null || true
+    chmod 644 "$selfStage/de_GWD.cer" 2>/dev/null || true
+    mv -f "$selfStage/de_GWD.key" /var/www/ssl/de_GWD.key
+    mv -f "$selfStage/de_GWD.cer" /var/www/ssl/de_GWD.cer
+  fi
+  rm -rf "$selfStage"
+  chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+  chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
 fi
 
 if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
@@ -1220,14 +1332,48 @@ if [[ ! -x "/root/.acme.sh/acme.sh" ]]; then
 fi
 sed -i '/CF_Key/d;/CF_Email/d;/ACCOUNT_EMAIL.*example\.com/d' /root/.acme.sh/account.conf 2>/dev/null || true
 "/root/.acme.sh"/acme.sh --set-default-ca  --server letsencrypt
-"/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 45 "${domainArgs[@]}" -k ec-256
-"/root/.acme.sh"/acme.sh --installcert -d "$mainDomain" \
-               --key-file       /var/www/ssl/de_GWD.key  \
-               --fullchain-file /var/www/ssl/de_GWD.cer \
-               --reloadcmd     "systemctl force-reload nginx" \
-               --ecc
 
-chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+local sslStage sslOk=0 acmeSrc stagedCertPub stagedKeyPub instCertPub instKeyPub
+sslStage=$(mktemp -d /tmp/de_GWD-ssl.XXXXXX)
+[[ -f /var/www/ssl/de_GWD.cer ]] && cp -p /var/www/ssl/de_GWD.cer "$sslStage/de_GWD.cer.bak"
+[[ -f /var/www/ssl/de_GWD.key ]] && cp -p /var/www/ssl/de_GWD.key "$sslStage/de_GWD.key.bak"
+
+if "/root/.acme.sh"/acme.sh --issue --dns dns_cf --dnssleep 45 "${domainArgs[@]}" -k ec-256; then
+  acmeSrc="/root/.acme.sh/${mainDomain}_ecc"
+  if [[ -f "$acmeSrc/fullchain.cer" && -f "$acmeSrc/${mainDomain}.key" ]]; then
+    cp -f "$acmeSrc/fullchain.cer" "$sslStage/de_GWD.cer"
+    cp -f "$acmeSrc/${mainDomain}.key" "$sslStage/de_GWD.key"
+    chmod 640 "$sslStage/de_GWD.key" 2>/dev/null || true
+    stagedCertPub=$(openssl x509 -in "$sslStage/de_GWD.cer" -noout -pubkey 2>/dev/null)
+    stagedKeyPub=$(openssl pkey -in "$sslStage/de_GWD.key" -pubout 2>/dev/null)
+    if [[ -n "$stagedCertPub" && "$stagedCertPub" == "$stagedKeyPub" ]]; then
+      if "/root/.acme.sh"/acme.sh --installcert -d "$mainDomain" \
+                     --key-file       /var/www/ssl/de_GWD.key  \
+                     --fullchain-file /var/www/ssl/de_GWD.cer \
+                     --reloadcmd     "chown root:www-data /var/www/ssl/*.key 2>/dev/null || true; chmod 640 /var/www/ssl/*.key 2>/dev/null || true; systemctl force-reload nginx" \
+                     --ecc; then
+        chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+        chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+        chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
+        instCertPub=$(openssl x509 -in /var/www/ssl/de_GWD.cer -noout -pubkey 2>/dev/null)
+        instKeyPub=$(openssl pkey -in /var/www/ssl/de_GWD.key -pubout 2>/dev/null)
+        [[ -n "$instCertPub" && "$instCertPub" == "$instKeyPub" ]] && sslOk=1
+      fi
+    fi
+  fi
+fi
+
+if [[ "$sslOk" -ne 1 ]]; then
+  [[ -f "$sslStage/de_GWD.cer.bak" ]] && mv -f "$sslStage/de_GWD.cer.bak" /var/www/ssl/de_GWD.cer
+  [[ -f "$sslStage/de_GWD.key.bak" ]] && mv -f "$sslStage/de_GWD.key.bak" /var/www/ssl/de_GWD.key
+  chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+  chmod 640 /var/www/ssl/*.key 2>/dev/null || true
+  chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
+  rm -rf "$sslStage"
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}TLS Certificate generation/verification failed (kept previous cert)${cRES}"
+  return 1
+fi
+rm -rf "$sslStage"
 }
 
 
@@ -1370,9 +1516,15 @@ XrayInbound(){
 [[ "${path:0:1}" != "/" ]] && path="/$path"
 
 local extraInbounds="[]"
+local existingRules="[]"
+local existingOutbounds="[]"
 if [[ -s /opt/de_GWD/vtrui/config.json ]]; then
   extraInbounds=$(jq -c '[.inbounds[]? | select(.tag != null and (.tag | startswith("inbound-")))]' /opt/de_GWD/vtrui/config.json 2>/dev/null || echo "[]")
+  existingRules=$(jq -c '.routing.rules // []' /opt/de_GWD/vtrui/config.json 2>/dev/null || echo "[]")
+  existingOutbounds=$(jq -c '.outbounds // []' /opt/de_GWD/vtrui/config.json 2>/dev/null || echo "[]")
   [[ -z "$extraInbounds" ]] && extraInbounds="[]"
+  [[ -z "$existingRules" ]] && existingRules="[]"
+  [[ -z "$existingOutbounds" ]] && existingOutbounds="[]"
 fi
 
 cat << EOF >/opt/de_GWD/vtrui/config.json
@@ -1427,7 +1579,8 @@ EOF
 
 clientsJson=$(printf '%s\n' $uuids | jq -R 'select(length > 0) | {id: .}' | jq -s '.')
 jq --argjson clients "${clientsJson:-[]}" --argjson extra "${extraInbounds:-[]}" \
-  '.inbounds[0].settings.clients += $clients | if ($extra | length) > 0 then .inbounds += $extra else . end' \
+   --argjson rules "${existingRules:-[]}" --argjson outbounds "${existingOutbounds:-[]}" \
+  '.inbounds[0].settings.clients += $clients | .routing.rules = $rules | if ($extra | length) > 0 then .inbounds += $extra else . end | if ($outbounds | length) > 0 then .outbounds = $outbounds else . end' \
   /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 chmod 644 /opt/de_GWD/vtrui/config.json
 }
@@ -1454,7 +1607,8 @@ EOF
 `
 
 jq --argjson OBdir "$OBdir" --argjson OBblo "$OBblo" \
-  '.outbounds = [$OBdir, $OBblo]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+  '.outbounds = [$OBdir, $OBblo] + ([.outbounds[]? | select(.tag != "direct" and .tag != "blocked")])' \
+  /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 chmod 644 /opt/de_GWD/vtrui/config.json
 }
 
@@ -1464,10 +1618,10 @@ postInstall(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Post Install${cRES}\r\c"
 if [[ -z $(ls /var/www/html 2>/dev/null | grep index) ]]; then
 if [[ -n $(unzip -tq /opt/de_GWD/.repo/sample.zip | grep "No errors detected in compressed data") ]]; then
-rm -rf /tmp/sample 
-unzip /opt/de_GWD/.repo/sample.zip -d /tmp >/dev/null 2>&1 
-cp -rf /tmp/sample/* /var/www/html/
-rm -rf /tmp/sample
+tmpSample=$(mktemp -d /tmp/de_GWD-sample.XXXXXX) || exit 1
+unzip /opt/de_GWD/.repo/sample.zip -d "$tmpSample" >/dev/null 2>&1
+cp -rf "$tmpSample"/sample/* /var/www/html/
+rm -rf "$tmpSample"
 else
 rm -rf /opt/de_GWD/.repo/sample.zip
 echo -e "${WHITE}Sample Zip${RED} Download Failed${cRES}" && exit
@@ -1488,7 +1642,7 @@ fi
 
 rm -rf ~/server*
 rm -rf ~/wget-log
-find /var/log -maxdepth 2 -type f \( -name '*.1' -o -name '*.2' -o -name '*.gz' -o -name '*.old' \) -delete 2>/dev/null || true
+find /var/log -maxdepth 2 -type f \( -name '*.gz' -o -name '*.old' \) -mtime +7 -delete 2>/dev/null || true
 EOF
 chmod +x /opt/de_GWD/Q2H
 /opt/de_GWD/Q2H
@@ -1513,12 +1667,29 @@ if [[ -f /var/www/ssl/de_GWD.cer ]] && [[ -n $(openssl x509 -enddate -noout -in 
   fi
 
   if [[ -n "$sslDir" && -f "$sslDir/fullchain.cer" ]]; then
-    cp -f "$sslDir/fullchain.cer" /var/www/ssl/de_GWD.cer
-    keyFile=$(ls "$sslDir"/*.key 2>/dev/null | head -n 1)
-    [[ -n "$keyFile" ]] && cp -f "$keyFile" /var/www/ssl/de_GWD.key
-    chmod 644 /var/www/ssl/*.key 2>/dev/null || true
-    systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-    systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true
+    keyFile=$(find "$sslDir" -maxdepth 1 -type f -name '*.key' 2>/dev/null | head -n 1)
+    if [[ -n "$keyFile" && -f "$keyFile" ]]; then
+      sslStage=$(mktemp -d /tmp/de_GWD-ssl.XXXXXX)
+      if [[ -n "$sslStage" ]]; then
+        if cp -f "$sslDir/fullchain.cer" "$sslStage/de_GWD.cer" &&
+           cp -f "$keyFile" "$sslStage/de_GWD.key" &&
+           chmod 640 "$sslStage/de_GWD.key" &&
+           chmod 644 "$sslStage/de_GWD.cer"; then
+          certPub=$(openssl x509 -in "$sslStage/de_GWD.cer" -noout -pubkey 2>/dev/null)
+          keyPub=$(openssl pkey -in "$sslStage/de_GWD.key" -pubout 2>/dev/null)
+          if [[ -n "$certPub" && "$certPub" == "$keyPub" ]]; then
+            mv -f "$sslStage/de_GWD.cer" /var/www/ssl/de_GWD.cer
+            mv -f "$sslStage/de_GWD.key" /var/www/ssl/de_GWD.key
+            chown root:www-data /var/www/ssl/de_GWD.cer /var/www/ssl/de_GWD.key 2>/dev/null || true
+            chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
+            chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+            systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+            systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true
+          fi
+        fi
+        rm -rf "$sslStage"
+      fi
+    fi
   fi
 fi
 EOF
@@ -1530,42 +1701,71 @@ cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
-dpkg --configure -a
+wait_apt_lock(){
+  local waited=0
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+    [[ $waited -ge 120 ]] && return 1
+    sleep 2
+    waited=$((waited + 2))
+  done
+  dpkg --configure -a
+}
+wait_apt_lock
 
-dpkg --list | grep linux-image | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
-apt autoremove --purge  -y $line
+curVer=$(uname -r)
+fallbackPkg=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-[0-9]*' 2>/dev/null | awk -v cur="$curVer" '$1 ~ /^ii/ && $2 ~ /^linux-image-[0-9]/ && index($2, cur) == 0 {print $2}' | sort -rV | head -n 1)
+fallbackVer=${fallbackPkg#linux-image-}
+
+dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | while read -r line; do
+  [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+  [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+  apt autoremove --purge -y "$line"
 done
 
-dpkg --list | grep linux-headers | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
-apt autoremove --purge  -y $line
+dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | while read -r line; do
+  [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+  [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+  apt autoremove --purge -y "$line"
 done
+
+update-grub >/dev/null 2>&1 || true
+
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX)
+if [[ -n "$tmpCron" ]]; then
+  crontab -l 2>/dev/null >"$tmpCron" || true
+  sed -i '/\/etc\/rc_kernel\.local/d' "$tmpCron"
+  crontab "$tmpCron"
+  rm -f "$tmpCron"
+fi
 EOF
 chmod +x /etc/rc_kernel.local
 
 
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/\/opt\/de_GWD\/Qprobe/d' /tmp/now.cron
-sed -i '/\/opt\/de_GWD\/Q2H/d' /tmp/now.cron
-sed -i '/\/opt\/de_GWD\/Qday/d' /tmp/now.cron
-sed -i '/\/opt\/de_GWD\/Q4amSun/d' /tmp/now.cron
-sed -i '/\/opt\/de_GWD\/clearKernel/d' /tmp/now.cron
-sed -i '/\/etc\/rc_.*/d' /tmp/now.cron
-cat << EOF >>/tmp/now.cron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX)
+if [[ -n "$tmpCron" ]]; then
+  crontab -l 2>/dev/null >"$tmpCron" || true
+  sed -i '/\/opt\/de_GWD\/Qprobe/d' "$tmpCron"
+  sed -i '/\/opt\/de_GWD\/Q2H/d' "$tmpCron"
+  sed -i '/\/opt\/de_GWD\/Qday/d' "$tmpCron"
+  sed -i '/\/opt\/de_GWD\/Q4amSun/d' "$tmpCron"
+  sed -i '/\/opt\/de_GWD\/clearKernel/d' "$tmpCron"
+  sed -i '/\/etc\/rc_.*/d' "$tmpCron"
+  cat << EOF >>"$tmpCron"
 0 */2 * * * /opt/de_GWD/Q2H
 0 0 * * * /opt/de_GWD/Qday
 @reboot sleep 15 && /etc/rc_kernel.local
 EOF
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+  crontab "$tmpCron"
+  rm -f "$tmpCron"
+fi
 service cron restart
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Post Install${cRES}"
 
-cat << "EOF" >/tmp/comRestart
+local tmpComRestart
+tmpComRestart=$(mktemp /tmp/de_GWD-comRestart.XXXXXX)
+if [[ -n "$tmpComRestart" ]]; then
+  cat << 'EOF' >"$tmpComRestart"
 #!/bin/bash
 systemctl restart doh-server
 if [[ $? -ne 0 ]]; then
@@ -1591,20 +1791,18 @@ systemctl restart nginx
 fi
 systemctl enable nginx >/dev/null 2>&1
 
-rm -rf /tmp/comRestart
+rm -f "$0"
 EOF
-chmod +x /tmp/comRestart
-screen -dmS comRestart /tmp/comRestart
-sleep 3
+  chmod 700 "$tmpComRestart"
+  screen -dmS comRestart "$tmpComRestart"
+  sleep 3
+fi
 }
 
 
 checkKernel(){
 if [[ $virt_type != "container" ]] && [[ $(dpkg --list | grep linux-image | wc -l) != "1" ]]; then
-echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Kernel updated & reboot${cRES}"
-sleep 2
-sudo reboot
-exit
+echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Kernel updated (reboot manually to activate)${cRES}"
 fi
 }
 
@@ -1614,7 +1812,18 @@ installkernel(){
 if [[ -f "./resource/kernel/installkernel" ]]; then
   chmod +x ./resource/kernel/installkernel && ./resource/kernel/installkernel
 else
-  bash <(wget --show-progress -cqO- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/kernel/installkernel")
+  local tmpKernel
+  tmpKernel=$(mktemp /tmp/de_GWD-installkernel.XXXXXX) || return 1
+  if gh_download "$tmpKernel" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/resource/kernel/installkernel" 5 &&
+     grep -q 'installZabbly' "$tmpKernel" && bash -n "$tmpKernel" 2>/dev/null; then
+    chmod 700 "$tmpKernel"
+    "$tmpKernel"
+    rm -f "$tmpKernel"
+  else
+    rm -f "$tmpKernel"
+    echo -e "${RED}Failed to download valid installkernel script${cRES}" >&2
+    return 1
+  fi
 fi
 }
 
@@ -1631,7 +1840,7 @@ topDomain=$(echo $domain | rev | awk -F. '{print $1"."$2}' | rev)
 port=$(echo $vpsdomainP | cut -d: -f2| grep '^[[:digit:]]*$')
 [[ -z $port ]] && port="443"
 
-path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '([.inbounds[]? | select((.tag // "") | startswith("inbound-") | not)][0] // .inbounds[0]) | .streamSettings.xhttpSettings.path // .streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 sslMode="2"
 if [[ -f "/var/www/ssl/de_GWD.cer" && -f "/var/www/ssl/de_GWD.key" ]]; then
@@ -1712,24 +1921,28 @@ changeWGCF(){
     echo -e "${WHITE}[...${WHITE}]\c" && echo -e "\t${WHITE}Switching Cloudflare wireguard upstream (WARP)${cRES}\r\c"
 
 if [[ $WGCFswitch = "1" ]]; then
-uname -r 2>&1 | grep -o '[0-9.]*' | head -n 1 >/tmp/kernelVer
-echo "5.6" >>/tmp/kernelVer
+ethernetnum=$(detect_primary_nic)
 
-ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
-
-if [[ $(cat /tmp/kernelVer |sort -rV | head -n 1) = "5.6" ]]; then
+if [[ $(printf '%s\n5.6\n' "$(uname -r 2>&1 | grep -oE '^[0-9]+(\.[0-9]+)*')" | sort -rV | head -n 1) = "5.6" ]]; then
 echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Update kernel first! ${cRES}"
 else
 localAddrIPv4=$(ip -4 a | grep inet | grep -v '127.0.0.1' | awk '{print $2}' | cut -d'/' -f1 | head -n 1)
 if [[ -n $localAddrIPv4 ]]; then
 unset aptPKG
 dpkg-query -W -f='${db:Status-Abbrev}\n' wireguard-tools 2>/dev/null | grep -q '^ii' || aptPKG+=(wireguard-tools)
-[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y -q "${aptPKG[@]}"
+[[ ${#aptPKG[@]} -gt 0 ]] && wait_apt_lock && apt update && apt install -y -q "${aptPKG[@]}"
 
 ghREPO="ViRb3/wgcf"
 ghPackage="linux_$architecture"
-curl -fsSL https://api.github.com/repos/${ghREPO}/releases/latest | grep -E 'browser_download_url' | grep $ghPackage | cut -d '"' -f 4 | wget --show-progress -qi - -O /tmp/wgcf
-[[ $(du -sk /tmp/wgcf 2>/dev/null | awk '{print$1}') -gt 8000 ]] && mv /tmp/wgcf /usr/local/bin/wgcf && chmod +x /usr/local/bin/wgcf
+wgcfUrl=$(curl -fsSL "https://api.github.com/repos/${ghREPO}/releases/latest" | grep -E 'browser_download_url' | grep "$ghPackage" | cut -d '"' -f 4 | head -n 1)
+if [[ -n "$wgcfUrl" ]]; then
+  tmpWgcf=$(mktemp /tmp/de_GWD-wgcf.XXXXXX)
+  if [[ -n "$tmpWgcf" ]] && wget --show-progress -qO "$tmpWgcf" "$wgcfUrl" && [[ $(du -sk "$tmpWgcf" 2>/dev/null | awk '{print$1}') -gt 8000 ]] && isElfBinary "$tmpWgcf"; then
+    mv -f "$tmpWgcf" /usr/local/bin/wgcf && chmod 0755 /usr/local/bin/wgcf
+  else
+    rm -f "$tmpWgcf"
+  fi
+fi
 
 if [[ -x "/usr/local/bin/wgcf" ]]; then
 echo | wgcf register
@@ -1787,10 +2000,13 @@ cat << "EOF" >/tmp/WGCFstart
 systemctl enable wg-quick@wgcf
 systemctl restart wg-quick@wgcf
 
-sed -i '/net.ipv4.ip_forward =/c\net.ipv4.ip_forward = 1
+mkdir -p /etc/sysctl.d
+cat << 'SYSCTL_EOF' >/etc/sysctl.d/99-wgcf.conf
+net.ipv4.ip_forward = 1
 net.ipv4.conf.all.forwarding = 1
-net.ipv4.conf.default.forwarding = 1' /etc/sysctl.conf
-sysctl -p >/dev/null 2>&1
+net.ipv4.conf.default.forwarding = 1
+SYSCTL_EOF
+sysctl --system >/dev/null 2>&1
 
 rm -rf /run/resolvconf/interface
 [[ -f /etc/network/interfaces ]] && sed -i '/dns-nameservers /d' /etc/network/interfaces 2>/dev/null || true
@@ -3286,7 +3502,7 @@ else
 vpsdomainP=$vpsdomain:$port
 fi
 
-path=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+path=$(jq -r '([.inbounds[]? | select((.tag // "") | startswith("inbound-") | not)][0] // .inbounds[0]) | .streamSettings.xhttpSettings.path // .streamSettings.wsSettings.path // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 uuids=$(jq -r '.inbounds[0].settings.clients[].id' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
 local haproxyRules=($(getHaproxyRules))
@@ -3336,12 +3552,15 @@ mkdir -p /opt/de_GWD
 if [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/server" && "$0" != *"/bin/dex" && "$0" != *"/bin/de_GWD" ]]; then
   cp -f "$0" /opt/de_GWD/server
 else
-  wget --no-check-certificate -qO /tmp/server_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null || \
-  curl -fsSL -o /tmp/server_new "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null
-  if [[ -f /tmp/server_new && $(wc -l < /tmp/server_new) -gt 500 ]]; then
-    mv -f /tmp/server_new /opt/de_GWD/server
+  local tmpServerNew
+  tmpServerNew=$(mktemp /tmp/de_GWD-server-new.XXXXXX) || return 1
+  if { gh_download "$tmpServerNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 30 || \
+       curl -fsSL -o "$tmpServerNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/server" 2>/dev/null; } && \
+     [[ $(wc -l < "$tmpServerNew") -gt 500 ]] && grep -q 'installGWD()' "$tmpServerNew" && bash -n "$tmpServerNew" 2>/dev/null; then
+    mv -f "$tmpServerNew" /opt/de_GWD/server
+  else
+    rm -f "$tmpServerNew"
   fi
-  rm -rf /tmp/server_new
 fi
 
 if [[ -f /opt/de_GWD/server ]]; then
@@ -3392,7 +3611,7 @@ fi
 uuids=$(cat /proc/sys/kernel/random/uuid)
 path="/${uuids%%-*}"
 
-ethernetnum=$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | xargs -n 1 | grep -v 'virtual' | grep -v 'ifb' | awk -F'/' '{print$NF}' | head -n1)
+ethernetnum=$(detect_primary_nic)
 localAddrCIDR=$(ip -4 a | grep "$ethernetnum" | grep -Po '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}\b' | head -n 1)
 localAddr=$(echo $localAddrCIDR | cut -d/ -f1)
 
@@ -3481,34 +3700,34 @@ if [[ -z "$remoteVer" ]] || [[ ! "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] || [[ "$re
   exit 0
 fi
 
-echo "$localVer" >/tmp/de_GWD_Ver
-echo "$remoteVer" >>/tmp/de_GWD_Ver
+VerCP=$(printf '%s\n%s\n' "$localVer" "$remoteVer" | sort -rV | uniq | awk 'NR==2')
 
-VerCP=$(sort -rV /tmp/de_GWD_Ver | uniq | awk 'NR==2')
+if [[ "$VerCP" == "$localVer" ]]; then
+  tmpAuto=$(mktemp /tmp/de_GWD-autoUpdate.XXXXXX) || exit 1
+  tmpClean=$(mktemp /tmp/de_GWD-autoUpdate-clean.XXXXXX) || { rm -f "$tmpAuto"; exit 1; }
+  trap 'rm -f "$tmpAuto" "$tmpClean"' EXIT
 
-if [[ $VerCP == $localVer ]]; then
-rm -rf /tmp/autoUpdate
-wget -t 5 -T 10 -cqO /tmp/autoUpdate https://raw.githubusercontent.com/stuinxo/de_GWD/v2/server
-
-if [[ $(du -sk /tmp/autoUpdate 2>/dev/null | awk '{print$1}') -gt 70 ]]; then
-awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' /tmp/autoUpdate >/tmp/autoUpdate.tmp && mv -f /tmp/autoUpdate.tmp /tmp/autoUpdate
-echo "updateGWD" >> /tmp/autoUpdate
-chmod +x /tmp/autoUpdate
-/tmp/autoUpdate
-rm -rf /tmp/autoUpdate
+  if wget -t 5 -T 10 -cqO "$tmpAuto" https://raw.githubusercontent.com/stuinxo/de_GWD/v2/server &&
+     [[ $(du -sk "$tmpAuto" 2>/dev/null | awk '{print $1}') -gt 70 ]] &&
+     grep -q 'updateGWD()' "$tmpAuto"; then
+    awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' "$tmpAuto" >"$tmpClean"
+    printf '%s\n' 'updateGWD' >>"$tmpClean"
+    if bash -n "$tmpClean" 2>/dev/null; then
+      chmod 700 "$tmpClean"
+      "$tmpClean"
+    fi
+  fi
 fi
-fi
-
-rm -rf /tmp/de_GWD_Ver
-rm -rf /tmp/autoUpdate
 EOF
 chmod +x /opt/de_GWD/autoUpdate
 
-crontab -l 2>/dev/null > /tmp/now.cron
-sed -i '/autoUpdate/d' /tmp/now.cron
-echo '30 4 * * *  /opt/de_GWD/autoUpdate' >> /tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+local tmpCron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX) || return 1
+crontab -l 2>/dev/null >"$tmpCron" || true
+sed -i '/autoUpdate/d' "$tmpCron"
+echo '30 4 * * *  /opt/de_GWD/autoUpdate' >>"$tmpCron"
+crontab "$tmpCron"
+rm -f "$tmpCron"
 }
 
 

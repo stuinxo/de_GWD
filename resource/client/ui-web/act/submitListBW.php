@@ -1,22 +1,22 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$listB = $_GET['listB'];
-$listB = explode("\n",$listB);
-$listB = array_values(array_filter(array_map('trim', $listB)));
+gwd_require_post_csrf();
+$listB = preg_split('/\r?\n/', (string)gwd_param('listB', ''));
+$listB = is_array($listB) ? array_values(array_filter(array_map('trim', $listB))) : [];
 
-$listW = $_GET['listW'];
-$listW = explode("\n",$listW);
-$listW = array_values(array_filter(array_map('trim', $listW)));
+$listW = preg_split('/\r?\n/', (string)gwd_param('listW', ''));
+$listW = is_array($listW) ? array_values(array_filter(array_map('trim', $listW))) : [];
 
-$conf['dns']['listB'] = array();
-$conf['dns']['listW'] = array();
-$conf['dns']['listB'] = $listB;
-$conf['dns']['listW'] = $listW;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($listB, $listW): array {
+    if (!isset($conf['dns']) || !is_array($conf['dns'])) {
+        $conf['dns'] = [];
+    }
+    $conf['dns']['listB'] = $listB;
+    $conf['dns']['listW'] = $listW;
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-DNSsplit &');
+exec('sudo /opt/de_GWD/ui-DNSsplit >/dev/null 2>&1 &');
 ?>
 <?php }?>

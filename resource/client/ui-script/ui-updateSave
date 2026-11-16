@@ -1,12 +1,14 @@
 #!/bin/bash
+source /opt/de_GWD/ui-confCommon
+
 updateCMDaddr=$(jq -r '.update.updateCMD // empty' /opt/de_GWD/0conf 2>/dev/null | grep -Eo "https?://[^[:space:]'\")<>]+" | head -n 1)
 
 if [[ -n "$updateCMDaddr" ]]; then
-  rm -f /opt/de_GWD/update
-  curl -fsSL --connect-timeout 8 -m 30 -o /opt/de_GWD/update "$updateCMDaddr" 2>/dev/null || true
+  tmpUpdate=$(mktemp /opt/de_GWD/.update.XXXXXX) || exit 1
+  curl -fsSL --connect-timeout 8 -m 30 -o "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || true
 
-  if [[ $(du -sk /opt/de_GWD/update 2>/dev/null | awk '{print$1}') -le 1 ]]; then
-    systemctl stop nftables
+  if [[ $(du -sk "$tmpUpdate" 2>/dev/null | awk '{print$1}') -le 1 ]]; then
+    systemctl stop nftables 2>/dev/null || true
 
     rm -rf /etc/resolv.conf
     cat << EOF >/etc/resolv.conf
@@ -16,16 +18,32 @@ nameserver 114.114.114.114
 nameserver 223.5.5.5
 EOF
 
-    wget --no-check-certificate -T 15 -t 3 -cqO /opt/de_GWD/update "$updateCMDaddr"
+    wget -T 15 -t 3 -qO "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || curl -fsSL --connect-timeout 10 -m 30 -o "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || true
+  fi
+
+  if [[ -s "$tmpUpdate" ]] && bash -n "$tmpUpdate" 2>/dev/null; then
+    chmod +x "$tmpUpdate"
+    mv -f "$tmpUpdate" /opt/de_GWD/update
+  else
+    rm -f "$tmpUpdate"
+    exit 1
   fi
 fi
 
 [[ -f /opt/de_GWD/update ]] && chmod +x /opt/de_GWD/update
 
 updatePort=$(jq -r '.update.updatePort // "3000"' /opt/de_GWD/0conf 2>/dev/null)
-[[ "$updatePort" =~ ^[0-9]+$ ]] || updatePort="3000"
+[[ "$updatePort" =~ ^[0-9]+$ ]] && (( updatePort >= 1 && updatePort <= 65535 )) || updatePort="3000"
 
-kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1
-tmux kill-session -t updateGWD >/dev/null 2>&1
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
-systemctl daemon-reload >/dev/null
+updateToken=$(jq -r '.update.updateToken // empty' /opt/de_GWD/0conf 2>/dev/null)
+if [[ ! "$updateToken" =~ ^[0-9a-f]{24,64}$ ]]; then
+  updateToken=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+  conf_jq --arg tok "$updateToken" '.update.updateToken = $tok'
+fi
+
+kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1 || true
+tmux kill-session -t updateGWD >/dev/null 2>&1 || true
+if [[ -f /etc/systemd/system/updateGWD.service ]]; then
+  sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -b /u_$updateToken -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+  systemctl daemon-reload >/dev/null
+fi

@@ -27,11 +27,13 @@
 
   <!-- Core plugin JavaScript-->
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
@@ -308,7 +310,7 @@ function NFSdel(NFSdel){
 var NFSnum = $(NFSdel).parent().parent().find('input').attr('id')
 var NFSnum = NFSnum.replace(/[^0-9]/ig,"")
 var NFSpoint = $('#NFSpoint'+NFSnum).val()
-$.get('./act/offNFS.php', {NFSpoint:NFSpoint}, function(result){
+$.post('./act/offNFS.php', {NFSpoint:NFSpoint}, function(result){
   $(NFSdel).parent().parent('.form-row').remove()
 })
 }
@@ -316,21 +318,21 @@ $.get('./act/offNFS.php', {NFSpoint:NFSpoint}, function(result){
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#buttonNFSinstall').click(function(){
-$.get('./act/installNFS.php', function(){})
+$.post('./act/installNFS.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
@@ -377,9 +379,7 @@ $('#buttonNFSAdd').click(function(){
   $("li[id^='NFSlistLine']").remove()
   for( let i = 0; i<len; i++){
     let NFSlistLine = data[i];
-    $('#NFSlist').append(`
-        <li id="NFSlistLine${i}" type="button" class="list-group-item">${NFSlistLine}</li>
-                          `)
+    $('<li>', {id: 'NFSlistLine' + i, type: 'button', 'class': 'list-group-item'}).text(NFSlistLine).appendTo('#NFSlist');
     $('#NFSlistLine'+i).click(function(){
       $("#NFSpath").val(NFSlistLine.split(' ')[0])
   })
@@ -391,7 +391,7 @@ $('#buttonNFSAdd').click(function(){
 $('#confirmNFSaddr').click(function(){
   var NFSmodalID =  $(":hidden#NFSmodalID").val()
   var NFSaddress = $('#NFSpath').val()
-  $("#NFSaddress"+NFSmodalID).html(NFSaddress)
+  $("#NFSaddress"+NFSmodalID).text(NFSaddress)
   $("#NFSpoint"+NFSmodalID).val("/mnt/"+NFSaddress.split('/')[NFSaddress.split('/').length - 1])
 var NFSlist = []
 var len = $("#NFSbody .form-row").length
@@ -399,21 +399,21 @@ var NFSpoint, NFSserver, NFSaddress
 for( let i = 0; i<len; i++){
     var NFSpoint = $('#NFSpoint'+i).val()
     var NFSserver = $('#NFSserver'+i).val()
-    var NFSaddress = $('#NFSaddress'+i).html()
+    var NFSaddress = $('#NFSaddress'+i).text()
     if ( NFSpoint !== '' && NFSserver !== '' && NFSaddress !== '') {
     NFSlist.push({NFSpoint, NFSserver, NFSaddress})
     }
 }
-$.get('./act/onNFS.php', {NFSlist:NFSlist}, function(result){window.location.reload()})
+$.post('./act/onNFS.php', {NFSlist:NFSlist}, function(result){window.location.reload()})
 })
 
 $('#buttonDockerInstall').click(function(){
-$.get('./act/installDocker.php', function(){})
+$.post('./act/installDocker.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
@@ -424,27 +424,27 @@ $('#dockerBody').css('display', 'block');
 })
 
 $('#buttonBWinstall').click(function(){
-$.get('./act/installBitwarden.php', function(){})
+$.post('./act/installBitwarden.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
 
 $('#bitwardenBackup').click(function(){
 $("#bitwardenBackupLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/backupBitwarden.php', function(result){
+$.post('./act/backupBitwarden.php', function(result){
   $("#bitwardenBackupLoading").removeClass()
-  window.location.href = "/restore/Bitwarden_bak.zip"
+  window.location.href = "./act/backupDownload.php?type=bitwarden"
 })
 })
 
 $('#bitwardenRestoreFile').on('change',function(){
   let fileName = $(this).val().split('\\').pop()
-  $(this).siblings('#bitwardenRestoreFileLabel').addClass('selected').html(fileName)
+  $(this).siblings('#bitwardenRestoreFileLabel').addClass('selected').text(fileName)
   if( fileName != "Bitwarden_bak.zip" ){
   alert("文件选择错误，备份文件名为 Bitwarden_bak.zip ")
   }
@@ -469,27 +469,27 @@ $.ajax({
 })
 
 $('#buttonJFinstall').click(function(){
-$.get('./act/installJellyfin.php', function(){});
+$.post('./act/installJellyfin.php', function(){});
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
 
 $('#JellyfinBackup').click(function(){
 $("#JellyfinBackupLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/backupJellyfin.php', function(result){
+$.post('./act/backupJellyfin.php', function(result){
   $("#JellyfinBackupLoading").removeClass()
-  window.location.href = "/restore/Jellyfin_bak.zip"
+  window.location.href = "./act/backupDownload.php?type=jellyfin"
 })
 })
 
 $('#JellyfinRestoreFile').on('change',function(){
   let fileName = $(this).val().split('\\').pop()
-  $(this).siblings('#JellyfinRestoreFileLabel').addClass('selected').html(fileName)
+  $(this).siblings('#JellyfinRestoreFileLabel').addClass('selected').text(fileName)
   if( fileName != "Jellyfin_bak.zip" ){
   alert("文件选择错误，备份文件名为 Jellyfin_bak.zip ")
   }

@@ -56,7 +56,8 @@ fetch_rule(){
   local url="$2"
   local expected_sha="$3"
   local min_kb="${4:-10}"
-  local tmp="/tmp/dl_$(basename "$target")"
+  local tmp
+  tmp=$(mktemp "/tmp/dl_$(basename "$target").XXXXXX") || return 1
   local jsd_url=""
   if [[ "$url" =~ ^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$ ]]; then
     jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
@@ -206,10 +207,27 @@ if [[ -f /var/www/ssl/de_GWD.cer ]] && [[ -n $(openssl x509 -enddate -noout -in 
   fi
 
   if [[ -n "$sslDir" && -f "$sslDir/fullchain.cer" ]]; then
-    cp -f "$sslDir/fullchain.cer" /var/www/ssl/de_GWD.cer
-    keyFile=$(ls "$sslDir"/*.key 2>/dev/null | head -n 1)
-    [[ -n "$keyFile" ]] && cp -f "$keyFile" /var/www/ssl/de_GWD.key
-    chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+    keyFile=$(find "$sslDir" -maxdepth 1 -type f -name '*.key' 2>/dev/null | head -n 1)
+    if [[ -n "$keyFile" && -f "$keyFile" ]]; then
+      sslStage=$(mktemp -d /tmp/de_GWD-ssl.XXXXXX)
+      if [[ -n "$sslStage" ]]; then
+        if cp -f "$sslDir/fullchain.cer" "$sslStage/de_GWD.cer" &&
+           cp -f "$keyFile" "$sslStage/de_GWD.key" &&
+           chmod 640 "$sslStage/de_GWD.key" &&
+           chmod 644 "$sslStage/de_GWD.cer"; then
+          certPub=$(openssl x509 -in "$sslStage/de_GWD.cer" -noout -pubkey 2>/dev/null)
+          keyPub=$(openssl pkey -in "$sslStage/de_GWD.key" -pubout 2>/dev/null)
+          if [[ -n "$certPub" && "$certPub" == "$keyPub" ]]; then
+            mv -f "$sslStage/de_GWD.cer" /var/www/ssl/de_GWD.cer
+            mv -f "$sslStage/de_GWD.key" /var/www/ssl/de_GWD.key
+            chown root:www-data /var/www/ssl/de_GWD.cer /var/www/ssl/de_GWD.key 2>/dev/null || true
+            chmod 644 /var/www/ssl/de_GWD.cer 2>/dev/null || true
+            chmod 640 /var/www/ssl/de_GWD.key 2>/dev/null || true
+          fi
+        fi
+        rm -rf "$sslStage"
+      fi
+    fi
     systemctl reload nginx 2>/dev/null || systemctl force-reload nginx 2>/dev/null || true
     systemctl is-active --quiet vtrui1 && systemctl restart vtrui1 2>/dev/null || true
     systemctl is-active --quiet RproxyS && systemctl restart RproxyS 2>/dev/null || true

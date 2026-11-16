@@ -1,16 +1,34 @@
 #!/bin/bash
-docker stop jellyfin
+bakZip="/opt/de_GWD/restore/Jellyfin_bak.zip"
+[[ ! -f "$bakZip" && -f "/var/www/html/restore/Jellyfin_bak.zip" ]] && bakZip="/var/www/html/restore/Jellyfin_bak.zip"
+[[ -f "$bakZip" ]] || exit 1
 
-if [[ -n $(unzip -tq /var/www/html/restore/Jellyfin_bak.zip | grep "No errors detected in compressed data") ]]; then
-rm -rf /tmp/opt
-unzip /var/www/html/restore/Jellyfin_bak.zip -d /tmp
-
-rm -rf /opt/jellyfin
-mkdir -p /opt/jellyfin
-mv -f /tmp/opt/jellyfin/* /opt/jellyfin
+if ! unzip -tq "$bakZip" 2>/dev/null | grep -q "No errors detected in compressed data"; then
+  rm -f "$bakZip"
+  exit 1
 fi
 
-docker restart jellyfin
+if unzip -Z1 "$bakZip" 2>/dev/null | grep -qE '(^/|^\.\./|/\.\./)'; then
+  rm -f "$bakZip"
+  exit 1
+fi
 
-rm -rf /tmp/opt
-rm -rf /var/www/html/restore/Jellyfin_bak.zip
+stage=$(mktemp -d /tmp/de_GWD-jf-restore.XXXXXX) || exit 1
+trap 'rm -rf "$stage" "$bakZip"' EXIT
+
+unzip -oq "$bakZip" -d "$stage" >/dev/null 2>&1 || exit 1
+[[ -d "$stage/opt/jellyfin" ]] || exit 1
+
+docker stop jellyfin >/dev/null 2>&1 || true
+rm -rf /opt/jellyfin.prev
+[[ -d /opt/jellyfin ]] && mv -f /opt/jellyfin /opt/jellyfin.prev
+mkdir -p /opt/jellyfin
+if cp -a "$stage/opt/jellyfin"/. /opt/jellyfin/; then
+  rm -rf /opt/jellyfin.prev
+else
+  rm -rf /opt/jellyfin
+  [[ -d /opt/jellyfin.prev ]] && mv -f /opt/jellyfin.prev /opt/jellyfin
+  docker start jellyfin >/dev/null 2>&1 || true
+  exit 1
+fi
+docker restart jellyfin >/dev/null 2>&1 || true

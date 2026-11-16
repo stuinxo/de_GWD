@@ -1,16 +1,20 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$CFdomain = trim($_GET['CFdomain'] ?? '');
-$CFtoken = trim($_GET['CFtoken'] ?? '');
+gwd_require_post_csrf();
+$CFdomain = trim((string)gwd_param('CFdomain', ''));
+$CFtoken = trim((string)gwd_param('CFtoken', ''));
 
-unset($conf['FORWARD']['APIkey'], $conf['FORWARD']['Email']);
-$conf['FORWARD']['domain'] = $CFdomain;
-$conf['FORWARD']['token'] = $CFtoken;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($CFdomain, $CFtoken): array {
+    if (!isset($conf['FORWARD']) || !is_array($conf['FORWARD'])) {
+        $conf['FORWARD'] = [];
+    }
+    unset($conf['FORWARD']['APIkey'], $conf['FORWARD']['Email']);
+    $conf['FORWARD']['domain'] = $CFdomain;
+    $conf['FORWARD']['token'] = $CFtoken;
+    return $conf;
+});
 
-exec('sudo nohup /usr/bin/ttyd -p 3000 -W -o /opt/de_GWD/ui-installCER &');
+exec('sudo nohup /usr/bin/ttyd -i lo -p 3000 -W -o /opt/de_GWD/ui-installCER >/dev/null 2>&1 &');
 ?>
 <?php }?>

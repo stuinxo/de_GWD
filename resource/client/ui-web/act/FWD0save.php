@@ -1,17 +1,25 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$FWD0port = $_GET['FWD0port'];
-$FWD0uuidList = $_GET['FWD0uuidList'];
+gwd_require_post_csrf();
+$FWD0port = trim((string)gwd_param('FWD0port', ''));
+$FWD0uuidList = gwd_param('FWD0uuidList', []);
+if (!is_array($FWD0uuidList)) {
+    $FWD0uuidList = [];
+}
 
-$data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$data['FORWARD']['FWD0'] = array();
-$data['FORWARD']['FWD0']['status'] = "on";
-$data['FORWARD']['FWD0']['port'] = $FWD0port;
-$data['FORWARD']['FWD0']['uuid'] = $FWD0uuidList;
-$newJsonString = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($FWD0port, $FWD0uuidList): array {
+    if (!isset($conf['FORWARD']) || !is_array($conf['FORWARD'])) {
+        $conf['FORWARD'] = [];
+    }
+    $conf['FORWARD']['FWD0'] = [
+        'status' => 'on',
+        'port' => $FWD0port,
+        'uuid' => $FWD0uuidList,
+    ];
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-FWD0save r &');
+exec('sudo /opt/de_GWD/ui-FWD0save r >/dev/null 2>&1 &');
 ?>
 <?php }?>

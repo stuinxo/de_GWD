@@ -1,4 +1,5 @@
 #!/bin/bash
+source /opt/de_GWD/ui-confCommon
 clear
 RED='\E[1;31m'
 GREEN='\E[1;32m'
@@ -99,9 +100,7 @@ jellyfinDockerRun
 
 jellyfinNginxConf
 
-jq '.app.jellyfin="installed"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+conf_jq '.app.jellyfin="installed"'
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Install Jellyfin${cRES}"
 }
@@ -119,9 +118,7 @@ rm -rf /etc/nginx/conf.d/jellyfin.conf
 systemctl force-reload nginx >/dev/null
 
 rm -rf /opt/jellyfin
-jq 'del(.app.jellyfin)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+conf_jq 'del(.app.jellyfin)'
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Uninstall Jellyfin${cRES}"
 }

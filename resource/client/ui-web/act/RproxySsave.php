@@ -1,21 +1,31 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$RproxyStunnelPort = $_GET['RproxyStunnelPort'] ?? '';
-$RproxyStunnelUUID = $_GET['RproxyStunnelUUID'] ?? '';
-$RproxySmappingStatus = $_GET['RproxySmappingStatus'] ?? '';
-$RproxyS1List = $_GET['RproxyS1List'] ?? [];
+gwd_require_post_csrf();
+$RproxyStunnelPort = trim((string)gwd_param('RproxyStunnelPort', ''));
+$RproxyStunnelUUID = trim((string)gwd_param('RproxyStunnelUUID', ''));
+$RproxySmappingStatus = (string)gwd_param('RproxySmappingStatus', '');
+$RproxyS1List = gwd_param('RproxyS1List', []);
 
-$data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$data['FORWARD']['Rproxy']['server'] = array();
-$data['FORWARD']['Rproxy']['server']['status'] = "on";
-if ($RproxySmappingStatus === 'block') $data['FORWARD']['Rproxy']['server']['mappingStatus'] = "on";
-$data['FORWARD']['Rproxy']['server']['tunnel']['port'] = $RproxyStunnelPort;
-$data['FORWARD']['Rproxy']['server']['tunnel']['uuid'] = $RproxyStunnelUUID;
-$data['FORWARD']['Rproxy']['server']['mapping'] = is_array($RproxyS1List) ? array_values($RproxyS1List) : [];
-$newJsonString = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($RproxyStunnelPort, $RproxyStunnelUUID, $RproxySmappingStatus, $RproxyS1List): array {
+    if (!isset($conf['FORWARD']['Rproxy']) || !is_array($conf['FORWARD']['Rproxy'])) {
+        $conf['FORWARD']['Rproxy'] = [];
+    }
+    $server = [
+        'status' => 'on',
+        'tunnel' => [
+            'port' => $RproxyStunnelPort,
+            'uuid' => $RproxyStunnelUUID,
+        ],
+        'mapping' => is_array($RproxyS1List) ? array_values($RproxyS1List) : [],
+    ];
+    if ($RproxySmappingStatus === 'block') {
+        $server['mappingStatus'] = 'on';
+    }
+    $conf['FORWARD']['Rproxy']['server'] = $server;
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-RproxySsave &');
+exec('sudo /opt/de_GWD/ui-RproxySsave >/dev/null 2>&1 &');
 ?>
 <?php }?>

@@ -42,13 +42,22 @@ for pkg in ca-certificates gnupg2 curl python3; do
 done
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
-[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
+wait_apt_lock() {
+  local waited=0
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+    if [[ $waited -ge 120 ]]; then
+      echo "Timed out waiting for apt/dpkg lock" >&2
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  dpkg --configure -a
+}
+
+[[ ${#aptPKG[@]} -gt 0 ]] && wait_apt_lock && apt update && apt install -y "${aptPKG[@]}"
 mkdir -p /boot/grub
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
-dpkg --configure -a
+wait_apt_lock
 
 
 
@@ -69,28 +78,52 @@ net.core.default_qdisc = cake
 SYSCTL_EOF
 sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
 
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
-dpkg --configure -a
+wait_apt_lock() {
+  local waited=0
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+    [[ $waited -ge 120 ]] && return 1
+    sleep 2
+    waited=$((waited + 2))
+  done
+  dpkg --configure -a
+}
+wait_apt_lock
 
-dpkg --list | grep linux-image | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
-apt autoremove --purge -y $line
+curVer=$(uname -r)
+fallbackPkg=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-[0-9]*' 2>/dev/null | awk -v cur="$curVer" '$1 ~ /^ii/ && $2 ~ /^linux-image-[0-9]/ && index($2, cur) == 0 {print $2}' | sort -rV | head -n 1)
+fallbackVer=${fallbackPkg#linux-image-}
+
+dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | while read -r line; do
+  [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+  [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+  apt autoremove --purge -y "$line"
 done
 
-dpkg --list | grep linux-headers | awk '{print $2}' | grep -Fv $(uname -r) | while read line; do
-apt autoremove --purge -y $line
+dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | while read -r line; do
+  [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+  [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+  apt autoremove --purge -y "$line"
 done
+
+update-grub >/dev/null 2>&1 || true
+
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX)
+if [[ -n "$tmpCron" ]]; then
+  crontab -l 2>/dev/null >"$tmpCron" || true
+  sed -i '/\/etc\/rc_kernel\.local/d' "$tmpCron"
+  crontab "$tmpCron"
+  rm -f "$tmpCron"
+fi
 EOF
 chmod +x /etc/rc_kernel.local
 
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/\/opt\/de_GWD\/clearKernel/d' /tmp/now.cron
-sed -i '/\/etc\/rc_kernel.local/d' /tmp/now.cron
-echo '@reboot sleep 15 && /etc/rc_kernel.local' >>/tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX) || exit 1
+crontab -l 2>/dev/null >"$tmpCron" || true
+sed -i '/\/opt\/de_GWD\/clearKernel/d' "$tmpCron"
+sed -i '/\/etc\/rc_kernel.local/d' "$tmpCron"
+echo '@reboot sleep 15 && /etc/rc_kernel.local' >>"$tmpCron"
+crontab "$tmpCron"
+rm -f "$tmpCron"
 
 
 
@@ -115,12 +148,21 @@ elif [[ $kernel_type == "liquorix" ]]; then
   rm -rf /etc/apt/keyrings/xanmod.gpg
 fi
   
-  dpkg --list | awk '{print $2}' | grep 'linux-image' | sed "/$kernel_type/d" | while read line; do
-    apt autoremove --purge -y $line
+  local curVer fallbackPkg fallbackVer
+  curVer=$(uname -r)
+  fallbackPkg=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-[0-9]*' 2>/dev/null | awk -v cur="$curVer" -v kt="$kernel_type" '$1 ~ /^ii/ && $2 ~ /^linux-image-[0-9]/ && index($2, cur) == 0 && index($2, kt) == 0 {print $2}' | sort -rV | head -n 1)
+  fallbackVer=${fallbackPkg#linux-image-}
+
+  dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | grep -Fv "$kernel_type" | while read -r line; do
+    [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+    [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+    apt autoremove --purge -y "$line"
   done
 
-  dpkg --list | awk '{print $2}' | grep 'linux-headers' | sed "/$kernel_type/d" | while read line; do
-    apt autoremove --purge -y $line
+  dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | grep -Fv "$kernel_type" | while read -r line; do
+    [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+    [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
+    apt autoremove --purge -y "$line"
   done
   
   apt autoremove --purge -y && apt clean -y && apt autoclean -y
@@ -182,7 +224,7 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 EOF
 echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-apt update && apt install linux-zabbly
+wait_apt_lock && apt update && apt install linux-zabbly
 
 if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
   cleanOldKernels "zabbly"
@@ -216,7 +258,7 @@ get_cpu_arch_level() {
         local -n req=$1
         local r
         for r in "${req[@]}"; do
-            [[ " $flags_line " == *" $r "* ]]
+            [[ " $flags_line " == *" $r "* ]] || return 1
         done
     }
 
@@ -237,7 +279,8 @@ if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
 get_cpu_arch_level
-cat << EOF >/tmp/xanmod.gpg.key
+xanmodKeyTmp=$(mktemp /tmp/xanmod.gpg.key.XXXXXX) || return 1
+cat << EOF >"$xanmodKeyTmp"
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 Version: GnuPG v2
 
@@ -270,11 +313,11 @@ ukDDFZMifwa03yTHD/a57O4dFOnzsEVojBnbzQ7W7w==
 -----END PGP PUBLIC KEY BLOCK-----
 EOF
 mkdir -p /etc/apt/keyrings
-gpg --dearmor --yes -o /etc/apt/keyrings/xanmod.gpg /tmp/xanmod.gpg.key
-rm -f /tmp/xanmod.gpg.key
+gpg --dearmor --yes -o /etc/apt/keyrings/xanmod.gpg "$xanmodKeyTmp"
+rm -f "$xanmodKeyTmp"
 echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-apt update && apt install linux-xanmod-x64$CPU_LEVEL
+wait_apt_lock && apt update && apt install "linux-xanmod-x64$CPU_LEVEL"
 
 if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
   # 清理旧内核
@@ -306,12 +349,13 @@ if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
 mkdir -p /etc/apt/keyrings
-curl -fsSLo /tmp/liquorix.gpg.key https://liquorix.net/liquorix-keyring.gpg
-gpg --dearmor --yes -o /etc/apt/keyrings/liquorix.gpg /tmp/liquorix.gpg.key
-rm -f /tmp/liquorix.gpg.key
+liquorixKeyTmp=$(mktemp /tmp/liquorix.gpg.key.XXXXXX) || return 1
+curl -fsSLo "$liquorixKeyTmp" https://liquorix.net/liquorix-keyring.gpg
+gpg --dearmor --yes -o /etc/apt/keyrings/liquorix.gpg "$liquorixKeyTmp"
+rm -f "$liquorixKeyTmp"
 echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
-apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
+wait_apt_lock && apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
 
 if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
   cleanOldKernels "liquorix"

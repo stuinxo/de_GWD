@@ -1,21 +1,31 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$RproxyCtunnelAddress = $_GET['RproxyCtunnelAddress'] ?? '';
-$RproxyCtunnelUUID = $_GET['RproxyCtunnelUUID'] ?? '';
-$RproxyCmappingStatus = $_GET['RproxyCmappingStatus'] ?? '';
-$RproxyC1List = $_GET['RproxyC1List'] ?? [];
+gwd_require_post_csrf();
+$RproxyCtunnelAddress = trim((string)gwd_param('RproxyCtunnelAddress', ''));
+$RproxyCtunnelUUID = trim((string)gwd_param('RproxyCtunnelUUID', ''));
+$RproxyCmappingStatus = (string)gwd_param('RproxyCmappingStatus', '');
+$RproxyC1List = gwd_param('RproxyC1List', []);
 
-$data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$data['FORWARD']['Rproxy']['client'] = array();
-$data['FORWARD']['Rproxy']['client']['status'] = "on";
-if ($RproxyCmappingStatus === 'block') $data['FORWARD']['Rproxy']['client']['mappingStatus'] = "on";
-$data['FORWARD']['Rproxy']['client']['tunnel']['address'] = $RproxyCtunnelAddress;
-$data['FORWARD']['Rproxy']['client']['tunnel']['uuid'] = $RproxyCtunnelUUID;
-$data['FORWARD']['Rproxy']['client']['mapping'] = is_array($RproxyC1List) ? array_values($RproxyC1List) : [];
-$newJsonString = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($RproxyCtunnelAddress, $RproxyCtunnelUUID, $RproxyCmappingStatus, $RproxyC1List): array {
+    if (!isset($conf['FORWARD']['Rproxy']) || !is_array($conf['FORWARD']['Rproxy'])) {
+        $conf['FORWARD']['Rproxy'] = [];
+    }
+    $client = [
+        'status' => 'on',
+        'tunnel' => [
+            'address' => $RproxyCtunnelAddress,
+            'uuid' => $RproxyCtunnelUUID,
+        ],
+        'mapping' => is_array($RproxyC1List) ? array_values($RproxyC1List) : [],
+    ];
+    if ($RproxyCmappingStatus === 'block') {
+        $client['mappingStatus'] = 'on';
+    }
+    $conf['FORWARD']['Rproxy']['client'] = $client;
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-RproxyCsave &');
+exec('sudo /opt/de_GWD/ui-RproxyCsave >/dev/null 2>&1 &');
 ?>
 <?php }?>

@@ -1,29 +1,21 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$CHNlistProxyIP = $_GET['CHNlistProxyIP'];
-$globalProxyIP = $_GET['globalProxyIP'];
-$directProxyIP = $_GET['directProxyIP'];
+gwd_require_post_csrf();
+$CHNlistProxyIP = preg_split('/\s+/', trim((string)gwd_param('CHNlistProxyIP', '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+$globalProxyIP = preg_split('/\s+/', trim((string)gwd_param('globalProxyIP', '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+$directProxyIP = preg_split('/\s+/', trim((string)gwd_param('directProxyIP', '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
-$CHNlistProxyIP = explode(" ",$CHNlistProxyIP);
-$CHNlistProxyIP = array_values(array_filter(array_map('trim', $CHNlistProxyIP)));
+gwd_update_conf(function (array $conf) use ($CHNlistProxyIP, $globalProxyIP, $directProxyIP): array {
+    if (!isset($conf['v2nodeDIV']['nodeDT']) || !is_array($conf['v2nodeDIV']['nodeDT'])) {
+        $conf['v2nodeDIV']['nodeDT'] = [];
+    }
+    $conf['v2nodeDIV']['nodeDT']['CHNlistProxyIP'] = array_values($CHNlistProxyIP);
+    $conf['v2nodeDIV']['nodeDT']['globalProxyIP'] = array_values($globalProxyIP);
+    $conf['v2nodeDIV']['nodeDT']['directProxyIP'] = array_values($directProxyIP);
+    return $conf;
+});
 
-$globalProxyIP = explode(" ",$globalProxyIP);
-$globalProxyIP = array_values(array_filter(array_map('trim', $globalProxyIP)));
-
-$directProxyIP = explode(" ",$directProxyIP);
-$directProxyIP = array_values(array_filter(array_map('trim', $directProxyIP)));
-
-$conf['v2nodeDIV']['nodeDT']['CHNlistProxyIP'] = array();
-$conf['v2nodeDIV']['nodeDT']['CHNlistProxyIP'] = $CHNlistProxyIP;
-$conf['v2nodeDIV']['nodeDT']['globalProxyIP'] = array();
-$conf['v2nodeDIV']['nodeDT']['globalProxyIP'] = $globalProxyIP;
-$conf['v2nodeDIV']['nodeDT']['directProxyIP'] = array();
-$conf['v2nodeDIV']['nodeDT']['directProxyIP'] = $directProxyIP;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
-
-exec('sudo /opt/de_GWD/ui-NodeDT r &');
+exec('sudo /opt/de_GWD/ui-NodeDT r >/dev/null 2>&1 &');
 ?>
 <?php }?>

@@ -28,11 +28,13 @@
 
   <!-- Core plugin JavaScript-->
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $DoG = $de_GWDconf->dns->dog ?? ''; ?>
 
 <?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
@@ -250,9 +252,10 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+                $nname = gwd_h($v2nodes[$i]->name ?? '');
+                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
-                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
+                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
               echo "    </div>\n";
               echo "  </div>\n";
@@ -281,9 +284,10 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+                $nname = gwd_h($v2nodes[$i]->name ?? '');
+                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
-                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
+                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
               echo "    </div>\n";
               echo "  </div>\n";
@@ -316,9 +320,10 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+                $nname = gwd_h($v2nodes[$i]->name ?? '');
+                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
-                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, '{$nname}')\">{$nname}</a>\n";
+                echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
               echo "    </div>\n";
               echo "  </div>\n";
@@ -338,9 +343,10 @@
                   <a class="dropdown-item" href="javascript:void(0);" onclick="selectNodeSM('apple', 0, ' 直连 ')"> 直连 </a>
                   <?php
                   for ($i = 0; $i < count($v2nodes); $i++) {
-                    $nname = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+                    $nname = gwd_h($v2nodes[$i]->name ?? '');
+                    $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
                     $num = $i + 1;
-                    echo "<a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('apple', {$num}, '{$nname}')\">{$nname}</a>\n";
+                    echo "<a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('apple', {$num}, {$nnameJs})\">{$nname}</a>\n";
                   }
                   ?>
                 </div>
@@ -418,7 +424,7 @@
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body">
-        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain ?? []; if (is_array($customDomainList)) { foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} } ?></textarea>
+        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain ?? []; if (is_array($customDomainList)) { echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, $customDomainList)); } ?></textarea>
         <div class="alert-light mb-4" role="alert">
         纯字符串: google.com<br>
         子域名: domain:google.com<br>
@@ -427,7 +433,7 @@
         预定义域名列表: geosite:google<br>
         </div>
 
-        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP ?? []; if (is_array($customDomainList)) { foreach ( $customDomainList as $k => $v) {if (end($customDomainList) == $v) echo "$v"; else echo "$v\n";} } ?></textarea>
+        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP ?? []; if (is_array($customDomainList)) { echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, $customDomainList)); } ?></textarea>
         <div class="alert-light" role="alert">
         使用非内网IP，非专用网络IP<br>
         IP: 104.24.0.0<br>
@@ -523,14 +529,14 @@
                 <div class="card-header">
                   <span>黑名单域名：</span>
                 </div>
-                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php if (!empty($de_GWDconf->dns->listB)) { foreach($de_GWDconf->dns->listB as $v) {echo "$v\n";} } ?></textarea>
+                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php if (!empty($de_GWDconf->dns->listB)) { foreach($de_GWDconf->dns->listB as $v) {echo gwd_h((string)$v) . "\n";} } ?></textarea>
               </div>
 
               <div class="card mt-3">
                 <div class="card-header">
                   <span>白名单域名：</span>
                 </div>
-                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php if (!empty($de_GWDconf->dns->listW)) { foreach($de_GWDconf->dns->listW as $v) {echo "$v\n";} } ?></textarea>
+                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php if (!empty($de_GWDconf->dns->listW)) { foreach($de_GWDconf->dns->listW as $v) {echo gwd_h((string)$v) . "\n";} } ?></textarea>
               </div>
       </div>
       <div class="modal-footer">
@@ -761,12 +767,7 @@ unset($dnsClist[0][$index]);
 if(($index = array_search('127.0.0.1:5333',$dnsClist[0])) !== false){
 unset($dnsClist[0][$index]);
 }
-foreach(array_unique($dnsClist[0]) as $k => $v){
-  if ($v == end($dnsClist[0]))
-    echo $v;
-  else
-    echo "$v\n";
-}
+echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, array_unique($dnsClist[0])));
 ?></textarea>
                 </div>
 
@@ -777,7 +778,7 @@ foreach(array_unique($dnsClist[0]) as $k => $v){
                   静态<br>
                   </span>
                 </div>
-                  <textarea id="hostsCustomize" class="form-control" aria-label="hostsCustomize" rows="6" placeholder="IP 空格 abc.com &#10;IP 空格 *.abc.com"><?php passthru("sudo /opt/de_GWD/ui-hostsCustomize"); ?></textarea>
+                  <textarea id="hostsCustomize" class="form-control" aria-label="hostsCustomize" rows="6" placeholder="IP 空格 abc.com &#10;IP 空格 *.abc.com"><?php echo gwd_h((string)shell_exec("sudo /opt/de_GWD/ui-hostsCustomize")); ?></textarea>
                 </div>
             </div>
 
@@ -894,7 +895,7 @@ function nodeDTswitch(nodeDTswitch){
 $("#buttonNodeDTloading").attr("class", "spinner-border spinner-border-sm")
 var nodeDTtext = $(nodeDTswitch).find('#nodeDTtext').html()
 if (nodeDTtext == 'OFF'){
-$.get('./act/NodeDTswitch.php', {switchNodeDT:"NodeDThide"}, function(result){
+$.post('./act/NodeDTswitch.php', {switchNodeDT:"NodeDThide"}, function(result){
   $("#nodeDTlist").css("display", "none")
   $("#nodeDTiptext").css("display", "none")
   $("#nodeDTipButton").css("display", "none")
@@ -903,12 +904,12 @@ $.get('./act/NodeDTswitch.php', {switchNodeDT:"NodeDThide"}, function(result){
 })
 }
 else {
-$.get('./act/NodeDTswitch.php', {switchNodeDT:"NodeDTshow"}, function(data){
+$.post('./act/NodeDTswitch.php', {switchNodeDT:"NodeDTshow"}, function(data){
   $("#nodeDTlist").css("display", "block")
   $("#nodeDTiptext").css("display", "block")
   $("#nodeDTipButton").css("display", "block")
   $("#buttonNodeDTloading").removeClass()
-  $("#nodeDTshow").html(data)
+  $("#nodeDTshow").text(data)
   $("#nodeDTtext").html("OFF")
 })
 }
@@ -918,7 +919,7 @@ function nodeCUswitch(nodeCUswitch){
 $("#buttonNodeCUloading").attr("class", "spinner-border spinner-border-sm")
 var nodeCUtext = $(nodeCUswitch).find('#nodeCUtext').html()
 if (nodeCUtext == 'OFF'){
-$.get('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUhide"}, function(result){
+$.post('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUhide"}, function(result){
   $("#nodeCUlist").css("display", "none")
   $("#nodeCUrulesButton").css("display", "none")
   $("#nodeCUtext").html("ON")
@@ -926,10 +927,10 @@ $.get('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUhide"}, function(result){
 })
 }
 else {
-$.get('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUshow"}, function(data){
+$.post('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUshow"}, function(data){
   $("#nodeCUlist").css("display", "block")
   $("#nodeCUrulesButton").css("display", "block")
-  $('#nodeCUshow').html(data)
+  $('#nodeCUshow').text(data)
   $("#nodeCUtext").html("OFF")
   $("#buttonNodeCUloading").removeClass()
 })
@@ -948,40 +949,40 @@ function buttonSwitch(buttonSwitch){
 var SWITCHobj = $(buttonSwitch).parent().parent().parent().find('tr')
 var SWITCHindex = SWITCHobj.index($(buttonSwitch).parent().parent()[0])
 $("#nodeTable td:nth-child(6) button").attr('class', "btn btn-outline-secondary btn-sm")
-$("#buttonSSdetail").attr('class','btn btn-outline-secondary btn-sm mt-1')
+$("#buttonSSdetail").attr('class','btn btn-outline-secondary btn-sm mt-1 mr-2')
 $('#switch'+SWITCHindex).attr('class', 'btn btn-success btn-sm');
-$.get("./act/NodeChange.php", {nodenum:SWITCHindex}, function(){})
+$.post("./act/NodeChange.php", {nodenum:SWITCHindex}, function(){})
 }
 
 function selectNodeSM(svc, idx, name){
-  $('#nodeSMshow_' + svc).html(name);
+  $('#nodeSMshow_' + svc).text(name);
   $('#nodeSMshow_' + svc).val(idx);
 }
 
 function buttonNodeDT(buttonNodeDT){
 var NodeDTobj = $(buttonNodeDT).parent().find('a')
 var NodeDTindex = NodeDTobj.index($(buttonNodeDT))
-var NodeDTname = $('#nodeDT'+NodeDTindex).html()
-$('#nodeDTshow').html(NodeDTname)
-$.get("./act/NodeDTchange.php", {nodeDTnum:NodeDTindex}, function(){})
+var NodeDTname = $('#nodeDT'+NodeDTindex).text()
+$('#nodeDTshow').text(NodeDTname)
+$.post("./act/NodeDTchange.php", {nodeDTnum:NodeDTindex}, function(){})
 }
 
 function buttonNodeCU(buttonNodeCU){
 var NodeCUobj = $(buttonNodeCU).parent().find('a')
 var NodeCUindex = NodeCUobj.index($(buttonNodeCU))
-var NodeCUname = $('#nodeCU'+NodeCUindex).html()
-$('#nodeCUshow').html(NodeCUname)
-$.get("./act/NodeCUchange.php", {nodeCUnum:NodeCUindex}, function(){})
+var NodeCUname = $('#nodeCU'+NodeCUindex).text()
+$('#nodeCUshow').text(NodeCUname)
+$.post("./act/NodeCUchange.php", {nodeCUnum:NodeCUindex}, function(){})
 }
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#currentver').click(function(){
@@ -994,14 +995,14 @@ window.open("https://t.me/de_GWD_info")
 
 $('#buttonProxyRestart').click(function(){
 $("#buttonProxyLoading").attr("class", "spinner-border spinner-border-sm ml-2")
-$.get('./act/proxyRestart.php', function(result){
+$.post('./act/proxyRestart.php', function(result){
   $("#buttonProxyLoading").removeClass()
 })
 })
 
 $('#buttonProxyStop').click(function(){
 $("#buttonProxyLoading").attr("class", "spinner-border spinner-border-sm ml-2")
-$.get('./act/proxyStop.php', function(result){
+$.post('./act/proxyStop.php', function(result){
   $("#buttonProxyLoading").removeClass()
 })
 })
@@ -1018,10 +1019,10 @@ $.get("./act/pingTCPDoG.php", function(data) { $('#pingDoG').text(data) })
 $('#submitNodeSMrulesClear').click(function(){
   var services = ['openai','claude','gemini','grok','youtube','netflix','hdh','bahamut','tvb','telegram','twitter','discord','reddit','github','wikipedia'];
   for (var i = 0; i < services.length; i++) {
-    $('#nodeSMshow_' + services[i]).html(' 默认代理 ').val('0');
+    $('#nodeSMshow_' + services[i]).text(' 默认代理 ').val('0');
   }
-  $('#nodeSMshow_apple').html(' 直连 ').val('0');
-  $('#nodeSMshow_steam').html(' 直连 ').val('0');
+  $('#nodeSMshow_apple').text(' 直连 ').val('0');
+  $('#nodeSMshow_steam').text(' 直连 ').val('0');
 });
 
 $('#submitNodeSMrules').click(function(){
@@ -1032,7 +1033,7 @@ $('#submitNodeSMrules').click(function(){
     var s = allServices[i];
     params[s] = $('#nodeSMshow_' + s).val() || '0';
   }
-  $.get('./act/NodeSMrules.php', params, function(result){
+  $.post('./act/NodeSMrules.php', params, function(result){
     $("#submitNodeSMrulesLoading").removeClass();
     $("#nodeSMrules").modal('hide');
     window.location.reload();
@@ -1041,7 +1042,7 @@ $('#submitNodeSMrules').click(function(){
 
 $('#buttonclearDIV').click(function(){
 $("#buttonclearDIVloading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/NodeOne.php', function(result){
+$.post('./act/NodeOne.php', function(result){
   $("#buttonclearDIVloading").removeClass()
   window.location.reload()
 })
@@ -1052,7 +1053,7 @@ $("#buttonNodeDTrulesloading").attr("class", "spinner-border spinner-border-sm")
 CHNlistProxyIP=$('#CHNlistProxyIP').val()
 globalProxyIP=$('#globalProxyIP').val()
 directProxyIP=$('#directProxyIP').val()
-$.get('./act/NodeDTrules.php', {CHNlistProxyIP:CHNlistProxyIP, globalProxyIP:globalProxyIP, directProxyIP:directProxyIP}, function(result){
+$.post('./act/NodeDTrules.php', {CHNlistProxyIP:CHNlistProxyIP, globalProxyIP:globalProxyIP, directProxyIP:directProxyIP}, function(result){
   $("#buttonNodeDTrulesloading").removeClass()
   $("#nodeDTrules").modal('hide')
 })
@@ -1062,7 +1063,7 @@ $('#buttonNodeCUrules').click(function(){
 $("#buttonNodeCUrulesloading").attr("class", "spinner-border spinner-border-sm")
 customDomain=$('#nodeCUrulesDomain').val()
 customIP=$('#nodeCUrulesIP').val()
-$.get('./act/NodeCUrules.php', {customDomain:customDomain, customIP:customIP}, function(result){
+$.post('./act/NodeCUrules.php', {customDomain:customDomain, customIP:customIP}, function(result){
   $("#buttonNodeCUrulesloading").removeClass()
   $("#nodeCUrules").modal('hide')
 })
@@ -1073,28 +1074,28 @@ function parseVlessLink(raw) {
   if (!raw.startsWith('vless://')) return null;
   try {
     var url = new URL(raw);
-    var uuid = url.username;
-    var address = url.hostname;
-    var port = url.port || '443';
-    var sni = url.searchParams.get('sni') || url.searchParams.get('peer') || address;
-    var pbk = url.searchParams.get('pbk') || url.searchParams.get('publicKey') || '';
-    var sid = url.searchParams.get('sid') || url.searchParams.get('shortId') || '';
-    return { uuid: uuid, address: address, port: port, sni: sni, pbk: pbk, sid: sid };
-  } catch (e) {
-    var m = raw.match(/^vless:\/\/([^@]+)@([^:?#]+)(?::([0-9]+))?(?:\?(.*))?$/);
-    if (m) {
-      var uuid = m[1];
-      var address = m[2];
-      var port = m[3] || '443';
-      var search = m[4] ? m[4].split('#')[0] : '';
-      var params = new URLSearchParams(search);
-      var sni = params.get('sni') || params.get('peer') || address;
-      var pbk = params.get('pbk') || params.get('publicKey') || '';
-      var sid = params.get('sid') || params.get('shortId') || '';
+    if (url.username && url.hostname) {
+      var uuid = decodeURIComponent(url.username);
+      var address = url.hostname.replace(/^\[|\]$/g, '');
+      var port = url.port || '443';
+      var sni = url.searchParams.get('sni') || url.searchParams.get('peer') || address;
+      var pbk = url.searchParams.get('pbk') || url.searchParams.get('publicKey') || '';
+      var sid = url.searchParams.get('sid') || url.searchParams.get('shortId') || '';
       return { uuid: uuid, address: address, port: port, sni: sni, pbk: pbk, sid: sid };
     }
-    return null;
+  } catch (e) {}
+  var m = raw.match(/^vless:\/\/([^@]+)@(\[[^\]]+\]|[^:?#]+)(?::([0-9]+))?(?:\?([^#]*))?/);
+  if (m) {
+    var uuid = decodeURIComponent(m[1]);
+    var address = m[2].replace(/^\[|\]$/g, '');
+    var port = m[3] || '443';
+    var params = new URLSearchParams(m[4] || '');
+    var sni = params.get('sni') || params.get('peer') || address;
+    var pbk = params.get('pbk') || params.get('publicKey') || '';
+    var sid = params.get('sid') || params.get('shortId') || '';
+    return { uuid: uuid, address: address, port: port, sni: sni, pbk: pbk, sid: sid };
   }
+  return null;
 }
 
 $('#ssLink').on('input change paste', function(){
@@ -1114,32 +1115,40 @@ $('#ssLink').on('input change paste', function(){
 
 $('#buttonSSclear').click(function(){
 $("#buttonSSclearloading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/changeNodeSS0.php', function(result){
+$.post('./act/changeNodeSS0.php', function(result){
   $("#buttonSSclearloading").removeClass()
   window.location.reload()
 })
 })
 
 $('#buttonSSsubmit').click(function(){
-$("#buttonSSsubmitloading").attr("class", "spinner-border spinner-border-sm")
 var ssAddress = ($('#ssAddress').val() || '').trim();
 var ssPort = ($('#ssPort').val() || '').trim();
 var ssUUID = ($('#ssUUID').val() || '').trim();
 var ssSNI = ($('#ssSNI').val() || '').trim();
 var ssPBK = ($('#ssPBK').val() || '').trim();
 var ssSID = ($('#ssSID').val() || '').trim();
-$.get('./act/changeNodeSS.php', {
+if (!ssAddress || !ssUUID || !ssPBK) {
+  if (!ssAddress) $('#ssAddress').focus();
+  else if (!ssUUID) $('#ssUUID').focus();
+  else $('#ssPBK').focus();
+  return;
+}
+$("#buttonSSsubmitloading").attr("class", "spinner-border spinner-border-sm")
+$.post('./act/changeNodeSS.php', {
   ssAddress: ssAddress,
   ssPort: ssPort,
   ssUUID: ssUUID,
   ssSNI: ssSNI,
   ssPBK: ssPBK,
   ssSID: ssSID
-}, function(result){
+}).done(function(result){
   $("#buttonSSsubmitloading").removeClass()
   $("#ssDetail").modal('hide')
-  $("#buttonSSdetail").attr('class','btn btn-success btn-sm mt-1')
+  $("#buttonSSdetail").attr('class','btn btn-success btn-sm mt-1 mr-2')
   $("#nodeTable td:nth-child(6) button").attr('class', "btn btn-outline-secondary btn-sm")
+}).fail(function(){
+  $("#buttonSSsubmitloading").removeClass()
 })
 })
 
@@ -1154,7 +1163,7 @@ $('#buttonListBWurl').click(function(){
 $("#buttonListBWurlloading").attr("class", "spinner-border spinner-border-sm")
 listB=$("#listB").val()
 listW=$("#listW").val()
-$.get("./act/submitListBW.php", {listB:listB, listW:listW}, function(result){
+$.post("./act/submitListBW.php", {listB:listB, listW:listW}, function(result){
   $("#buttonListBWurlloading").removeClass()
   $("#editListBW").modal('hide')
 })
@@ -1167,7 +1176,7 @@ doh1txt=$('#DoH1').val()
 doh2txt=$('#DoH2').val()
 dnsChina=$("#dnsChina").val()
 hostsCustomize=$("#hostsCustomize").val()
-$.get("./act/DNSsave.php", {DoGc:DoGc, DoH1:doh1txt, DoH2:doh2txt, dnsChina:dnsChina, hostsCustomize:hostsCustomize}, function(result){
+$.post("./act/DNSsave.php", {DoGc:DoGc, DoH1:doh1txt, DoH2:doh2txt, dnsChina:dnsChina, hostsCustomize:hostsCustomize}, function(result){
   $("#buttonDNSsubmitloading").removeClass()
   window.location.reload()
 })
@@ -1176,7 +1185,7 @@ $.get("./act/DNSsave.php", {DoGc:DoGc, DoH1:doh1txt, DoH2:doh2txt, dnsChina:dnsC
 $('#buttonReboot').click(function(){
 staticip1=$('#localip').val()
 staticip2=$('#upstreamip').val()
-$.get('./act/reboot.php', {localip:staticip1, upstreamip:staticip2}, function(result){window.location.reload()})
+$.post('./act/reboot.php', {localip:staticip1, upstreamip:staticip2}, function(result){window.location.reload()})
 })
 
 checkVersion()
@@ -1189,7 +1198,7 @@ $.get('./act/uptime.php', function(data){$('#uptime').text(data)})
 
 $.get('./act/NodeDTcheck.php', function(data){
 if(data != "") {
-  $('#nodeDTshow').html(data)
+  $('#nodeDTshow').text(data)
   $("#nodeDTlist").css("display", "block")
   $("#nodeDTiptext").css("display", "block")
   $("#nodeDTipButton").css("display", "block")
@@ -1199,7 +1208,7 @@ if(data != "") {
 
 $.get('./act/NodeCUcheck.php', function(data){
 if(data != "") {
-  $('#nodeCUshow').html(data)
+  $('#nodeCUshow').text(data)
   $("#nodeCUlist").css("display", "block")
   $("#nodeCUrulesButton").css("display", "block")
   $("#nodeCUtext").html("OFF")
@@ -1218,7 +1227,7 @@ $.get('./act/NodeSMcheck.php', function(data){
           name = (svc === 'apple' || svc === 'steam') ? " 直连 " : " 默认代理 ";
         }
         $('#nodeSMshow_' + svc).val(num);
-        $('#nodeSMshow_' + svc).html(name);
+        $('#nodeSMshow_' + svc).text(name);
       }
     }
   } catch(e) {

@@ -1,5 +1,6 @@
 #!/bin/bash
 # ui-NodeSM: Manage Predefined Service Routing (NodeSM)
+source /opt/de_GWD/ui-confCommon
 
 # 1. Clean up existing nodeSM outbounds and routing rules
 jq 'del(.outbounds[] | select(.tag != null and (.tag | startswith("nodeSM"))))' /opt/de_GWD/vtrui/config.json |\
@@ -63,22 +64,23 @@ for svc in "${!SERVICE_DOMAINS[@]}"; do
       path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
 
       if [[ -n "$address" && "$address" != "null" ]]; then
-        jq --arg address "$address" ".v2nodeDIV.nodeSM.${svc}=\$address" /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+        conf_jq --arg svc "$svc" --arg address "$address" '.v2nodeDIV.nodeSM[$svc]=$address'
         /opt/de_GWD/ui-V2routingDomain "$tag" "$routingDomain"
         /opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path"
       fi
     else
-      jq "del(.v2nodeDIV.nodeSM.${svc})" /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+      conf_jq --arg svc "$svc" 'del(.v2nodeDIV.nodeSM[$svc])'
     fi
   else
     # Restore from 0conf if already configured
-    address=$(jq -r ".v2nodeDIV.nodeSM.${svc} // empty" /opt/de_GWD/0conf 2>/dev/null)
+    address=$(jq -r --arg svc "$svc" '.v2nodeDIV.nodeSM[$svc] // empty' /opt/de_GWD/0conf 2>/dev/null)
     if [[ -n "$address" ]]; then
       tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
       uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
       path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
+      [[ -z "$tls" ]] && tls=$(echo "$address" | cut -d: -f1)
 
-      if [[ -n "$tls" && -n "$uuid" ]]; then
+      if [[ -n "$uuid" ]]; then
         /opt/de_GWD/ui-V2routingDomain "$tag" "$routingDomain"
         /opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path"
       fi
@@ -98,12 +100,12 @@ if [[ -n "${PARAM_MAP[apple]}" ]]; then
     path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
 
     if [[ -n "$address" && "$address" != "null" ]]; then
-      jq --arg address "$address" '.v2nodeDIV.nodeSM.apple=$address' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+      conf_jq --arg address "$address" '.v2nodeDIV.nodeSM.apple=$address'
       /opt/de_GWD/ui-V2routingDomain "nodeSMapple" "$apple_domains"
       /opt/de_GWD/ui-V2outbound "nodeSMapple" "$address" "$tls" "$uuid" "$path"
     fi
   else
-    jq 'del(.v2nodeDIV.nodeSM.apple)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    conf_jq 'del(.v2nodeDIV.nodeSM.apple)'
     /opt/de_GWD/ui-V2routingDomain 'direct' "$apple_domains"
   fi
 else
@@ -112,7 +114,8 @@ else
     tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
     uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
     path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
-    if [[ -n "$tls" && -n "$uuid" ]]; then
+    [[ -z "$tls" ]] && tls=$(echo "$address" | cut -d: -f1)
+    if [[ -n "$uuid" ]]; then
       /opt/de_GWD/ui-V2routingDomain "nodeSMapple" "$apple_domains"
       /opt/de_GWD/ui-V2outbound "nodeSMapple" "$address" "$tls" "$uuid" "$path"
     else
@@ -128,9 +131,9 @@ steam_domains='["domain:steamserver.net","geosite:steam@cn","geosite:category-ga
 if [[ -n "${PARAM_MAP[steam]}" ]]; then
   val="${PARAM_MAP[steam]}"
   if [[ "$val" != "0" ]]; then
-    jq '.v2nodeDIV.nodeSM.steam="proxy"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    conf_jq '.v2nodeDIV.nodeSM.steam="proxy"'
   else
-    jq 'del(.v2nodeDIV.nodeSM.steam)' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+    conf_jq 'del(.v2nodeDIV.nodeSM.steam)'
     /opt/de_GWD/ui-V2routingDomain 'direct' "$steam_domains"
   fi
 else
@@ -148,13 +151,10 @@ fi
 # Determine if any nodeSM rule is active
 has_custom=$(jq '.v2nodeDIV.nodeSM | del(.status) | keys | length' /opt/de_GWD/0conf 2>/dev/null)
 if [[ -z "$has_custom" || "$has_custom" -eq 0 ]]; then
-  jq '.v2nodeDIV.nodeSM.status="off"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+  conf_jq '.v2nodeDIV.nodeSM.status="off"'
 else
-  jq '.v2nodeDIV.nodeSM.status="on"' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+  conf_jq '.v2nodeDIV.nodeSM.status="on"'
 fi
-
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf 2>/dev/null || true
 
 # Restart services if requested
 if [[ "$1" == "r" ]]; then

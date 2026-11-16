@@ -1,0 +1,48 @@
+#!/bin/bash
+set -u
+
+restoreDir="/opt/de_GWD/restore"
+mkdir -p "$restoreDir"
+chown root:www-data "$restoreDir" 2>/dev/null || true
+chmod 770 "$restoreDir" 2>/dev/null || true
+rm -rf /var/www/html/restore 2>/dev/null || true
+
+case "${1:-}" in
+  gwd)
+    if [[ -f /opt/de_GWD/0conf ]]; then
+      cp -f /opt/de_GWD/0conf "$restoreDir/de_GWD_bak.tmp" && \
+      chown root:www-data "$restoreDir/de_GWD_bak.tmp" 2>/dev/null || true
+      chmod 640 "$restoreDir/de_GWD_bak.tmp" 2>/dev/null || true
+      mv -f "$restoreDir/de_GWD_bak.tmp" "$restoreDir/de_GWD_bak"
+    fi
+    ;;
+  bitwarden)
+    if [[ -d /opt/bitwarden ]]; then
+      stage=$(mktemp -d /tmp/de_GWD-bw-bak.XXXXXX) || exit 1
+      trap 'rm -rf "$stage"' EXIT
+      mkdir -p "$stage/opt/bitwarden"
+      cp -a /opt/bitwarden/. "$stage/opt/bitwarden/" 2>/dev/null || true
+      rm -rf "$stage/opt/bitwarden/icon_cache" "$stage/opt/bitwarden/db.sqlite3-wal" "$stage/opt/bitwarden/db.sqlite3-shm"
+      if [[ -f /opt/bitwarden/db.sqlite3 ]] && command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 /opt/bitwarden/db.sqlite3 ".backup '$stage/opt/bitwarden/db.sqlite3'" 2>/dev/null || cp -f /opt/bitwarden/db.sqlite3 "$stage/opt/bitwarden/db.sqlite3"
+      fi
+      rm -f "$restoreDir/Bitwarden_bak.zip.tmp"
+      (cd "$stage" && zip -rq "$restoreDir/Bitwarden_bak.zip.tmp" opt/bitwarden) || exit 1
+      chown root:www-data "$restoreDir/Bitwarden_bak.zip.tmp" 2>/dev/null || true
+      chmod 640 "$restoreDir/Bitwarden_bak.zip.tmp" 2>/dev/null || true
+      mv -f "$restoreDir/Bitwarden_bak.zip.tmp" "$restoreDir/Bitwarden_bak.zip"
+    fi
+    ;;
+  jellyfin)
+    if [[ -d /opt/jellyfin/config ]]; then
+      rm -f "$restoreDir/Jellyfin_bak.zip.tmp"
+      zip -rq "$restoreDir/Jellyfin_bak.zip.tmp" /opt/jellyfin/config -x "/opt/jellyfin/config/transcodes/*" || exit 1
+      chown root:www-data "$restoreDir/Jellyfin_bak.zip.tmp" 2>/dev/null || true
+      chmod 640 "$restoreDir/Jellyfin_bak.zip.tmp" 2>/dev/null || true
+      mv -f "$restoreDir/Jellyfin_bak.zip.tmp" "$restoreDir/Jellyfin_bak.zip"
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac

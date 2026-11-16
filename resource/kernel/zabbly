@@ -28,13 +28,22 @@ for pkg in ca-certificates gnupg2 curl python3; do
 done
 [[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
-[[ ${#aptPKG[@]} -gt 0 ]] && apt update && apt install -y "${aptPKG[@]}"
+wait_apt_lock() {
+  local waited=0
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+    if [[ $waited -ge 120 ]]; then
+      echo "Timed out waiting for apt/dpkg lock" >&2
+      return 1
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  dpkg --configure -a
+}
+
+[[ ${#aptPKG[@]} -gt 0 ]] && wait_apt_lock && apt update && apt install -y "${aptPKG[@]}"
 mkdir -p /boot/grub
-rm -f /var/cache/apt/archives/lock
-rm -f /var/lib/apt/lists/lock
-rm -f /var/lib/dpkg/lock
-rm -f /var/lib/dpkg/lock-frontend
-dpkg --configure -a
+wait_apt_lock
 
 
 
@@ -84,12 +93,20 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 EOF
 echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-if apt update && apt install -y linux-zabbly && [[ -n $(dpkg -l | awk '/^ii/ && $2 ~ /linux-image.*zabbly/ {print $2}') ]]; then
-  dpkg --list | awk '{print $2}' | grep 'linux-image' | sed "/zabbly/d" | while read -r line; do
+if wait_apt_lock && apt update && apt install -y linux-zabbly && [[ -n $(dpkg -l | awk '/^ii/ && $2 ~ /linux-image.*zabbly/ {print $2}') ]]; then
+  curVer=$(uname -r)
+  fallbackPkg=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-[0-9]*' 2>/dev/null | awk -v cur="$curVer" '$1 ~ /^ii/ && $2 ~ /^linux-image-[0-9]/ && index($2, cur) == 0 && $2 !~ /zabbly/ {print $2}' | sort -rV | head -n 1)
+  fallbackVer=${fallbackPkg#linux-image-}
+
+  dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | grep -Fv "zabbly" | while read -r line; do
+    [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+    [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
     apt autoremove --purge -y "$line"
   done
 
-  dpkg --list | awk '{print $2}' | grep 'linux-headers' | sed "/zabbly/d" | while read -r line; do
+  dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | grep -Fv "zabbly" | while read -r line; do
+    [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
+    [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
     apt autoremove --purge -y "$line"
   done
 

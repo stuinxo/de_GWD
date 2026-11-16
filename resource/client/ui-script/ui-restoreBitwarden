@@ -1,22 +1,42 @@
 #!/bin/bash
-docker stop bitwarden
+bakZip="/opt/de_GWD/restore/Bitwarden_bak.zip"
+[[ ! -f "$bakZip" && -f "/var/www/html/restore/Bitwarden_bak.zip" ]] && bakZip="/var/www/html/restore/Bitwarden_bak.zip"
+[[ -f "$bakZip" ]] || exit 1
 
-if [[ -n $(unzip -tq /var/www/html/restore/Bitwarden_bak.zip | grep "No errors detected in compressed data") ]]; then
-rm -rf /tmp/opt
-unzip /var/www/html/restore/Bitwarden_bak.zip -d /tmp
+if ! unzip -tq "$bakZip" 2>/dev/null | grep -q "No errors detected in compressed data"; then
+  rm -f "$bakZip"
+  exit 1
+fi
 
-rm -rf /opt/bitwarden
-mkdir -p /opt/bitwarden
+# Reject zip-slip path traversal entries
+if unzip -Z1 "$bakZip" 2>/dev/null | grep -qE '(^/|^\.\./|/\.\./)'; then
+  rm -f "$bakZip"
+  exit 1
+fi
 
-if [[ -d "/tmp/opt/bitwardenrs" ]]; then
-mv -f /tmp/opt/bitwardenrs/* /opt/bitwarden
+stage=$(mktemp -d /tmp/de_GWD-bw-restore.XXXXXX) || exit 1
+trap 'rm -rf "$stage" "$bakZip"' EXIT
+
+unzip -oq "$bakZip" -d "$stage" >/dev/null 2>&1 || exit 1
+srcDir=""
+if [[ -d "$stage/opt/bitwarden" ]]; then
+  srcDir="$stage/opt/bitwarden"
+elif [[ -d "$stage/opt/bitwardenrs" ]]; then
+  srcDir="$stage/opt/bitwardenrs"
 else
-mv -f /tmp/opt/bitwarden/* /opt/bitwarden
+  exit 1
 fi
 
+docker stop bitwarden >/dev/null 2>&1 || true
+rm -rf /opt/bitwarden.prev
+[[ -d /opt/bitwarden ]] && mv -f /opt/bitwarden /opt/bitwarden.prev
+mkdir -p /opt/bitwarden
+if cp -a "$srcDir"/. /opt/bitwarden/; then
+  rm -rf /opt/bitwarden.prev
+else
+  rm -rf /opt/bitwarden
+  [[ -d /opt/bitwarden.prev ]] && mv -f /opt/bitwarden.prev /opt/bitwarden
+  docker start bitwarden >/dev/null 2>&1 || true
+  exit 1
 fi
-
-docker restart bitwarden
-
-rm -rf /tmp/opt
-rm -rf /var/www/html/restore/Bitwarden_bak.zip
+docker restart bitwarden >/dev/null 2>&1 || true

@@ -1,9 +1,14 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$FWD0index = intval($_GET['FWD0index'] ?? 1);
+$raw = trim((string)($_GET['FWD0index'] ?? $_POST['FWD0index'] ?? '1'));
+if (!ctype_digit($raw) || intval($raw) < 1) {
+    http_response_code(400);
+    exit;
+}
+$FWD0index = intval($raw);
 
-$de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf'));
+$de_GWDconf = gwd_read_conf_object();
 $serverDomain = !empty($de_GWDconf->FORWARD->domain) ? $de_GWDconf->FORWARD->domain : ($de_GWDconf->address->serverName ?? '');
 $FWD0port = isset($de_GWDconf->FORWARD->FWD0->port) ? $de_GWDconf->FORWARD->FWD0->port : '443';
 $FWD0uuid = isset($de_GWDconf->FORWARD->FWD0->uuid[$FWD0index-1]->FWD0uuid) ? $de_GWDconf->FORWARD->FWD0->uuid[$FWD0index-1]->FWD0uuid : '';

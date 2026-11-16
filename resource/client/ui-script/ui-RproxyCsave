@@ -86,7 +86,8 @@ jq --arg mappingStatus "$RproxyCmappingStatus" \
 
 chown root:www-data /opt/de_GWD/RproxyC/config.json 2>/dev/null || true
 chmod 640 /opt/de_GWD/RproxyC/config.json
-chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 
 rm -rf /lib/systemd/system/RproxyC.service
 cat << "EOF" >/etc/systemd/system/RproxyC.service

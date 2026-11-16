@@ -1,5 +1,6 @@
 #!/bin/bash
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/ui-ddnsCF/d' /tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX) || exit 1
+trap 'rm -f "$tmpCron"' EXIT
+crontab -l 2>/dev/null >"$tmpCron" || true
+sed -i '/ui-ddnsCF/d' "$tmpCron"
+crontab "$tmpCron"

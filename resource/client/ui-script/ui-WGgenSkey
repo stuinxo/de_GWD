@@ -1,15 +1,9 @@
 #!/bin/bash
-mkdir -p /etc/wireguard
-cd /etc/wireguard
+source "$(dirname "$0")/ui-confCommon" 2>/dev/null || source /opt/de_GWD/ui-confCommon
 
-wg genkey | tee sprivatekey | wg pubkey > spublickey
+sprivatekey=$(wg genkey) || exit 1
+spublickey=$(printf '%s\n' "$sprivatekey" | wg pubkey) || exit 1
+[[ -n "$sprivatekey" && -n "$spublickey" ]] || exit 1
 
-sprivatekey=$(cat /etc/wireguard/sprivatekey)
-spublickey=$(cat /etc/wireguard/spublickey)
-
-jq --arg sprivatekey "$sprivatekey" '.wireguard.server.sprivatekey=$sprivatekey' /opt/de_GWD/0conf |\
-jq --arg spublickey "$spublickey" '.wireguard.server.spublickey=$spublickey' | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
-
-rm -rf /etc/wireguard/s*key
+conf_jq --arg sprivatekey "$sprivatekey" --arg spublickey "$spublickey" \
+  '.wireguard.server.sprivatekey=$sprivatekey | .wireguard.server.spublickey=$spublickey'

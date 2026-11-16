@@ -27,11 +27,13 @@
 
   <!-- Core plugin JavaScript-->
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
@@ -272,36 +274,36 @@ var autoUpdateHourOBJ = $(autoUpdateHour).parent().parent().find('a')
 var autoUpdateHourINDEX = autoUpdateHourOBJ.index($(autoUpdateHour))
 if ( autoUpdateHourINDEX == 0 ){
   autoUpdateHourINDEX = 'off'
-$('#autoUpdateHourShow').html('关闭 ')
+$('#autoUpdateHourShow').text('关闭 ')
 $('#autoUpdateHourShow').attr('class', 'btn btn-outline-secondary mt-1 dropdown-toggle dropdown-toggle-split')
 } else {
   autoUpdateHourINDEX = autoUpdateHourINDEX-1
   autoUpdateHourLabel = `${autoUpdateHourINDEX}:00 `
-$('#autoUpdateHourShow').html(autoUpdateHourLabel)
+$('#autoUpdateHourShow').text(autoUpdateHourLabel)
 $('#autoUpdateHourShow').attr('class', 'btn btn-success mt-1 dropdown-toggle dropdown-toggle-split')
 }
-$.get("./act/autoUpdateHour.php", {autoUpdateHourINDEX:autoUpdateHourINDEX}, function(result){})
+$.post("./act/autoUpdateHour.php", {autoUpdateHourINDEX:autoUpdateHourINDEX}, function(result){})
 }
 
 
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#buttonBackup').click(function(){
-$.get('./act/backup.php', function(result){window.location.href = "/restore/de_GWD_bak"})
+$.post('./act/backup.php', function(result){window.location.href = "./act/backupDownload.php?type=gwd"})
 })
 
 $("#restorefile").on("change", function() {
   var fileName = $(this).val().split("\\").pop()
-  $(this).siblings("#restorefileLabel").addClass("selected").html(fileName);
+  $(this).siblings("#restorefileLabel").addClass("selected").text(fileName);
   if( fileName != "de_GWD_bak" ){
   alert("文件选择错误，备份文件名为 de_GWD_bak ")
   }
@@ -330,7 +332,7 @@ $("#buttonUpdateSaveLoading").attr("class", "spinner-border spinner-border-sm")
 updateCMD=$('#updateCMD').val();
 updateAddr=$('#updateAddr').val();
 updatePort=$('#updatePort').val();
-$.get('./act/updateSave.php', {updateAddr:updateAddr,updatePort:updatePort,updateCMD:updateCMD}, function(data){
+$.post('./act/updateSave.php', {updateAddr:updateAddr,updatePort:updatePort,updateCMD:updateCMD}, function(data){
 $("#updateDst").val(data)
 $("#updateModal").modal('show')
 $("#buttonUpdateSaveLoading").removeClass()
@@ -341,13 +343,13 @@ alert($.trim(xhr.responseText) || "更新准备失败，请重试")
 })
 
 $('#buttonUpdateRun').click(function(){
-$.get('./act/updateRun.php', function(){})
+$.post('./act/updateRun.php', function(){})
 var updateDst = "http://"+$("#updateDst").val()
 var win = window.open(updateDst, 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()});
+        $.post('./act/installZ.php', function(result){window.location.reload()});
     }
 }, 300);
 })

@@ -1,11 +1,15 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-exec('sudo rm -rf /var/www/html/restore/Bitwarden_bak.zip');
-if (isset($_FILES["file"]["name"]) && $_FILES["file"]["name"] == "Bitwarden_bak.zip")
+gwd_require_post_csrf();
+if (isset($_FILES["file"]["error"], $_FILES["file"]["name"], $_FILES["file"]["tmp_name"])
+    && $_FILES["file"]["error"] === UPLOAD_ERR_OK
+    && $_FILES["file"]["name"] === "Bitwarden_bak.zip")
 {
-	move_uploaded_file($_FILES['file']['tmp_name'], '../restore/' . "Bitwarden_bak.zip");
-	exec('sudo /opt/de_GWD/ui-restoreBitwarden &');
+	$restoreDir = is_dir('/opt/de_GWD/restore') ? '/opt/de_GWD/restore' : (__DIR__ . '/../restore');
+	if (move_uploaded_file($_FILES['file']['tmp_name'], $restoreDir . '/Bitwarden_bak.zip')) {
+		exec('sudo /opt/de_GWD/ui-restoreBitwarden &');
+	}
 }
 ?>
 <?php }?>

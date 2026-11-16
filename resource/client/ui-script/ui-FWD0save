@@ -1,5 +1,6 @@
 #!/bin/bash
 source /opt/de_GWD/xray-common
+source /opt/de_GWD/ui-confCommon
 
 FWD0port=$(jq -r '.FORWARD.FWD0.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 FWD0uuid=$(jq -r '.FORWARD.FWD0.uuid[].FWD0uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
@@ -10,9 +11,7 @@ if [[ -z "$FWD0path" ]]; then
     first_uuid=$(echo "$FWD0uuid" | head -n1)
     if [[ -n "$first_uuid" ]]; then
         FWD0path=$(uuid_to_path "$first_uuid")
-        jq --arg path "$FWD0path" '.FORWARD.FWD0.path=$path' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-        chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-        chmod 660 /opt/de_GWD/0conf
+        conf_jq --arg path "$FWD0path" '.FORWARD.FWD0.path=$path'
     else
         FWD0path="/fwd0"
     fi
@@ -28,6 +27,7 @@ done
 FWD0in=$(build_vless_xhttp_inbound_direct_tls "$FWD0port" "$clients_json" "$FWD0path" "/var/www/ssl/de_GWD.cer" "/var/www/ssl/de_GWD.key" "forward0")
 
 jq --argjson FWD0in "$FWD0in" 'del(.inbounds[] | select(.tag == "forward0")) | .inbounds += [$FWD0in]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-chmod 644 /var/www/ssl/*.key 2>/dev/null || true
+chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
+chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 
 [[ "$1" = "r" ]] && systemctl restart vtrui >/dev/null 2>&1

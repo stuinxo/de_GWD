@@ -1,0 +1,95 @@
+#!/bin/bash
+# Shared atomic configuration transaction helper for /opt/de_GWD/0conf
+
+GWD_CONF_FILE="${DEGWD_CONF_PATH:-/opt/de_GWD/0conf}"
+GWD_CONF_LOCK="${GWD_CONF_FILE}.lock"
+GWD_CONF_BAK="${GWD_CONF_FILE}_bak"
+
+conf_ensure_lock() {
+  local dir
+  dir=$(dirname "$GWD_CONF_FILE")
+  mkdir -p "$dir" 2>/dev/null || true
+  if [[ ! -f "$GWD_CONF_LOCK" ]]; then
+    touch "$GWD_CONF_LOCK" 2>/dev/null || true
+    chown root:www-data "$GWD_CONF_LOCK" 2>/dev/null || true
+    chmod 660 "$GWD_CONF_LOCK" 2>/dev/null || true
+  fi
+}
+
+# Usage: conf_jq [jq flags and filter]
+# Reads $GWD_CONF_FILE under exclusive flock, validates output is a JSON object,
+# backs up previous valid config to $GWD_CONF_BAK, and atomically replaces $GWD_CONF_FILE.
+_conf_jq_inner() {
+  local dir tmp src
+  dir=$(dirname "$GWD_CONF_FILE")
+  src="$GWD_CONF_FILE"
+  if ! jq -e 'type == "object"' "$src" >/dev/null 2>&1; then
+    if [[ -f "$GWD_CONF_BAK" ]] && jq -e 'type == "object"' "$GWD_CONF_BAK" >/dev/null 2>&1; then
+      src="$GWD_CONF_BAK"
+    else
+      src=""
+    fi
+  fi
+  tmp=$(mktemp "${dir}/.0conf.tmp.XXXXXX") || exit 1
+  if [[ -n "$src" ]]; then
+    if ! jq "$@" "$src" >"$tmp"; then
+      rm -f "$tmp"
+      exit 1
+    fi
+  else
+    if ! jq -n '{}' | jq "$@" >"$tmp"; then
+      rm -f "$tmp"
+      exit 1
+    fi
+  fi
+  if ! jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"
+    exit 1
+  fi
+  if [[ -f "$GWD_CONF_FILE" ]] && jq -e 'type == "object"' "$GWD_CONF_FILE" >/dev/null 2>&1; then
+    cp -f "$GWD_CONF_FILE" "$GWD_CONF_BAK" 2>/dev/null || true
+    chmod 600 "$GWD_CONF_BAK" 2>/dev/null || true
+  fi
+  chown root:www-data "$tmp" 2>/dev/null || true
+  chmod 660 "$tmp" 2>/dev/null || true
+  mv -f "$tmp" "$GWD_CONF_FILE"
+}
+
+conf_jq() {
+  conf_ensure_lock
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x -w 30 9 || exit 1
+      _conf_jq_inner "$@"
+    ) 9>"$GWD_CONF_LOCK"
+  elif command -v python3 >/dev/null 2>&1; then
+    (
+      local flock_py
+      flock_py='
+import fcntl, subprocess, sys
+lock_path = sys.argv[1]
+args = sys.argv[2:]
+with open(lock_path, "a+") as f:
+    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    sys.exit(subprocess.call(["bash", "-c", "_conf_jq_inner \"$@\"", "--"] + args))
+'
+      export -f _conf_jq_inner
+      export GWD_CONF_FILE GWD_CONF_LOCK GWD_CONF_BAK
+      python3 -c "$flock_py" "$GWD_CONF_LOCK" "$@"
+    )
+  else
+    local lockdir="${GWD_CONF_LOCK}.d"
+    local tries=0
+    local rc=0
+    while ! mkdir "$lockdir" 2>/dev/null; do
+      tries=$((tries + 1))
+      if (( tries > 300 )); then
+        return 1
+      fi
+      sleep 0.1
+    done
+    _conf_jq_inner "$@" || rc=$?
+    rmdir "$lockdir" 2>/dev/null || true
+    return "$rc"
+  fi
+}

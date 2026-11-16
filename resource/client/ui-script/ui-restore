@@ -1,47 +1,69 @@
 #!/bin/bash
-if [[ $(du -sk /var/www/html/restore/de_GWD_bak 2>/dev/null | awk '{print$1}') -gt 1 ]]; then
-mv -f /var/www/html/restore/de_GWD_bak /opt/de_GWD/0conf
-jq '
-  (if (.ddns.ddnsCF.cfToken // "") == "" and ((.ddns.ddnsCF.cfAPIkey // "") | type) == "string" and ((.ddns.ddnsCF.cfAPIkey // "") | length) > 0 and ((.ddns.ddnsCF.cfAPIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .ddns.ddnsCF.cfToken = .ddns.ddnsCF.cfAPIkey else . end)
-  | (if (.FORWARD.token // "") == "" and ((.FORWARD.APIkey // "") | type) == "string" and ((.FORWARD.APIkey // "") | length) > 0 and ((.FORWARD.APIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .FORWARD.token = .FORWARD.APIkey else . end)
-  | del(.ddns.ddns3322, .ddns.ddnsCF.cfAPIkey, .ddns.ddnsCF.cfEmail, .FORWARD.APIkey, .FORWARD.Email)
-' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
-chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
-chmod 660 /opt/de_GWD/0conf
+source /opt/de_GWD/ui-confCommon
 
-if [[ -n $(jq -r '.address.alias' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$') ]]; then
- 	/opt/de_GWD/ui-markThis
-fi
+bakFile="/opt/de_GWD/restore/de_GWD_bak"
+[[ ! -f "$bakFile" && -f "/var/www/html/restore/de_GWD_bak" ]] && bakFile="/var/www/html/restore/de_GWD_bak"
 
-/opt/de_GWD/ui-NodeOne
+if [[ -f "$bakFile" ]] && jq -e 'type == "object"' "$bakFile" >/dev/null 2>&1; then
+  tmpConf=$(mktemp /opt/de_GWD/.0conf.restore.XXXXXX) || exit 1
+  if jq '
+    (if (.ddns.ddnsCF.cfToken // "") == "" and ((.ddns.ddnsCF.cfAPIkey // "") | type) == "string" and ((.ddns.ddnsCF.cfAPIkey // "") | length) > 0 and ((.ddns.ddnsCF.cfAPIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .ddns.ddnsCF.cfToken = .ddns.ddnsCF.cfAPIkey else . end)
+    | (if (.FORWARD.token // "") == "" and ((.FORWARD.APIkey // "") | type) == "string" and ((.FORWARD.APIkey // "") | length) > 0 and ((.FORWARD.APIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .FORWARD.token = .FORWARD.APIkey else . end)
+    | del(.ddns.ddns3322, .ddns.ddnsCF.cfAPIkey, .ddns.ddnsCF.cfEmail, .FORWARD.APIkey, .FORWARD.Email)
+  ' "$bakFile" >"$tmpConf" && jq -e 'type == "object"' "$tmpConf" >/dev/null 2>&1; then
+    conf_ensure_lock
+    (
+      flock -x -w 30 9 || exit 1
+      if [[ -f /opt/de_GWD/0conf ]] && jq -e 'type == "object"' /opt/de_GWD/0conf >/dev/null 2>&1; then
+        cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak 2>/dev/null || true
+        chmod 600 /opt/de_GWD/0conf_bak 2>/dev/null || true
+      fi
+      chown root:www-data "$tmpConf" 2>/dev/null || true
+      chmod 660 "$tmpConf" 2>/dev/null || true
+      mv -f "$tmpConf" /opt/de_GWD/0conf
+    ) 9>"$GWD_CONF_LOCK"
+    rm -f "$bakFile"
+  else
+    rm -f "$tmpConf" "$bakFile"
+    exit 1
+  fi
 
-if [[ $(jq -r '.v2nodeDIV.nodeSM.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
-  /opt/de_GWD/ui-NodeSM >/dev/null 2>&1
-fi
+  if [[ -n $(jq -r '.address.alias // empty' /opt/de_GWD/0conf 2>/dev/null) ]]; then
+    /opt/de_GWD/ui-markThis
+  fi
 
-if [[ $(jq -r '.v2nodeDIV.nodeCU.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
-  /opt/de_GWD/ui-NodeCU >/dev/null 2>&1
-fi
+  /opt/de_GWD/ui-NodeOne
 
-if [[ $(jq -r '.v2nodeDIV.nodeDT.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
-  /opt/de_GWD/ui-NodeDT >/dev/null 2>&1
-fi
+  if [[ $(jq -r '.v2nodeDIV.nodeSM.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-NodeSM >/dev/null 2>&1
+  fi
 
-if [[ $(jq -r '.FORWARD.FWD1.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then
-  /opt/de_GWD/ui-FWD1save >/dev/null 2>&1
-fi
+  if [[ $(jq -r '.v2nodeDIV.nodeCU.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-NodeCU >/dev/null 2>&1
+  fi
 
-if [[ $(jq -r '.FORWARD.Rproxy.client.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then
-  /opt/de_GWD/ui-RproxyCsave >/dev/null 2>&1
-fi
+  if [[ $(jq -r '.v2nodeDIV.nodeDT.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-NodeDT >/dev/null 2>&1
+  fi
 
-if [[ $(jq -r '.FORWARD.Rproxy.server.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then
-  /opt/de_GWD/ui-RproxySsave >/dev/null 2>&1
-fi
+  if [[ $(jq -r '.FORWARD.FWD1.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-FWD1save >/dev/null 2>&1
+  fi
 
-/opt/de_GWD/ui_4h
+  if [[ $(jq -r '.FORWARD.Rproxy.client.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-RproxyCsave >/dev/null 2>&1
+  fi
 
-systemctl restart nftables
-systemctl restart mosdns
-systemctl restart vtrui
+  if [[ $(jq -r '.FORWARD.Rproxy.server.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-RproxySsave >/dev/null 2>&1
+  fi
+
+  /opt/de_GWD/ui_4h
+
+  systemctl restart nftables
+  systemctl restart mosdns
+  systemctl restart vtrui
+else
+  rm -f "$bakFile"
+  exit 1
 fi

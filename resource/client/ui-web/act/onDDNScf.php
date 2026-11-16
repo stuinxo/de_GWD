@@ -1,16 +1,24 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$CFdomain = trim($_GET['CFdomain'] ?? '');
-$CFtoken = trim($_GET['CFtoken'] ?? '');
+gwd_require_post_csrf();
+$CFdomain = trim((string)gwd_param('CFdomain', ''));
+$CFtoken = trim((string)gwd_param('CFtoken', ''));
 
-unset($conf['ddns']['ddns3322'], $conf['ddns']['ddnsCF']['cfAPIkey'], $conf['ddns']['ddnsCF']['cfEmail']);
-$conf['ddns']['ddnsCF']['cfDomain'] = $CFdomain;
-$conf['ddns']['ddnsCF']['cfToken'] = $CFtoken;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($CFdomain, $CFtoken): array {
+    if (!isset($conf['ddns']) || !is_array($conf['ddns'])) {
+        $conf['ddns'] = [];
+    }
+    unset($conf['ddns']['ddns3322']);
+    if (!isset($conf['ddns']['ddnsCF']) || !is_array($conf['ddns']['ddnsCF'])) {
+        $conf['ddns']['ddnsCF'] = [];
+    }
+    unset($conf['ddns']['ddnsCF']['cfAPIkey'], $conf['ddns']['ddnsCF']['cfEmail']);
+    $conf['ddns']['ddnsCF']['cfDomain'] = $CFdomain;
+    $conf['ddns']['ddnsCF']['cfToken'] = $CFtoken;
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-ddnsCFon &');
+exec('sudo /opt/de_GWD/ui-ddnsCFon >/dev/null 2>&1 &');
 ?>
 <?php }?>

@@ -1,14 +1,20 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$NFSlist = $_GET['NFSlist'];
+gwd_require_post_csrf();
+$NFSlist = gwd_param('NFSlist', []);
+if (!is_array($NFSlist)) {
+    $NFSlist = [];
+}
 
-unset($conf['app']['NFS']);
-$conf['app']['NFS'] = $NFSlist;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($NFSlist): array {
+    if (!isset($conf['app']) || !is_array($conf['app'])) {
+        $conf['app'] = [];
+    }
+    $conf['app']['NFS'] = $NFSlist;
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-NFSon &');
+exec('sudo /opt/de_GWD/ui-NFSon >/dev/null 2>&1 &');
 ?>
 <?php }?>

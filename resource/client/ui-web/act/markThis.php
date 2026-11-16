@@ -1,12 +1,16 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$markThis = $_GET['markName'];
+gwd_require_post_csrf();
+$markThis = trim((string)gwd_param('markName', ''));
 
-$conf['address']['alias'] = $markThis;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($markThis): array {
+    if (!isset($conf['address']) || !is_array($conf['address'])) {
+        $conf['address'] = [];
+    }
+    $conf['address']['alias'] = $markThis;
+    return $conf;
+});
 
 exec('sudo /opt/de_GWD/ui-markThis >/dev/null 2>&1 &');
 ?>

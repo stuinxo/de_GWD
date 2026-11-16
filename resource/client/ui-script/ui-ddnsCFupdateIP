@@ -19,11 +19,12 @@ if [[ -n "$wanIP" && "$wanIP" != "$CFdomainip" ]]; then
     CFrecordID=$(curl -fsSL -X GET "https://api.cloudflare.com/client/v4/zones/$CFzoneID/dns_records?type=A&name=$CFdomain" "${authHeaders[@]}" 2>/dev/null | jq --arg CFdomain "$CFdomain" -r '.result[] | select(.name == $CFdomain).id' | head -n 1)
     payload=$(jq -nc --arg name "$CFdomain" --arg content "$wanIP" '{type:"A",name:$name,content:$content,ttl:1,proxied:false}')
     if [[ -n "$CFrecordID" ]]; then
-      curl -fsSL -X PUT "https://api.cloudflare.com/client/v4/zones/$CFzoneID/dns_records/$CFrecordID" \
-           "${authHeaders[@]}" --data "$payload" >/dev/null 2>&1
+      cfResp=$(curl -fsSL -X PUT "https://api.cloudflare.com/client/v4/zones/$CFzoneID/dns_records/$CFrecordID" \
+           "${authHeaders[@]}" --data "$payload" 2>/dev/null) || exit 1
     else
-      curl -fsSL -X POST "https://api.cloudflare.com/client/v4/zones/$CFzoneID/dns_records" \
-           "${authHeaders[@]}" --data "$payload" >/dev/null 2>&1
+      cfResp=$(curl -fsSL -X POST "https://api.cloudflare.com/client/v4/zones/$CFzoneID/dns_records" \
+           "${authHeaders[@]}" --data "$payload" 2>/dev/null) || exit 1
     fi
+    jq -e '.success == true' >/dev/null 2>&1 <<< "$cfResp" || exit 1
   fi
 fi

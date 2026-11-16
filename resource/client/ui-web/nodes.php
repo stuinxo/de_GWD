@@ -27,11 +27,13 @@
 
   <!-- Core plugin JavaScript-->
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
@@ -280,12 +282,12 @@ current.insertAfter(next);
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#buttonAddLine').click(function(){
@@ -330,7 +332,7 @@ for( let i = 0; i<len; i++){
     nodeList.push({domain, tls, name, uuid, path})
     }
 }
-$.get("./act/NodeSave.php", {nodeList:nodeList}, function(result){
+$.post("./act/NodeSave.php", {nodeList:nodeList}, function(result){
   $("#buttonSaveNodeLoading").removeClass()
   window.location.href="index.php"
 })

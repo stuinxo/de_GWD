@@ -29,11 +29,13 @@
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
 
   <script src="js/jquery.qrcode.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
 <?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
 
@@ -367,13 +369,13 @@ $("#WGbody").css("display", "block")
 }
 
 function WGgenSkey(){
-$.get('./act/WGgenSkey.php', function(result){window.location.reload()})
+$.post('./act/WGgenSkey.php', function(result){window.location.reload()})
 }
 
 function WGgenCkey(WGgenCkey){
 var WGnum = $(WGgenCkey).parent().find('.input-group-text').html()
 var WGnum = WGnum.replace(/[^0-9]/ig,"")-1
-$.get('./act/WGgenCkey.php', {WGnum:WGnum}, function(result){window.location.reload()})
+$.post('./act/WGgenCkey.php', {WGnum:WGnum}, function(result){window.location.reload()})
 }
 
 function WGqr(WGqr){
@@ -411,12 +413,12 @@ $(WGremove).parent().parent('.input-group').remove()
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#buttonShowIP').click(function(){
@@ -442,7 +444,7 @@ $('#buttonddnsCFon').click(function(){
 $("#buttonddnsCFonLoading").attr("class", "spinner-border spinner-border-sm")
 cfdomain=$('#CFdomain').val().trim()
 cftoken=$('#CFtoken').val().trim()
-$.get('./act/onDDNScf.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(result){
+$.post('./act/onDDNScf.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(result){
   $("#buttonddnsCFonLoading").removeClass()
   $('#buttonddnsCFon').attr('class', 'btn btn-success btn-sm mt-1')
 })
@@ -450,7 +452,7 @@ $.get('./act/onDDNScf.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(resul
 
 $('#buttonddnsCFoff').click(function(){
 $("#buttonddnsCFoffLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/offDDNScf.php', function(result){
+$.post('./act/offDDNScf.php', function(result){
   $("#buttonddnsCFoffLoading").removeClass()
   $('#buttonddnsCFon').attr('class', 'btn btn-outline-secondary btn-sm mt-1')
   $('#ddnsCFswitch').css('display', 'block'); 
@@ -463,7 +465,7 @@ $.get('./act/offDDNScf.php', function(result){
 
 $('#buttonWGclientAdd').click(function(){
   var i = $("#WGclients .input-group").length
-$.get('./act/WGgenCkey.php', {WGnum:i}, function(data){
+$.post('./act/WGgenCkey.php', {WGnum:i}, function(data){
   var data = data.split('\n')
   var cprivatekey = data[0]
   var cpublickey = data[1]
@@ -518,12 +520,12 @@ WGswitch()
 })
 
 $('#buttonWGinstall').click(function(){
-$.get('./act/installWG.php', function(){});
+$.post('./act/installWG.php', function(){});
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
@@ -545,7 +547,7 @@ for( let i = 0; i<len; i++){
     WGclientsList.push({cprivatekey, cpublickey, mark})
     }
 }
-$.get('./act/onWG.php', {WGaddress:WGaddress, WGport:WGport, sprivatekey:sprivatekey, spublickey:spublickey, WGclientsList:WGclientsList}, function(result){
+$.post('./act/onWG.php', {WGaddress:WGaddress, WGport:WGport, sprivatekey:sprivatekey, spublickey:spublickey, WGclientsList:WGclientsList}, function(result){
   $("#buttonOnWGloading").removeClass()
   $('#buttonOnWG').attr('class', 'btn btn-success btn-sm mt-1')
 })
@@ -553,7 +555,7 @@ $.get('./act/onWG.php', {WGaddress:WGaddress, WGport:WGport, sprivatekey:sprivat
 
 $('#buttonOffWG').click(function(){
 $("#buttonOffWGloading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/offWG.php', function(result){
+$.post('./act/offWG.php', function(result){
   $("#buttonOffWGloading").removeClass()
   $('#buttonOnWG').attr('class', 'btn btn-outline-secondary btn-sm mt-1')
   $("#WGswitch").css("display", "block")

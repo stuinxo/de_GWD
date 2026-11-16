@@ -1,6 +1,7 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-exec('sudo cp -f /opt/de_GWD/0conf /var/www/html/restore/de_GWD_bak');
+gwd_require_post_csrf();
+exec('sudo /opt/de_GWD/ui-backup gwd');
 ?>
 <?php }?>

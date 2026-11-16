@@ -1,11 +1,15 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$data = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$data['v2nodeDIV']['ss'] = array();
-$newJsonString = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_require_post_csrf();
+gwd_update_conf(function (array $conf): array {
+    if (!isset($conf['v2nodeDIV']) || !is_array($conf['v2nodeDIV'])) {
+        $conf['v2nodeDIV'] = [];
+    }
+    $conf['v2nodeDIV']['ss'] = [];
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-changeNodeSS0 &');
+exec('sudo /opt/de_GWD/ui-changeNodeSS0 >/dev/null 2>&1 &');
 ?>
 <?php }?>

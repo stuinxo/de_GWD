@@ -14,6 +14,7 @@ import logging
 
 LOG_FILE = "/var/log/de_GWD_failover.log"
 CONF_FILE = "/opt/de_GWD/0conf"
+XRAY_CONF_FILE = "/opt/de_GWD/vtrui/config.json"
 CHECK_INTERVAL = 30       # 巡检周期：30秒
 FAIL_THRESHOLD = 3       # 判定主节点故障的连续失败次数 (3次约90秒)
 RECOVER_THRESHOLD = 3    # 判定高优先级节点恢复的连续成功次数 (3次约90秒)
@@ -67,6 +68,19 @@ def get_nodes():
         logger.error(f"读取 {CONF_FILE} 失败: {e}")
         log_flush()
         return []
+
+def is_reality_active():
+    """检查当前默认出站是否处于手动 Reality 节点模式"""
+    try:
+        with open(XRAY_CONF_FILE, "r", encoding="utf-8") as f:
+            xcfg = json.load(f)
+        outbounds = xcfg.get("outbounds") or []
+        if outbounds and isinstance(outbounds[0], dict):
+            if outbounds[0].get("streamSettings", {}).get("security") == "reality":
+                return True
+    except Exception:
+        pass
+    return False
 
 def get_active_index():
     """获取当前生效的节点序号"""
@@ -147,6 +161,16 @@ def main():
     while True:
         try:
             loop_count += 1
+            if is_reality_active():
+                if fail_count > 0 or recover_counts:
+                    fail_count = 0
+                    recover_counts.clear()
+                if loop_count % 10 == 0:
+                    logger.info("[HEARTBEAT 心跳] 当前处于手动 Reality 出站模式，跳过普通节点自动切换。")
+                    log_flush()
+                time.sleep(CHECK_INTERVAL)
+                continue
+
             nodes = get_nodes()
             if len(nodes) < 2:
                 time.sleep(CHECK_INTERVAL)

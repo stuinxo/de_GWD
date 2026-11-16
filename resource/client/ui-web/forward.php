@@ -29,11 +29,13 @@
   <script src="vendor/jquery-easing/jquery.easing.min.js"></script>
 
   <script src="js/jquery.qrcode.min.js"></script>
+  <meta name="csrf-token" content="<?php echo gwd_h($csrfToken ?? ''); ?>">
+  <script src="js/gwd-csrf.js"></script>
 
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = json_decode(file_get_contents('/opt/de_GWD/0conf')); ?>
+<?php $de_GWDconf = gwd_read_conf_object(); ?>
 <?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
 <?php $checkBitwarden = $de_GWDconf->app->bitwarden ?? ''; ?>
 
@@ -723,7 +725,7 @@ $.get('./act/FWD0qr.php', {FWD0index:FWD0index}, function(data){
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title mx-auto">默认中转线二维码 - ${markVal}</h5>
+              <h5 class="modal-title mx-auto"></h5>
             </div>
             <div class="modal-body">
               <div id="FWD0qrcode${FWD0index}" class="text-center mb-3"></div>
@@ -738,6 +740,7 @@ $.get('./act/FWD0qr.php', {FWD0index:FWD0index}, function(data){
         </div>
       </div>
     `);
+    $('#FWD0qrpop' + FWD0index + ' .modal-title').text('默认中转线二维码 - ' + markVal);
   }
   $('#FWD0qrcode'+FWD0index).empty()
   $('#FWD0link'+FWD0index).val(data)
@@ -764,7 +767,7 @@ $.get('./act/FWD1qr.php', {FWD1index:FWD1index}, function(data){
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title mx-auto">并行中转线二维码 - ${markVal}</h5>
+              <h5 class="modal-title mx-auto"></h5>
             </div>
             <div class="modal-body">
               <div id="FWD1qrcode${FWD1index}" class="text-center mb-3"></div>
@@ -779,6 +782,7 @@ $.get('./act/FWD1qr.php', {FWD1index:FWD1index}, function(data){
         </div>
       </div>
     `);
+    $('#FWD1qrpop' + FWD1index + ' .modal-title').text('并行中转线二维码 - ' + markVal);
   }
   $('#FWD1qrcode'+FWD1index).empty()
   $('#FWD1link'+FWD1index).val(data)
@@ -791,8 +795,8 @@ function buttonFWD1upstream(buttonFWD1upstream){
 var FWD1upstreamobj = $(buttonFWD1upstream).parent().find('button')
 var FWD1upstreamindex = FWD1upstreamobj.index($(buttonFWD1upstream))
 var FWD1upstreamAddress = $('#FWD1upstream'+FWD1upstreamindex).val()
-var FWD1upstreamName = $('#FWD1upstream'+FWD1upstreamindex).html()
-$('#FWD1upstream').html(FWD1upstreamName)
+var FWD1upstreamName = $('#FWD1upstream'+FWD1upstreamindex).text()
+$('#FWD1upstream').text(FWD1upstreamName)
 $('#FWD1upstream').val(FWD1upstreamAddress)
 }
 
@@ -854,23 +858,23 @@ $('#RproxyCbody').css('display', 'block');
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.get('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
 })
 
 $('#buttonMarkThis').click(function(){
 markNametxt=$('#markName').val()
-$.get('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
+$.post('./act/markThis.php', {markName:markNametxt}, function(result){window.location.reload()})
 })
 
 $('#buttonGenCER').click(function(){
 cfdomain=$('#CFdomain').val().trim()
 cftoken=$('#CFtoken').val().trim()
-$.get('./act/genCER.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(){})
+$.post('./act/genCER.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
 var timer = setInterval(function() { 
     if(win.closed) {
         clearInterval(timer);
-        $.get('./act/installZ.php', function(result){window.location.reload()})
+        $.post('./act/installZ.php', function(result){window.location.reload()})
     }
 }, 300);
 })
@@ -879,14 +883,14 @@ $('#buttonCheckCER').click(function(){
 $("#buttonCheckCERloading").attr("class", "spinner-border spinner-border-sm")
 $.get('./act/checkCER.php', function(data){
   $("#buttonCheckCERloading").removeClass()
-  $("#buttonCheckCERtxt").html(data)
+  $("#buttonCheckCERtxt").text(data)
 })
 })
 
 $('#buttonDoGsSave').click(function(){
 $("#buttonDoGsSaveLoading").attr("class", "spinner-border spinner-border-sm")
 DoGsPort=$('#DoGsPort').val().trim()
-$.get('./act/DoGsSave.php', {DoGsPort:DoGsPort}, function(result){
+$.post('./act/DoGsSave.php', {DoGsPort:DoGsPort}, function(result){
   $("#buttonDoGsSaveLoading").removeClass()
   window.location.reload()
 
@@ -895,7 +899,7 @@ $.get('./act/DoGsSave.php', {DoGsPort:DoGsPort}, function(result){
 
 $('#buttonDoGsStop').click(function(){
 $("#buttonDoGsStopLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/DoGsStop.php', function(result){
+$.post('./act/DoGsStop.php', function(result){
   $("#buttonDoGsStopLoading").removeClass()
   $("#buttonDoGsSave").attr('class','btn btn-outline-secondary btn-sm mt-1')
   $('#DoGsSwitch').css('display', 'block');
@@ -906,7 +910,7 @@ $.get('./act/DoGsStop.php', function(result){
 
 $('#buttonBlock53on').click(function(){
 $("#buttonBlock53onLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/block53on.php', function(result){
+$.post('./act/block53on.php', function(result){
   $("#buttonBlock53onLoading").removeClass()
   $("#buttonBlock53on").attr('class','btn btn-success btn-sm mt-1')
 })
@@ -914,7 +918,7 @@ $.get('./act/block53on.php', function(result){
 
 $('#buttonBlock53off').click(function(){
 $("#buttonBlock53offLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/block53off.php', function(result){
+$.post('./act/block53off.php', function(result){
   $("#buttonBlock53offLoading").removeClass()
   $("#buttonBlock53on").attr('class','btn btn-outline-secondary btn-sm mt-1')
 })
@@ -952,7 +956,7 @@ for( let i = 1; i<=len; i++){
     FWD0uuidList.push({FWD0uuid, FWD0mark})
     }
 }
-$.get('./act/FWD0save.php', {FWD0port:FWD0port, FWD0uuidList:FWD0uuidList}, function(result){
+$.post('./act/FWD0save.php', {FWD0port:FWD0port, FWD0uuidList:FWD0uuidList}, function(result){
   $("#buttonFWD0saveLoading").removeClass()
 window.location.reload()
 })
@@ -960,7 +964,7 @@ window.location.reload()
 
 $('#buttonFWD0stop').click(function(){
 $("#buttonFWD0stopLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/FWD0stop.php', function(result){
+$.post('./act/FWD0stop.php', function(result){
   $("#buttonFWD0stopLoading").removeClass()
   $("#buttonFWD0save").attr('class','btn btn-outline-secondary btn-sm mt-1')
   $('#FWD0switch').css('display', 'block');
@@ -1002,7 +1006,7 @@ for( let i = 1; i<=len; i++){
     FWD1uuidList.push({FWD1uuid, FWD1mark})
     }
 }
-$.get('./act/FWD1save.php', {FWD1upstream:FWD1upstream, FWD1port:FWD1port, FWD1uuidList:FWD1uuidList}, function(result){
+$.post('./act/FWD1save.php', {FWD1upstream:FWD1upstream, FWD1port:FWD1port, FWD1uuidList:FWD1uuidList}, function(result){
   $("#buttonFWD1saveLoading").removeClass()
 window.location.reload()
 })
@@ -1010,7 +1014,7 @@ window.location.reload()
 
 $('#buttonFWD1stop').click(function(){
 $("#buttonFWD1stopLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/FWD1stop.php', function(result){
+$.post('./act/FWD1stop.php', function(result){
   $("#buttonFWD1stopLoading").removeClass()
   $("#buttonFWD1save").attr('class','btn btn-outline-secondary btn-sm mt-1')
   $('#FWD1switch').css('display', 'block');
@@ -1029,12 +1033,12 @@ var len = $("#RproxyS1List .input-group").length
 var RproxyS1Port, RproxyS1Protocol
 for( let i = 0; i<len; i++){
     var port = $('#RproxyS1Port'+i).val().trim()
-    var protocol = $('#RproxyS1Protocol'+i).html()
+    var protocol = $('#RproxyS1Protocol'+i).text()
     if ( port !== '' && protocol !== '') {
     RproxyS1List.push({port, protocol})
     }
 }
-$.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
+$.post('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
   $("#buttonRproxySsaveLoading").removeClass()
   window.location.reload()
 })
@@ -1042,7 +1046,7 @@ $.get('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunn
 
 $('#buttonRproxySstop').click(function(){
 $("#buttonRproxySstopLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/RproxySstop.php', function(result){
+$.post('./act/RproxySstop.php', function(result){
   $("#buttonRproxySstopLoading").removeClass()
   $("#buttonRproxySsave").attr('class','btn btn-outline-secondary btn-sm mt-1')
   $('#RproxySswitch').css('display', 'block'); 
@@ -1121,14 +1125,14 @@ var len = $("#RproxyC1List .input-group").length
 var RproxyC1extPort, RproxyC1extProtocol, RproxyC1intIP, RproxyC1intPort
 for( let i = 0; i<len; i++){
     var extPort = $('#RproxyC1extPort'+i).val().trim()
-    var extProtocol = $('#RproxyC1extProtocol'+i).html()
+    var extProtocol = $('#RproxyC1extProtocol'+i).text()
     var intIP = $('#RproxyC1intIP'+i).val().trim()
     var intPort = $('#RproxyC1intPort'+i).val().trim()
     if ( extPort !== '' && extProtocol !== '' && intIP !== '' && intPort !== '') {
     RproxyC1List.push({extPort, extProtocol, intIP, intPort})
     }
 }
-$.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
+$.post('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
   $("#buttonRproxyCsaveLoading").removeClass()
   window.location.reload()
 })
@@ -1136,7 +1140,7 @@ $.get('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, Rprox
 
 $('#buttonRproxyCstop').click(function(){
 $("#buttonRproxyCstopLoading").attr("class", "spinner-border spinner-border-sm")
-$.get('./act/RproxyCstop.php', function(result){
+$.post('./act/RproxyCstop.php', function(result){
   $("#buttonRproxyCstopLoading").removeClass()
   $("#buttonRproxyCsave").attr('class','btn btn-outline-secondary btn-sm mt-1')
   $('#RproxyCswitch').css('display', 'block'); 

@@ -1,8 +1,9 @@
 #!/bin/bash
 /opt/de_GWD/ui-ddnsCFupdateIP
 
-crontab -l 2>/dev/null >/tmp/now.cron
-sed -i '/ui-ddnsCF/d' /tmp/now.cron
-echo '*/1 * * * * /opt/de_GWD/ui-ddnsCFupdateIP >/dev/null 2>&1' >>/tmp/now.cron
-crontab /tmp/now.cron
-rm -rf /tmp/now.cron
+tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX) || exit 1
+trap 'rm -f "$tmpCron"' EXIT
+crontab -l 2>/dev/null >"$tmpCron" || true
+sed -i '/ui-ddnsCF/d' "$tmpCron"
+echo '*/1 * * * * /opt/de_GWD/ui-ddnsCFupdateIP >/dev/null 2>&1' >>"$tmpCron"
+crontab "$tmpCron"

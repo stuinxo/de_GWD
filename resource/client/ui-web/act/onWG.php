@@ -1,22 +1,29 @@
 <?php require_once('../auth.php'); ?>
 <?php if (isset($auth) && $auth) {?>
 <?php
-$conf = json_decode(file_get_contents('/opt/de_GWD/0conf'), true);
-$WGaddress = $_GET['WGaddress'];
-$WGport = $_GET['WGport'];
-$sprivatekey = $_GET['sprivatekey'];
-$spublickey = $_GET['spublickey'];
-$WGclientsList = $_GET['WGclientsList'];
+gwd_require_post_csrf();
+$WGaddress = trim((string)gwd_param('WGaddress', ''));
+$WGport = trim((string)gwd_param('WGport', ''));
+$sprivatekey = trim((string)gwd_param('sprivatekey', ''));
+$spublickey = trim((string)gwd_param('spublickey', ''));
+$WGclientsList = gwd_param('WGclientsList', []);
+if (!is_array($WGclientsList)) {
+    $WGclientsList = [];
+}
 
-unset($conf['wireguard']);
-$conf['wireguard']['server']['WGaddress'] = $WGaddress;
-$conf['wireguard']['server']['WGport'] = $WGport;
-$conf['wireguard']['server']['sprivatekey'] = $sprivatekey;
-$conf['wireguard']['server']['spublickey'] = $spublickey;
-$conf['wireguard']['clients'] = $WGclientsList;
-$newJsonString = json_encode($conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-file_put_contents('/opt/de_GWD/0conf', $newJsonString);
+gwd_update_conf(function (array $conf) use ($WGaddress, $WGport, $sprivatekey, $spublickey, $WGclientsList): array {
+    $conf['wireguard'] = [
+        'server' => [
+            'WGaddress' => $WGaddress,
+            'WGport' => $WGport,
+            'sprivatekey' => $sprivatekey,
+            'spublickey' => $spublickey,
+        ],
+        'clients' => $WGclientsList,
+    ];
+    return $conf;
+});
 
-exec('sudo /opt/de_GWD/ui-WGon &');
+exec('sudo /opt/de_GWD/ui-WGon >/dev/null 2>&1 &');
 ?>
 <?php }?>
