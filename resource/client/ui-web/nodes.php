@@ -1,5 +1,15 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : null;
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : null;
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +21,7 @@
   <meta name="description" content="">
   <meta name="author" content="">
 
-<title>节点管理</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -33,9 +43,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
-<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -53,21 +60,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -139,7 +146,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -181,14 +188,16 @@
                 </thead>
                 <tbody id="nodeTable">
 <?php 
-$v2nodeCount = isset($de_GWDconf->v2node) && is_countable($de_GWDconf->v2node) ? count($de_GWDconf->v2node) : 0;
+$v2nodesList = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? array_values($de_GWDconf->v2node) : [];
+$v2nodeCount = count($v2nodesList);
 for( $i=0; $i<$v2nodeCount; $i++){
+  $nodeItem = is_object($v2nodesList[$i]) ? $v2nodesList[$i] : new stdClass();
   $num = $i+1;
-  $domain = htmlspecialchars($de_GWDconf->v2node[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
-  $tls = htmlspecialchars($de_GWDconf->v2node[$i]->tls ?? '', ENT_QUOTES, 'UTF-8');
-  $name = htmlspecialchars($de_GWDconf->v2node[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
-  $path = htmlspecialchars($de_GWDconf->v2node[$i]->path ?? '', ENT_QUOTES, 'UTF-8');
-  $uuid = htmlspecialchars($de_GWDconf->v2node[$i]->uuid ?? '', ENT_QUOTES, 'UTF-8');
+  $domain = gwd_h($nodeItem->domain ?? '');
+  $tls = gwd_h($nodeItem->tls ?? '');
+  $name = gwd_h($nodeItem->name ?? '');
+  $path = gwd_h($nodeItem->path ?? '');
+  $uuid = gwd_h($nodeItem->uuid ?? '');
 print <<<EOT
 <tr>
 <td class="align-middle">$num</td>
@@ -267,6 +276,7 @@ var current = $(obj).closest('tr');
 var prev = current.prev('tr');
 if (prev.length) { 
 current.insertBefore(prev);
+$("#nodeTable tr").each(function(idx){ $(this).find("td:first").text(idx + 1); });
 }
 }
 
@@ -275,6 +285,7 @@ var current = $(obj).closest('tr');
 var next = current.next('tr');
 if (next.length) { 
 current.insertAfter(next);
+$("#nodeTable tr").each(function(idx){ $(this).find("td:first").text(idx + 1); });
 }
 }
 
@@ -282,7 +293,7 @@ current.insertAfter(next);
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -334,7 +345,13 @@ for( let i = 0; i<len; i++){
 }
 $.post("./act/NodeSave.php", {nodeList:nodeList}, function(result){
   $("#buttonSaveNodeLoading").removeClass()
+  if (/^skipped \d+/.test($.trim(result || ''))) {
+    alert('已保存，但有 ' + $.trim(result).split(' ')[1] + ' 个无效节点被跳过（地址/名称不能含空白，UUID 仅限字母数字-_）')
+  }
   window.location.href="index.php"
+}).fail(function(xhr){
+  $("#buttonSaveNodeLoading").removeClass()
+  alert($.trim(xhr.responseText) || "保存节点失败")
 })
 })
 })
@@ -346,7 +363,3 @@ $.post("./act/NodeSave.php", {nodeList:nodeList}, function(result){
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>

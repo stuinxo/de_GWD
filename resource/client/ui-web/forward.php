@@ -1,5 +1,57 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : '';
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : '';
+
+$checkCer = file_exists('/var/www/ssl/de_GWD.cer');
+
+$checkcoredns = exec('sudo systemctl is-active coredns');
+$DoGsConf = file_exists('/opt/de_GWD/coredns/corefile') ? strpos((string)@file_get_contents('/opt/de_GWD/coredns/corefile'), 'grpc://.:') : false;
+
+$checkBlock53 = (isset($de_GWDconf->FORWARD->block53) && is_scalar($de_GWDconf->FORWARD->block53)) ? (string)$de_GWDconf->FORWARD->block53 : '';
+
+$checkVtrui = exec('sudo systemctl is-active vtrui');
+$vtruiConf = file_exists('/opt/de_GWD/vtrui/config.json') ? json_decode((string)@file_get_contents('/opt/de_GWD/vtrui/config.json')) : null;
+$hasFwd0Inbound = false;
+if (is_object($vtruiConf) && isset($vtruiConf->inbounds) && is_array($vtruiConf->inbounds)) {
+    foreach ($vtruiConf->inbounds as $ib) {
+        if (is_object($ib) && isset($ib->tag) && $ib->tag === 'forward0') {
+            $hasFwd0Inbound = true;
+            break;
+        }
+    }
+}
+$checkFWD0 = !$hasFwd0Inbound;
+
+$checkVtrui1 = exec('sudo systemctl is-active vtrui1');
+$checkFWD1OB = explode("\n", (string)shell_exec('sudo /opt/de_GWD/ui-checkFWD1'));
+$checkFWD1 = file_exists('/opt/de_GWD/vtrui1/config.json');
+
+$checkRproxyS = exec('sudo systemctl is-active RproxyS');
+$RproxySconf = file_exists('/opt/de_GWD/RproxyS/config.json') ? json_decode((string)@file_get_contents('/opt/de_GWD/RproxyS/config.json')) : null;
+
+$checkRproxyC = exec('sudo systemctl is-active RproxyC');
+$RproxyCconf = file_exists('/opt/de_GWD/RproxyC/config.json') ? json_decode((string)@file_get_contents('/opt/de_GWD/RproxyC/config.json')) : null;
+
+$fwdDomain = (isset($de_GWDconf->FORWARD->domain) && is_scalar($de_GWDconf->FORWARD->domain)) ? (string)$de_GWDconf->FORWARD->domain : '';
+$fwdToken = (isset($de_GWDconf->FORWARD->token) && is_scalar($de_GWDconf->FORWARD->token))
+    ? (string)$de_GWDconf->FORWARD->token
+    : ((isset($de_GWDconf->FORWARD->APIkey) && is_scalar($de_GWDconf->FORWARD->APIkey)) ? (string)$de_GWDconf->FORWARD->APIkey : '');
+$doGsPort = (isset($de_GWDconf->FORWARD->DoGs->port) && is_scalar($de_GWDconf->FORWARD->DoGs->port)) ? (string)$de_GWDconf->FORWARD->DoGs->port : '';
+$fwd0Port = (isset($de_GWDconf->FORWARD->FWD0->port) && is_scalar($de_GWDconf->FORWARD->FWD0->port)) ? (string)$de_GWDconf->FORWARD->FWD0->port : '';
+$fwd1Port = (isset($de_GWDconf->FORWARD->FWD1->port) && is_scalar($de_GWDconf->FORWARD->FWD1->port)) ? (string)$de_GWDconf->FORWARD->FWD1->port : '';
+$rproxyStunnelPort = (isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->port) && is_scalar($de_GWDconf->FORWARD->Rproxy->server->tunnel->port)) ? (string)$de_GWDconf->FORWARD->Rproxy->server->tunnel->port : '';
+$rproxyStunnelUUID = (isset($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid) && is_scalar($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid)) ? (string)$de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid : '';
+$rproxyCtunnelAddr = (isset($de_GWDconf->FORWARD->Rproxy->client->tunnel->address) && is_scalar($de_GWDconf->FORWARD->Rproxy->client->tunnel->address)) ? (string)$de_GWDconf->FORWARD->Rproxy->client->tunnel->address : '';
+$rproxyCtunnelUUID = (isset($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid) && is_scalar($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid)) ? (string)$de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid : '';
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +63,7 @@
   <meta name="description" content="">
   <meta name="author" content="">
 
-<title>中转</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -35,30 +87,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden ?? ''; ?>
-
-<?php $checkCer = file_exists('/var/www/ssl/de_GWD.cer'); ?>
-
-<?php $checkcoredns = exec('sudo systemctl is-active coredns'); ?>
-<?php $DoGsConf = file_exists('/opt/de_GWD/coredns/corefile') ? strpos(file_get_contents('/opt/de_GWD/coredns/corefile'),'grpc://.:') : false;?>
-
-<?php $checkBlock53 = $de_GWDconf->FORWARD->block53 ?? ''; ?>
-
-<?php $checkVtrui = exec('sudo systemctl is-active vtrui'); ?>
-<?php $vtruiConf = file_exists('/opt/de_GWD/vtrui/config.json') ? json_decode(file_get_contents('/opt/de_GWD/vtrui/config.json')) : null; ?>
-<?php $checkFWD0 = empty($vtruiConf->inbounds[1]); ?>
-
-<?php $checkVtrui1 = exec('sudo systemctl is-active vtrui1'); ?>
-<?php $checkFWD1OB = explode("\n", (string)shell_exec('sudo /opt/de_GWD/ui-checkFWD1')); ?>
-<?php $checkFWD1 = file_exists('/opt/de_GWD/vtrui1/config.json'); ?>
-
-<?php $checkRproxyS = exec('sudo systemctl is-active RproxyS'); ?>
-<?php $RproxySconf = file_exists('/opt/de_GWD/RproxyS/config.json') ? json_decode(file_get_contents('/opt/de_GWD/RproxyS/config.json')) : null; ?>
-
-<?php $checkRproxyC = exec('sudo systemctl is-active RproxyC'); ?>
-<?php $RproxyCconf = file_exists('/opt/de_GWD/RproxyC/config.json') ? json_decode(file_get_contents('/opt/de_GWD/RproxyC/config.json')) : null; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -76,21 +104,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -163,7 +191,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -196,14 +224,14 @@
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">域名</span>
                 </div>
-                  <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->domain ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="CFdomain" type="text" class="form-control" value="<?php echo gwd_h($fwdDomain); ?>">
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text justify-content-center" style="min-width: 120px;">CF Token</span>
                 </div>
-                  <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->token ?? $de_GWDconf->FORWARD->APIkey ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo gwd_h($fwdToken); ?>">
               </div>
             </div>
           </div>
@@ -238,14 +266,14 @@
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->DoGs->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="DoGsPort" type="text" class="form-control" value="<?php echo gwd_h($doGsPort); ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->DoGs->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo gwd_h($fwdDomain . ':' . $doGsPort); ?>" READONLY>
               </div>
             </div>
           </div>
@@ -294,7 +322,7 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD0port" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->FWD0->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="FWD0port" type="text" class="form-control" value="<?php echo gwd_h($fwd0Port); ?>">
                 </div>
               </div>
 
@@ -303,20 +331,21 @@
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->FWD0->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo gwd_h($fwdDomain . ':' . $fwd0Port); ?>" READONLY>
                 </div>
               </div>
 
               <div id="FWD0List" class="col-md-7">
 <?php 
-$fwd0Uuids = $de_GWDconf->FORWARD->FWD0->uuid ?? [];
+$fwd0Uuids = (isset($de_GWDconf->FORWARD->FWD0->uuid) && is_array($de_GWDconf->FORWARD->FWD0->uuid)) ? array_values($de_GWDconf->FORWARD->FWD0->uuid) : [];
 for( $i=0; $i<count($fwd0Uuids); $i++){
+  $fwd0Item = is_object($fwd0Uuids[$i]) ? $fwd0Uuids[$i] : new stdClass();
   $FWD0num = $i + 1;
-  $FWD0uuid = htmlspecialchars($fwd0Uuids[$i]->FWD0uuid ?? '', ENT_QUOTES, 'UTF-8');
-  $FWD0mark = htmlspecialchars($fwd0Uuids[$i]->FWD0mark ?? '', ENT_QUOTES, 'UTF-8');
+  $FWD0uuid = gwd_h($fwd0Item->FWD0uuid ?? '');
+  $FWD0mark = gwd_h($fwd0Item->FWD0mark ?? '');
 print <<<EOT
               <div>
-                <div id="FWD0UUIDline" class="input-group my-2">
+                <div class="input-group my-2 fwd0-row">
                   <div class="input-group-prepend">
                     <span class="input-group-text">UUID</span>
                   </div>
@@ -389,7 +418,7 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">端口</span>
                   </div>
-                  <input id="FWD1port" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->FWD1->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="FWD1port" type="text" class="form-control" value="<?php echo gwd_h($fwd1Port); ?>">
                 </div>
               </div>
 
@@ -398,18 +427,19 @@ EOT;
                   <div class="input-group-prepend">
                     <span class="input-group-text">地址</span>
                   </div>
-                  <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->FWD1->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
+                  <input type="text" class="form-control" value="<?php echo gwd_h($fwdDomain . ':' . $fwd1Port); ?>" READONLY>
                 </div>
 
 <div class="btn-group">
   <label class="input-group-text">上级v2节点</label>
-  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo htmlspecialchars($checkFWD1OB[1] ?? '', ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($checkFWD1OB[0] ?? '', ENT_QUOTES, 'UTF-8'); ?></button>
+  <button id="FWD1upstream" class="btn btn-outline-secondary dropdown-toggle" type="button" data-toggle="dropdown" value="<?php echo gwd_h($checkFWD1OB[1] ?? ''); ?>"><?php echo gwd_h($checkFWD1OB[0] ?? ''); ?></button>
   <div id="FWD1upstreamDrop" class="dropdown-menu">
 <?php
-$v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? $de_GWDconf->v2node : [];
+$v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? array_values($de_GWDconf->v2node) : [];
 for( $i=0; $i<count($v2nodes); $i++){
-  $address = htmlspecialchars($v2nodes[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
-  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+  $nodeObj = is_object($v2nodes[$i]) ? $v2nodes[$i] : new stdClass();
+  $address = gwd_h($nodeObj->domain ?? '');
+  $name = gwd_h($nodeObj->name ?? '');
 print <<<EOT
 <button class='dropdown-item' href='#' id='FWD1upstream$i' value="$address" onclick="buttonFWD1upstream(this)">$name</button>
 EOT;
@@ -421,14 +451,15 @@ EOT;
 
               <div id="FWD1List" class="col-md-7">
 <?php 
-$fwd1Uuids = $de_GWDconf->FORWARD->FWD1->uuid ?? [];
+$fwd1Uuids = (isset($de_GWDconf->FORWARD->FWD1->uuid) && is_array($de_GWDconf->FORWARD->FWD1->uuid)) ? array_values($de_GWDconf->FORWARD->FWD1->uuid) : [];
 for( $i=0; $i<count($fwd1Uuids); $i++){
+  $fwd1Item = is_object($fwd1Uuids[$i]) ? $fwd1Uuids[$i] : new stdClass();
   $FWD1num = $i + 1;
-  $FWD1uuid = htmlspecialchars($fwd1Uuids[$i]->FWD1uuid ?? '', ENT_QUOTES, 'UTF-8');
-  $FWD1mark = htmlspecialchars($fwd1Uuids[$i]->FWD1mark ?? '', ENT_QUOTES, 'UTF-8');
+  $FWD1uuid = gwd_h($fwd1Item->FWD1uuid ?? '');
+  $FWD1mark = gwd_h($fwd1Item->FWD1mark ?? '');
 print <<<EOT
               <div>
-                <div class="input-group my-2">
+                <div class="input-group my-2 fwd1-row">
                   <div class="input-group-prepend">
                     <span class="input-group-text">UUID</span>
                   </div>
@@ -496,21 +527,21 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">端口</span>
                 </div>
-                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="RproxyStunnelPort" type="text" class="form-control" value="<?php echo gwd_h($rproxyStunnelPort); ?>">
               </div>
 
               <div class="col-md-3 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                <input type="text" class="form-control" value="<?php echo htmlspecialchars(($de_GWDconf->FORWARD->domain ?? '') . ':' . ($de_GWDconf->FORWARD->Rproxy->server->tunnel->port ?? ''), ENT_QUOTES, 'UTF-8'); ?>" READONLY>
+                <input type="text" class="form-control" value="<?php echo gwd_h($fwdDomain . ':' . $rproxyStunnelPort); ?>" READONLY>
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->server->tunnel->uuid ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="RproxyStunnelUUID" type="text" class="form-control" value="<?php echo gwd_h($rproxyStunnelUUID); ?>">
                 </div>
             </div>
 
@@ -528,10 +559,11 @@ EOT;
               <div id="RproxyS1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxySconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyS1List" class="form-row">
 <?php 
-$rproxyS1Mappings = $de_GWDconf->FORWARD->Rproxy->server->mapping ?? [];
+$rproxyS1Mappings = (isset($de_GWDconf->FORWARD->Rproxy->server->mapping) && is_array($de_GWDconf->FORWARD->Rproxy->server->mapping)) ? array_values($de_GWDconf->FORWARD->Rproxy->server->mapping) : [];
 for( $i=0; $i<count($rproxyS1Mappings); $i++){
-  $RproxyS1Port = htmlspecialchars($rproxyS1Mappings[$i]->port ?? '', ENT_QUOTES, 'UTF-8');
-  $RproxyS1Protocol = htmlspecialchars($rproxyS1Mappings[$i]->protocol ?? '', ENT_QUOTES, 'UTF-8');
+  $mapObj = is_object($rproxyS1Mappings[$i]) ? $rproxyS1Mappings[$i] : new stdClass();
+  $RproxyS1Port = gwd_h($mapObj->port ?? '');
+  $RproxyS1Protocol = gwd_h($mapObj->protocol ?? '');
 print <<<EOT
 <div class="col-md-4 input-group my-2">
   <div class="input-group-prepend">
@@ -585,14 +617,14 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text">对接地址</span>
                 </div>
-                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->client->tunnel->address ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="RproxyCtunnelAddress" type="text" class="form-control" value="<?php echo gwd_h($rproxyCtunnelAddr); ?>">
               </div>
 
               <div class="col-md-7 input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text">UUID</span>
                 </div>
-                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->FORWARD->Rproxy->client->tunnel->uuid ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="RproxyCtunnelUUID" type="text" class="form-control" value="<?php echo gwd_h($rproxyCtunnelUUID); ?>">
                 </div>
             </div>
 
@@ -610,12 +642,13 @@ EOT;
               <div id="RproxyC1Body" class="card-body" style="display:<?php if (strpos(json_encode($RproxyCconf), 'mapping') !== false) echo 'block'; else echo 'none';?>">
                 <div id="RproxyC1List" class="form-row">
 <?php 
-$rproxyC1Mappings = $de_GWDconf->FORWARD->Rproxy->client->mapping ?? [];
+$rproxyC1Mappings = (isset($de_GWDconf->FORWARD->Rproxy->client->mapping) && is_array($de_GWDconf->FORWARD->Rproxy->client->mapping)) ? array_values($de_GWDconf->FORWARD->Rproxy->client->mapping) : [];
 for( $i=0; $i<count($rproxyC1Mappings); $i++){
-  $RproxyC1extPort = htmlspecialchars($rproxyC1Mappings[$i]->extPort ?? '', ENT_QUOTES, 'UTF-8');
-  $RproxyC1extProtocol = htmlspecialchars($rproxyC1Mappings[$i]->extProtocol ?? '', ENT_QUOTES, 'UTF-8');
-  $RproxyC1intIP = htmlspecialchars($rproxyC1Mappings[$i]->intIP ?? '', ENT_QUOTES, 'UTF-8');
-  $RproxyC1intPort = htmlspecialchars($rproxyC1Mappings[$i]->intPort ?? '', ENT_QUOTES, 'UTF-8');
+  $mapObj = is_object($rproxyC1Mappings[$i]) ? $rproxyC1Mappings[$i] : new stdClass();
+  $RproxyC1extPort = gwd_h($mapObj->extPort ?? '');
+  $RproxyC1extProtocol = gwd_h($mapObj->extProtocol ?? '');
+  $RproxyC1intIP = gwd_h($mapObj->intIP ?? '');
+  $RproxyC1intPort = gwd_h($mapObj->intPort ?? '');
 print <<<EOT
 <div class="col-md-6 input-group my-2">
   <div class="input-group-prepend">
@@ -713,13 +746,26 @@ function copyNodeLink(elemId, btn) {
   }
 }
 
+// Index of a saved UUID row (1-based), counting only real rows with a non-empty UUID,
+// matching the order act/FWD*save.php persists. Returns 0 for an empty/unsaved row.
+function fwdSavedIndex(rowClass, uuidPrefix, $group){
+var idx = 0, found = 0
+$('.' + rowClass).each(function(){
+  if ($.trim($(this).find("input[id^='" + uuidPrefix + "']").val() || '') !== '') {
+    idx++
+    if (this === $group[0]) { found = idx; return false }
+  }
+})
+return found
+}
+
 function FWD0qr(FWD0qr){
-var FWD0obj = $(FWD0qr).parent().parent().parent().parent().find('.input-group')
-var FWD0objLine = $(FWD0qr).parent().parent().parent().find('div')
-var FWD0index = FWD0obj.index(FWD0objLine)+1
+var $group = $(FWD0qr).closest('.fwd0-row')
+var FWD0index = fwdSavedIndex('fwd0-row', 'FWD0uuid', $group)
+if (!FWD0index) { alert('请先填写UUID并点击“应用”保存后再生成二维码'); return }
 $.get('./act/FWD0qr.php', {FWD0index:FWD0index}, function(data){
   if ($('#FWD0qrpop' + FWD0index).length === 0) {
-    var markVal = $('#FWD0mark' + FWD0index).val() || '';
+    var markVal = $group.find("input[id^='FWD0mark']").val() || '';
     $('body').append(`
       <div id="FWD0qrpop${FWD0index}" class="modal fade" role="dialog" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -746,6 +792,8 @@ $.get('./act/FWD0qr.php', {FWD0index:FWD0index}, function(data){
   $('#FWD0link'+FWD0index).val(data)
   $('#FWD0qrpop'+FWD0index).modal('show')
   $('#FWD0qrcode'+FWD0index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+}).fail(function(){
+  alert('请先点击“应用”保存该UUID后再生成二维码')
 })
 }
 
@@ -756,12 +804,12 @@ $('#FWD1body').css('display', 'block');
 }
 
 function FWD1qr(FWD1qr){
-var FWD1obj = $(FWD1qr).parent().parent().parent().parent().find('.input-group')
-var FWD1objLine = $(FWD1qr).parent().parent().parent().find('div')
-var FWD1index = FWD1obj.index(FWD1objLine)+1
+var $group = $(FWD1qr).closest('.fwd1-row')
+var FWD1index = fwdSavedIndex('fwd1-row', 'FWD1uuid', $group)
+if (!FWD1index) { alert('请先填写UUID并点击“应用”保存后再生成二维码'); return }
 $.get('./act/FWD1qr.php', {FWD1index:FWD1index}, function(data){
   if ($('#FWD1qrpop' + FWD1index).length === 0) {
-    var markVal = $('#FWD1mark' + FWD1index).val() || '';
+    var markVal = $group.find("input[id^='FWD1mark']").val() || '';
     $('body').append(`
       <div id="FWD1qrpop${FWD1index}" class="modal fade" role="dialog" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -788,16 +836,15 @@ $.get('./act/FWD1qr.php', {FWD1index:FWD1index}, function(data){
   $('#FWD1link'+FWD1index).val(data)
   $('#FWD1qrpop'+FWD1index).modal('show')
   $('#FWD1qrcode'+FWD1index).qrcode({width: 240,height: 240,correctLevel:0,text:data})
+}).fail(function(){
+  alert('请先点击“应用”保存该UUID后再生成二维码')
 })
 }
 
-function buttonFWD1upstream(buttonFWD1upstream){
-var FWD1upstreamobj = $(buttonFWD1upstream).parent().find('button')
-var FWD1upstreamindex = FWD1upstreamobj.index($(buttonFWD1upstream))
-var FWD1upstreamAddress = $('#FWD1upstream'+FWD1upstreamindex).val()
-var FWD1upstreamName = $('#FWD1upstream'+FWD1upstreamindex).text()
-$('#FWD1upstream').text(FWD1upstreamName)
-$('#FWD1upstream').val(FWD1upstreamAddress)
+function buttonFWD1upstream(btn){
+var $btn = $(btn)
+$('#FWD1upstream').text($btn.text())
+$('#FWD1upstream').val($btn.val())
 }
 
 function RproxySswitch(){
@@ -858,7 +905,7 @@ $('#RproxyCbody').css('display', 'block');
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -869,14 +916,21 @@ $.post('./act/markThis.php', {markName:markNametxt}, function(result){window.loc
 $('#buttonGenCER').click(function(){
 cfdomain=$('#CFdomain').val().trim()
 cftoken=$('#CFtoken').val().trim()
-$.post('./act/genCER.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(){})
-var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
-var timer = setInterval(function() { 
-    if(win.closed) {
+$.post('./act/genCER.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(){
+  var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+  if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+  }
+  var timer = setInterval(function() { 
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
-}, 300);
+  }, 300);
+}).fail(function(xhr){
+  alert($.trim(xhr.responseText) || '证书参数无效')
+})
 })
 
 $('#buttonCheckCER').click(function(){
@@ -884,6 +938,8 @@ $("#buttonCheckCERloading").attr("class", "spinner-border spinner-border-sm")
 $.get('./act/checkCER.php', function(data){
   $("#buttonCheckCERloading").removeClass()
   $("#buttonCheckCERtxt").text(data)
+}).fail(function(){
+  $("#buttonCheckCERloading").removeClass()
 })
 })
 
@@ -893,7 +949,9 @@ DoGsPort=$('#DoGsPort').val().trim()
 $.post('./act/DoGsSave.php', {DoGsPort:DoGsPort}, function(result){
   $("#buttonDoGsSaveLoading").removeClass()
   window.location.reload()
-
+}).fail(function(xhr){
+  $("#buttonDoGsSaveLoading").removeClass()
+  alert($.trim(xhr.responseText) || 'DoGs保存失败')
 })
 })
 
@@ -925,9 +983,9 @@ $.post('./act/block53off.php', function(result){
 })
 
 $('#buttonFWD0Add').click(function(){
-  var i = $("#FWD0List .input-group").length+1
+  var i = $(".fwd0-row").length+1
   $('#FWD0List').append(`
-                <div class="input-group my-2">
+                <div class="input-group my-2 fwd0-row">
                   <div class="input-group-prepend">
                     <span class="input-group-text">UUID</span>
                   </div>
@@ -947,18 +1005,19 @@ $('#buttonFWD0save').click(function(){
 $("#buttonFWD0saveLoading").attr("class", "spinner-border spinner-border-sm")
 FWD0port=$('#FWD0port').val().trim()
 var FWD0uuidList = []
-var len = $("#FWD0List .input-group").length
-var FWD0uuid, FWD0mark
-for( let i = 1; i<=len; i++){
-    var FWD0uuid = $('#FWD0uuid'+i).val().trim()
-    var FWD0mark = $('#FWD0mark'+i).val()
+$(".fwd0-row").each(function(){
+    var FWD0uuid = ($(this).find("input[id^='FWD0uuid']").val() || '').trim()
+    var FWD0mark = $(this).find("input[id^='FWD0mark']").val() || ''
     if ( FWD0uuid !== '' ) {
     FWD0uuidList.push({FWD0uuid, FWD0mark})
     }
-}
+})
 $.post('./act/FWD0save.php', {FWD0port:FWD0port, FWD0uuidList:FWD0uuidList}, function(result){
   $("#buttonFWD0saveLoading").removeClass()
 window.location.reload()
+}).fail(function(xhr){
+  $("#buttonFWD0saveLoading").removeClass()
+  alert($.trim(xhr.responseText) || '默认中转线保存失败')
 })
 })
 
@@ -974,9 +1033,9 @@ $.post('./act/FWD0stop.php', function(result){
 })
 
 $('#buttonFWD1Add').click(function(){
-  var i = $("#FWD1List .input-group").length+1
+  var i = $(".fwd1-row").length+1
   $('#FWD1List').append(`
-                <div class="input-group my-2">
+                <div class="input-group my-2 fwd1-row">
                   <div class="input-group-prepend">
                     <span class="input-group-text">UUID</span>
                   </div>
@@ -997,18 +1056,19 @@ $("#buttonFWD1saveLoading").attr("class", "spinner-border spinner-border-sm")
 FWD1upstream=$('#FWD1upstream').val()
 FWD1port=$('#FWD1port').val().trim()
 var FWD1uuidList = []
-var len = $("#FWD1List .input-group").length
-var FWD1uuid, FWD1mark
-for( let i = 1; i<=len; i++){
-    var FWD1uuid = $('#FWD1uuid'+i).val().trim()
-    var FWD1mark = $('#FWD1mark'+i).val()
+$(".fwd1-row").each(function(){
+    var FWD1uuid = ($(this).find("input[id^='FWD1uuid']").val() || '').trim()
+    var FWD1mark = $(this).find("input[id^='FWD1mark']").val() || ''
     if ( FWD1uuid !== '' ) {
     FWD1uuidList.push({FWD1uuid, FWD1mark})
     }
-}
+})
 $.post('./act/FWD1save.php', {FWD1upstream:FWD1upstream, FWD1port:FWD1port, FWD1uuidList:FWD1uuidList}, function(result){
   $("#buttonFWD1saveLoading").removeClass()
 window.location.reload()
+}).fail(function(xhr){
+  $("#buttonFWD1saveLoading").removeClass()
+  alert($.trim(xhr.responseText) || '并行中转线保存失败')
 })
 })
 
@@ -1020,6 +1080,8 @@ $.post('./act/FWD1stop.php', function(result){
   $('#FWD1switch').css('display', 'block');
   $('#FWD1button').css('display', 'none');
   $('#FWD1body').css('display', 'none');
+}).fail(function(){
+  $("#buttonFWD1stopLoading").removeClass()
 })
 })
 
@@ -1029,18 +1091,19 @@ RproxyStunnelPort=$('#RproxyStunnelPort').val().trim()
 RproxyStunnelUUID=$('#RproxyStunnelUUID').val().trim()
 RproxySmappingStatus=$('#RproxyS1Body').css('display')
 var RproxyS1List = []
-var len = $("#RproxyS1List .input-group").length
-var RproxyS1Port, RproxyS1Protocol
-for( let i = 0; i<len; i++){
-    var port = $('#RproxyS1Port'+i).val().trim()
-    var protocol = $('#RproxyS1Protocol'+i).text()
+$("#RproxyS1List .input-group").each(function(){
+    var port = ($(this).find("input[id^='RproxyS1Port']").val() || '').trim()
+    var protocol = $.trim($(this).find("button[id^='RproxyS1Protocol']").text())
     if ( port !== '' && protocol !== '') {
     RproxyS1List.push({port, protocol})
     }
-}
+})
 $.post('./act/RproxySsave.php', {RproxyStunnelPort:RproxyStunnelPort, RproxyStunnelUUID:RproxyStunnelUUID, RproxySmappingStatus:RproxySmappingStatus, RproxyS1List:RproxyS1List}, function(result){
   $("#buttonRproxySsaveLoading").removeClass()
   window.location.reload()
+}).fail(function(xhr){
+  $("#buttonRproxySsaveLoading").removeClass()
+  alert($.trim(xhr.responseText) || '内网穿透服务端保存失败')
 })
 })
 
@@ -1121,20 +1184,21 @@ RproxyCtunnelAddress=$('#RproxyCtunnelAddress').val()
 RproxyCtunnelUUID=$('#RproxyCtunnelUUID').val().trim()
 RproxyCmappingStatus=$('#RproxyC1Body').css('display')
 var RproxyC1List = []
-var len = $("#RproxyC1List .input-group").length
-var RproxyC1extPort, RproxyC1extProtocol, RproxyC1intIP, RproxyC1intPort
-for( let i = 0; i<len; i++){
-    var extPort = $('#RproxyC1extPort'+i).val().trim()
-    var extProtocol = $('#RproxyC1extProtocol'+i).text()
-    var intIP = $('#RproxyC1intIP'+i).val().trim()
-    var intPort = $('#RproxyC1intPort'+i).val().trim()
+$("#RproxyC1List .input-group").each(function(){
+    var extPort = ($(this).find("input[id^='RproxyC1extPort']").val() || '').trim()
+    var extProtocol = $.trim($(this).find("button[id^='RproxyC1extProtocol']").text())
+    var intIP = ($(this).find("input[id^='RproxyC1intIP']").val() || '').trim()
+    var intPort = ($(this).find("input[id^='RproxyC1intPort']").val() || '').trim()
     if ( extPort !== '' && extProtocol !== '' && intIP !== '' && intPort !== '') {
     RproxyC1List.push({extPort, extProtocol, intIP, intPort})
     }
-}
+})
 $.post('./act/RproxyCsave.php', {RproxyCtunnelAddress:RproxyCtunnelAddress, RproxyCtunnelUUID:RproxyCtunnelUUID, RproxyCmappingStatus:RproxyCmappingStatus, RproxyC1List:RproxyC1List}, function(result){
   $("#buttonRproxyCsaveLoading").removeClass()
   window.location.reload()
+}).fail(function(xhr){
+  $("#buttonRproxyCsaveLoading").removeClass()
+  alert($.trim(xhr.responseText) || '内网穿透客户端保存失败')
 })
 })
 
@@ -1146,6 +1210,8 @@ $.post('./act/RproxyCstop.php', function(result){
   $('#RproxyCswitch').css('display', 'block'); 
   $('#RproxyCbutton').css('display', 'none'); 
   $('#RproxyCbody').css('display', 'none'); 
+}).fail(function(){
+  $("#buttonRproxyCstopLoading").removeClass()
 })
 })
 
@@ -1164,7 +1230,3 @@ $('#RproxyC1Body').css('display', 'none');
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>

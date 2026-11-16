@@ -1,5 +1,17 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$DoG = (isset($de_GWDconf->dns->dog) && is_scalar($de_GWDconf->dns->dog)) ? (string)$de_GWDconf->dns->dog : '';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : '';
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : '';
+$v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? array_values($de_GWDconf->v2node) : [];
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +23,7 @@
   <meta name="description" content="de_GWD">
   <meta name="author" content="JacyL4">
 
-<title>寒月</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -34,13 +46,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $DoG = $de_GWDconf->dns->dog ?? ''; ?>
-
-<?php $checkJellyfin = $de_GWDconf->app->jellyfin ?? ''; ?>
-<?php $checkBitwarden = $de_GWDconf->app->bitwarden ?? ''; ?>
-
-<?php $v2nodes = (isset($de_GWDconf->v2node) && is_array($de_GWDconf->v2node)) ? $de_GWDconf->v2node : []; ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -58,21 +63,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -210,7 +215,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -239,6 +244,7 @@
               'claude'   => ['name' => 'Claude (Anthropic)', 'color' => '#d97706'],
               'gemini'   => ['name' => 'Google Gemini', 'color' => '#1a73e8'],
               'grok'     => ['name' => 'xAI Grok', 'color' => '#212529'],
+              'meta'     => ['name' => 'Meta / Muse AI', 'color' => '#0668E1'],
             ];
             foreach ($left_services as $svc => $cfg) {
               $sname = $cfg['name'];
@@ -252,8 +258,9 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = gwd_h($v2nodes[$i]->name ?? '');
-                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
+                $rawName = (is_object($v2nodes[$i]) && isset($v2nodes[$i]->name) && is_scalar($v2nodes[$i]->name)) ? (string)$v2nodes[$i]->name : '';
+                $nname = gwd_h($rawName);
+                $nnameJs = gwd_h(json_encode($rawName, JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
@@ -284,8 +291,9 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = gwd_h($v2nodes[$i]->name ?? '');
-                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
+                $rawName = (is_object($v2nodes[$i]) && isset($v2nodes[$i]->name) && is_scalar($v2nodes[$i]->name)) ? (string)$v2nodes[$i]->name : '';
+                $nname = gwd_h($rawName);
+                $nnameJs = gwd_h(json_encode($rawName, JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
@@ -320,8 +328,9 @@
               echo "    <div id='nodeSMlist_{$svc}' class='dropdown-menu w-100'>\n";
               echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', 0, ' 默认代理 ')\"> 默认代理 </a>\n";
               for ($i = 0; $i < count($v2nodes); $i++) {
-                $nname = gwd_h($v2nodes[$i]->name ?? '');
-                $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
+                $rawName = (is_object($v2nodes[$i]) && isset($v2nodes[$i]->name) && is_scalar($v2nodes[$i]->name)) ? (string)$v2nodes[$i]->name : '';
+                $nname = gwd_h($rawName);
+                $nnameJs = gwd_h(json_encode($rawName, JSON_UNESCAPED_UNICODE));
                 $num = $i + 1;
                 echo "      <a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('{$svc}', {$num}, {$nnameJs})\">{$nname}</a>\n";
               }
@@ -343,8 +352,9 @@
                   <a class="dropdown-item" href="javascript:void(0);" onclick="selectNodeSM('apple', 0, ' 直连 ')"> 直连 </a>
                   <?php
                   for ($i = 0; $i < count($v2nodes); $i++) {
-                    $nname = gwd_h($v2nodes[$i]->name ?? '');
-                    $nnameJs = gwd_h(json_encode((string)($v2nodes[$i]->name ?? ''), JSON_UNESCAPED_UNICODE));
+                    $rawName = (is_object($v2nodes[$i]) && isset($v2nodes[$i]->name) && is_scalar($v2nodes[$i]->name)) ? (string)$v2nodes[$i]->name : '';
+                    $nname = gwd_h($rawName);
+                    $nnameJs = gwd_h(json_encode($rawName, JSON_UNESCAPED_UNICODE));
                     $num = $i + 1;
                     echo "<a class='dropdown-item' href='javascript:void(0);' onclick=\"selectNodeSM('apple', {$num}, {$nnameJs})\">{$nname}</a>\n";
                   }
@@ -392,21 +402,21 @@
   <div class="input-group-prepend">
     <span class="input-group-text">大陆白名单代理</span>
   </div>
-   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
+   <input id="CHNlistProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (isset($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP) && is_array($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->CHNlistProxyIP as $v) { echo gwd_h($v) . ' '; } } ?>">
 </div>
 
 <div class="input-group input-group-sm mb-3">
   <div class="input-group-prepend">
     <span class="input-group-text">全局代理</span>
   </div>
-   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
+   <input id="globalProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (isset($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP) && is_array($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->globalProxyIP as $v) { echo gwd_h($v) . ' '; } } ?>">
 </div>
 
 <div class="input-group input-group-sm">
   <div class="input-group-prepend">
     <span class="input-group-text">全局直连</span>
   </div>
-   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (!empty($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $k => $v) {echo htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8') . ' ';} } ?>">
+   <input id="directProxyIP" type="text" class="form-control" placeholder="本地局域网IP 空格分隔" value="<?php if (isset($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP) && is_array($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP)) { foreach ($de_GWDconf->v2nodeDIV->nodeDT->directProxyIP as $v) { echo gwd_h($v) . ' '; } } ?>">
 </div>
 
       </div>
@@ -424,7 +434,7 @@
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-body">
-        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain ?? []; if (is_array($customDomainList)) { echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, $customDomainList)); } ?></textarea>
+        <textarea id="nodeCUrulesDomain" class="form-control mb-2" rows="12"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesDomain ?? []; if (is_array($customDomainList)) { echo implode("\n", array_map(function($v){ return gwd_h($v); }, $customDomainList)); } ?></textarea>
         <div class="alert-light mb-4" role="alert">
         纯字符串: google.com<br>
         子域名: domain:google.com<br>
@@ -433,7 +443,7 @@
         预定义域名列表: geosite:google<br>
         </div>
 
-        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customDomainList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP ?? []; if (is_array($customDomainList)) { echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, $customDomainList)); } ?></textarea>
+        <textarea id="nodeCUrulesIP" class="form-control mb-2" rows="6"><?php $customIpList = $de_GWDconf->v2nodeDIV->nodeCU->rulesIP ?? []; if (is_array($customIpList)) { echo implode("\n", array_map(function($v){ return gwd_h($v); }, $customIpList)); } ?></textarea>
         <div class="alert-light" role="alert">
         使用非内网IP，非专用网络IP<br>
         IP: 104.24.0.0<br>
@@ -474,36 +484,36 @@
           <div class="input-group-prepend">
             <span class="input-group-text">地址</span>
           </div>
-          <input id="ssAddress" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssAddress ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="ssAddress" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssAddress ?? ''); ?>">
           <div class="input-group-prepend input-group-append">
             <span class="input-group-text">端口</span>
           </div>
-          <input id="ssPort" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssPort ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="443">
+          <input id="ssPort" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssPort ?? ''); ?>" placeholder="443">
         </div>
 
         <div class="input-group mb-2">
           <div class="input-group-prepend">
             <span class="input-group-text">UUID</span>
           </div>
-          <input id="ssUUID" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssUUID ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="ssUUID" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssUUID ?? ''); ?>">
         </div>
 
         <div class="input-group mb-2">
           <div class="input-group-prepend">
             <span class="input-group-text">SNI</span>
           </div>
-          <input id="ssSNI" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssSNI ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="ssSNI" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssSNI ?? ''); ?>">
         </div>
 
         <div class="input-group">
           <div class="input-group-prepend">
             <span class="input-group-text">PublicKey</span>
           </div>
-          <input id="ssPBK" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssPBK ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="ssPBK" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssPBK ?? ''); ?>">
           <div class="input-group-prepend input-group-append">
             <span class="input-group-text">ShortId</span>
           </div>
-          <input id="ssSID" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->v2nodeDIV->ss->ssSID ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="ssSID" class="form-control" value="<?php echo gwd_h($de_GWDconf->v2nodeDIV->ss->ssSID ?? ''); ?>">
         </div>
       </div>
       <div class="modal-footer">
@@ -529,14 +539,14 @@
                 <div class="card-header">
                   <span>黑名单域名：</span>
                 </div>
-                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php if (!empty($de_GWDconf->dns->listB)) { foreach($de_GWDconf->dns->listB as $v) {echo gwd_h((string)$v) . "\n";} } ?></textarea>
+                  <textarea id="listB" class="form-control" aria-label="listB" rows="12" placeholder="一行一个域名" style="border-Radius: 0px;"><?php if (isset($de_GWDconf->dns->listB) && is_array($de_GWDconf->dns->listB)) { foreach($de_GWDconf->dns->listB as $v) { echo gwd_h($v) . "\n"; } } ?></textarea>
               </div>
 
               <div class="card mt-3">
                 <div class="card-header">
                   <span>白名单域名：</span>
                 </div>
-                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php if (!empty($de_GWDconf->dns->listW)) { foreach($de_GWDconf->dns->listW as $v) {echo gwd_h((string)$v) . "\n";} } ?></textarea>
+                  <textarea id="listW" class="form-control" aria-label="listW" rows="12" placeholder="一行一个域名"><?php if (isset($de_GWDconf->dns->listW) && is_array($de_GWDconf->dns->listW)) { foreach($de_GWDconf->dns->listW as $v) { echo gwd_h($v) . "\n"; } } ?></textarea>
               </div>
       </div>
       <div class="modal-footer">
@@ -599,7 +609,8 @@
     <div id="nodeDT" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($v2nodes); $i++){
-  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+  $nodeObj = is_object($v2nodes[$i]) ? $v2nodes[$i] : new stdClass();
+  $name = gwd_h($nodeObj->name ?? '');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeDT$i' onclick="buttonNodeDT(this)">$name</a>
 EOT;
@@ -629,7 +640,8 @@ EOT;
     <div id="nodeCU" class="dropdown-menu">
 <?php
 for( $i=0; $i<count($v2nodes); $i++){
-  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+  $nodeObj = is_object($v2nodes[$i]) ? $v2nodes[$i] : new stdClass();
+  $name = gwd_h($nodeObj->name ?? '');
 print <<<EOT
 <a class='dropdown-item' href='#' id='nodeCU$i' onclick="buttonNodeCU(this)">$name</a>
 EOT;
@@ -667,9 +679,10 @@ EOT;
 <?php
   $checkNode = exec('/opt/de_GWD/ui-checkNode');
 for( $i=0; $i<count($v2nodes); $i++){
+  $nodeObj = is_object($v2nodes[$i]) ? $v2nodes[$i] : new stdClass();
   $nodeNUM = $i+1;
-  $domain = htmlspecialchars($v2nodes[$i]->domain ?? '', ENT_QUOTES, 'UTF-8');
-  $name = htmlspecialchars($v2nodes[$i]->name ?? '', ENT_QUOTES, 'UTF-8');
+  $domain = gwd_h($nodeObj->domain ?? '');
+  $name = gwd_h($nodeObj->name ?? '');
   if ( $checkNode != null && $checkNode == $i) $checkStatus = "btn-success"; else $checkStatus = "btn-outline-secondary";
 print <<<EOT
                   <tr> 
@@ -711,11 +724,12 @@ EOT;
           <div class="card-body">
             <div class="form-row">
               <div class="col-md-5">
+<?php $dohList = (isset($de_GWDconf->dns->doh) && is_array($de_GWDconf->dns->doh)) ? array_values($de_GWDconf->dns->doh) : []; ?>
               <div class="input-group my-2">
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 1</span>
                 </div>
-                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars($de_GWDconf->dns->doh[0] ?? '', ENT_QUOTES, 'UTF-8');?>">
+                <input type="text" id="DoH1" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo gwd_h($dohList[0] ?? '');?>">
                 <div class="input-group-append">
                   <span id="pingDOH1" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -725,7 +739,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DoH 2</span>
                 </div>
-                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo htmlspecialchars($de_GWDconf->dns->doh[1] ?? '', ENT_QUOTES, 'UTF-8');?>">
+                <input type="text" id="DoH2" class="form-control" placeholder="域名:端口/dq" required="required" value="<?php echo gwd_h($dohList[1] ?? '');?>">
                 <div class="input-group-append">
                   <span id="pingDOH2" class="input-group-text text-success"></span><span class="input-group-text text-secondary">ms</span>
                 </div>
@@ -735,7 +749,7 @@ EOT;
                 <div class="input-group-prepend">
                   <span class="input-group-text" style="min-width: 75px">DNS over gRPC</span>
                 </div>
-                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo htmlspecialchars($DoG, ENT_QUOTES, 'UTF-8'); ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
+                <input type="text" id="DoGc" class="form-control" placeholder="域名:端口" required="required" value="<?php echo gwd_h($DoG); ?>" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                 <div id="DoGping" class="input-group-prepend input-group-append" style="display:<?php if (empty($DoG) === false) echo 'block'; else echo 'none';?>">
                   <span id="pingDoG" class="form-control input-group-text text-success"></span>
                 </div>
@@ -756,18 +770,21 @@ EOT;
                   </span>
                 </div>
                   <textarea id="dnsChina" class="form-control" aria-label="dnsChina" rows="6"><?php
-$smartdnsConf = file_exists('/opt/de_GWD/smartdns/smartdns.conf') ? file_get_contents('/opt/de_GWD/smartdns/smartdns.conf') : '';
-preg_match_all('/(?<=\bserver )\S+/is', $smartdnsConf, $dnsClist);
-if(($index = array_search('1.1.1.1',$dnsClist[0])) !== false){
-unset($dnsClist[0][$index]);
+$chinaConf = (isset($de_GWDconf->dns->china) && is_scalar($de_GWDconf->dns->china)) ? trim((string)$de_GWDconf->dns->china) : '';
+if ($chinaConf !== '') {
+    $chinaLines = preg_split('/\s+/', $chinaConf, -1, PREG_SPLIT_NO_EMPTY);
+    echo implode("\n", array_map('gwd_h', array_values(array_unique(is_array($chinaLines) ? $chinaLines : []))));
+} else {
+    $smartdnsConf = file_exists('/opt/de_GWD/smartdns/smartdns.conf') ? (string)file_get_contents('/opt/de_GWD/smartdns/smartdns.conf') : '';
+    preg_match_all('/(?<=\bserver )\S+/is', $smartdnsConf, $dnsClist);
+    $list = is_array($dnsClist[0] ?? null) ? $dnsClist[0] : [];
+    foreach (['1.1.1.1', '8.8.8.8', '127.0.0.1:5333'] as $skipIp) {
+        if (($idx = array_search($skipIp, $list, true)) !== false) {
+            unset($list[$idx]);
+        }
+    }
+    echo implode("\n", array_map('gwd_h', array_values(array_unique($list))));
 }
-if(($index = array_search('8.8.8.8',$dnsClist[0])) !== false){
-unset($dnsClist[0][$index]);
-}
-if(($index = array_search('127.0.0.1:5333',$dnsClist[0])) !== false){
-unset($dnsClist[0][$index]);
-}
-echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, array_unique($dnsClist[0])));
 ?></textarea>
                 </div>
 
@@ -801,7 +818,7 @@ echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, array_un
                 <div class="form-row">
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->localIP ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="localip" type="text" class="form-control" placeholder="本机地址" required="required" value="<?php echo gwd_h($de_GWDconf->address->localIP ?? ''); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">本机</span>
                 </div>
@@ -809,7 +826,7 @@ echo implode("\n", array_map(function($v){ return gwd_h((string)$v); }, array_un
                 </div>
                 <div class="col-md-6">
                 <div class="input-group my-2">
-                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->upstreamIP ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                  <input id="upstreamip" type="text" class="form-control" placeholder="上级地址" required="required" value="<?php echo gwd_h($de_GWDconf->address->upstreamIP ?? ''); ?>">
                 <div class="input-group-append">
                   <span class="input-group-text text-secondary">上级</span>
                 </div>
@@ -937,17 +954,15 @@ $.post('./act/NodeCUswitch.php', {switchNodeCU:"NodeCUshow"}, function(data){
 }
 }
 
-function buttonSpeed(buttonSpeed){
-var SPEEDobj = $(buttonSpeed).parent().parent().parent().parent().find('tr')
-var SPEEDindex = SPEEDobj.index($(buttonSpeed).parent().parent().parent()[0])
+function buttonSpeed(btn){
+var SPEEDindex = $('#nodeTable tr').index($(btn).closest('tr'))
 $('#speed'+SPEEDindex).empty()
 $('#speed'+SPEEDindex).attr('class', 'cloud')
-$.get("./act/speedT.php", {speedT:SPEEDindex}, function(data){$('#speed'+SPEEDindex).attr('class', 'text-success'); $('#speed'+SPEEDindex).text(data)})
+$.get("./act/speedT.php", {speedT:SPEEDindex}, function(data){$('#speed'+SPEEDindex).attr('class', 'text-success'); $('#speed'+SPEEDindex).text(data)}).fail(function(){$('#speed'+SPEEDindex).attr('class', 'text-danger').text('失败')})
 }
 
-function buttonSwitch(buttonSwitch){
-var SWITCHobj = $(buttonSwitch).parent().parent().parent().find('tr')
-var SWITCHindex = SWITCHobj.index($(buttonSwitch).parent().parent()[0])
+function buttonSwitch(btn){
+var SWITCHindex = $('#nodeTable tr').index($(btn).closest('tr'))
 $("#nodeTable td:nth-child(6) button").attr('class', "btn btn-outline-secondary btn-sm")
 $("#buttonSSdetail").attr('class','btn btn-outline-secondary btn-sm mt-1 mr-2')
 $('#switch'+SWITCHindex).attr('class', 'btn btn-success btn-sm');
@@ -977,7 +992,7 @@ $.post("./act/NodeCUchange.php", {nodeCUnum:NodeCUindex}, function(){})
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -997,12 +1012,16 @@ $('#buttonProxyRestart').click(function(){
 $("#buttonProxyLoading").attr("class", "spinner-border spinner-border-sm ml-2")
 $.post('./act/proxyRestart.php', function(result){
   $("#buttonProxyLoading").removeClass()
+}).fail(function(){
+  $("#buttonProxyLoading").removeClass()
 })
 })
 
 $('#buttonProxyStop').click(function(){
 $("#buttonProxyLoading").attr("class", "spinner-border spinner-border-sm ml-2")
 $.post('./act/proxyStop.php', function(result){
+  $("#buttonProxyLoading").removeClass()
+}).fail(function(){
   $("#buttonProxyLoading").removeClass()
 })
 })
@@ -1017,7 +1036,7 @@ $.get("./act/pingTCPDoG.php", function(data) { $('#pingDoG').text(data) })
 })
 
 $('#submitNodeSMrulesClear').click(function(){
-  var services = ['openai','claude','gemini','grok','youtube','netflix','hdh','bahamut','tvb','telegram','twitter','discord','reddit','github','wikipedia'];
+  var services = ['openai','claude','gemini','grok','meta','youtube','netflix','hdh','bahamut','tvb','telegram','twitter','discord','reddit','github','wikipedia'];
   for (var i = 0; i < services.length; i++) {
     $('#nodeSMshow_' + services[i]).text(' 默认代理 ').val('0');
   }
@@ -1028,7 +1047,7 @@ $('#submitNodeSMrulesClear').click(function(){
 $('#submitNodeSMrules').click(function(){
   $("#submitNodeSMrulesLoading").attr("class", "spinner-border spinner-border-sm ml-2");
   var params = {};
-  var allServices = ['openai','claude','gemini','grok','youtube','netflix','hdh','bahamut','tvb','telegram','twitter','discord','reddit','github','wikipedia','apple','steam'];
+  var allServices = ['openai','claude','gemini','grok','meta','youtube','netflix','hdh','bahamut','tvb','telegram','twitter','discord','reddit','github','wikipedia','apple','steam'];
   for (var i = 0; i < allServices.length; i++) {
     var s = allServices[i];
     params[s] = $('#nodeSMshow_' + s).val() || '0';
@@ -1037,6 +1056,9 @@ $('#submitNodeSMrules').click(function(){
     $("#submitNodeSMrulesLoading").removeClass();
     $("#nodeSMrules").modal('hide');
     window.location.reload();
+  }).fail(function(xhr){
+    $("#submitNodeSMrulesLoading").removeClass();
+    alert($.trim(xhr.responseText) || '保存规则失败');
   });
 });
 
@@ -1045,6 +1067,8 @@ $("#buttonclearDIVloading").attr("class", "spinner-border spinner-border-sm")
 $.post('./act/NodeOne.php', function(result){
   $("#buttonclearDIVloading").removeClass()
   window.location.reload()
+}).fail(function(){
+  $("#buttonclearDIVloading").removeClass()
 })
 })
 
@@ -1056,6 +1080,9 @@ directProxyIP=$('#directProxyIP').val()
 $.post('./act/NodeDTrules.php', {CHNlistProxyIP:CHNlistProxyIP, globalProxyIP:globalProxyIP, directProxyIP:directProxyIP}, function(result){
   $("#buttonNodeDTrulesloading").removeClass()
   $("#nodeDTrules").modal('hide')
+}).fail(function(xhr){
+  $("#buttonNodeDTrulesloading").removeClass()
+  alert($.trim(xhr.responseText) || '规则写入失败')
 })
 })
 
@@ -1066,6 +1093,9 @@ customIP=$('#nodeCUrulesIP').val()
 $.post('./act/NodeCUrules.php', {customDomain:customDomain, customIP:customIP}, function(result){
   $("#buttonNodeCUrulesloading").removeClass()
   $("#nodeCUrules").modal('hide')
+}).fail(function(xhr){
+  $("#buttonNodeCUrulesloading").removeClass()
+  alert($.trim(xhr.responseText) || '规则写入失败')
 })
 })
 
@@ -1166,6 +1196,9 @@ listW=$("#listW").val()
 $.post("./act/submitListBW.php", {listB:listB, listW:listW}, function(result){
   $("#buttonListBWurlloading").removeClass()
   $("#editListBW").modal('hide')
+}).fail(function(xhr){
+  $("#buttonListBWurlloading").removeClass()
+  alert($.trim(xhr.responseText) || '黑白名单保存失败')
 })
 })
 
@@ -1178,14 +1211,22 @@ dnsChina=$("#dnsChina").val()
 hostsCustomize=$("#hostsCustomize").val()
 $.post("./act/DNSsave.php", {DoGc:DoGc, DoH1:doh1txt, DoH2:doh2txt, dnsChina:dnsChina, hostsCustomize:hostsCustomize}, function(result){
   $("#buttonDNSsubmitloading").removeClass()
+  if (/^skipped \d+/.test($.trim(result || ''))) {
+    alert('已保存，但有 ' + $.trim(result).split(' ')[1] + ' 条无效的国内DNS/hosts条目被跳过')
+  }
   window.location.reload()
+}).fail(function(xhr){
+  $("#buttonDNSsubmitloading").removeClass()
+  alert($.trim(xhr.responseText) || 'DNS配置保存失败')
 })
 })
 
 $('#buttonReboot').click(function(){
 staticip1=$('#localip').val()
 staticip2=$('#upstreamip').val()
-$.post('./act/reboot.php', {localip:staticip1, upstreamip:staticip2}, function(result){window.location.reload()})
+$.post('./act/reboot.php', {localip:staticip1, upstreamip:staticip2}, function(result){window.location.reload()}).fail(function(xhr){
+  alert($.trim(xhr.responseText) || 'IP配置无效')
+})
 })
 
 checkVersion()
@@ -1243,7 +1284,3 @@ $.get('./act/NodeSMcheck.php', function(data){
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>

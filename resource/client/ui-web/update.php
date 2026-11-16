@@ -1,5 +1,17 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : null;
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : null;
+$checkAutoUpdateHour = (isset($de_GWDconf->address->autoUpdateHour) && is_scalar($de_GWDconf->address->autoUpdateHour)) ? (string)$de_GWDconf->address->autoUpdateHour : null;
+$checkAutoUpdateStatus = file_exists('/opt/de_GWD/autoUpdate');
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +23,7 @@
   <meta name="description" content="">
   <meta name="author" content="">
 
-<title>更新</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -33,12 +45,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
-<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
-
-<?php $checkAutoUpdateHour = isset($de_GWDconf->address->autoUpdateHour) ? $de_GWDconf->address->autoUpdateHour : null; ?>
-<?php $checkAutoUpdateStatus = file_exists('/opt/de_GWD/autoUpdate'); ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -56,21 +62,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -142,7 +148,7 @@
         <h5 id="markThisLabel"class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -192,7 +198,7 @@
                 </div>
               <div class="btn-group btn-group-sm">
                 <button id="autoUpdateHourShow" class="btn <?php if ($checkAutoUpdateStatus === true) echo 'btn-success'; else echo 'btn-outline-secondary';?> mt-1 dropdown-toggle dropdown-toggle-split" type="button" data-toggle="dropdown" style="border-radius: 0px;">
-                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo htmlspecialchars((string)$checkAutoUpdateHour, ENT_QUOTES, 'UTF-8') . ':00';?>
+                  <?php if ($checkAutoUpdateHour === 'off' || $checkAutoUpdateHour === null) echo '关闭 '; else echo gwd_h($checkAutoUpdateHour) . ':00';?>
                 </button>
 <div class="dropdown-menu dropdown-menu-sm">
 <a class="dropdown-item text-center" href="#" onclick="autoUpdateHour(this)">关闭</a>
@@ -217,18 +223,18 @@ EOT;
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">本机地址</span>
         </div>
-          <input id="updateAddr" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->update->updateAddr ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="updateAddr" type="text" class="form-control" value="<?php echo gwd_h($de_GWDconf->update->updateAddr ?? ''); ?>">
         <div class="input-group-prepend input-group-append">
           <span class="input-group-text">端口</span>
         </div>
-          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo htmlspecialchars($de_GWDconf->update->updatePort ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="updatePort" type="text" class="form-control col-md-2" value="<?php echo gwd_h($de_GWDconf->update->updatePort ?? ''); ?>">
       </div>
 
       <div class="input-group my-2 col-md-8">
         <div class="input-group-prepend">
           <span class="input-group-text justify-content-center">CMD</span>
         </div>
-          <input id="updateCMD" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->update->updateCMD ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="updateCMD" type="text" class="form-control" value="<?php echo gwd_h($de_GWDconf->update->updateCMD ?? ''); ?>">
           <button id="buttonUpdateSave" type="button" class="btn btn-outline-danger btn-sm text-right ml-2" style="border-Radius: 0px;">
             <span id="buttonUpdateSaveLoading"></span>
             保存并更新
@@ -289,7 +295,7 @@ $.post("./act/autoUpdateHour.php", {autoUpdateHourINDEX:autoUpdateHourINDEX}, fu
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -298,7 +304,7 @@ $.post('./act/markThis.php', {markName:markNametxt}, function(result){window.loc
 })
 
 $('#buttonBackup').click(function(){
-$.post('./act/backup.php', function(result){window.location.href = "./act/backupDownload.php?type=gwd"})
+$.post('./act/backup.php', function(result){window.location.href = "./act/backupDownload.php?type=gwd"}).fail(function(xhr){alert($.trim(xhr.responseText) || "备份失败")})
 })
 
 $("#restorefile").on("change", function() {
@@ -323,6 +329,10 @@ $.ajax({
         type: 'post',
         success: function(result){
           $("#buttonRestoreLoading").removeClass()
+        },
+        error: function(xhr){
+          $("#buttonRestoreLoading").removeClass()
+          alert($.trim(xhr.responseText) || "恢复上传失败")
         }
       })
 })
@@ -346,8 +356,12 @@ $('#buttonUpdateRun').click(function(){
 $.post('./act/updateRun.php', function(){})
 var updateDst = "http://"+$("#updateDst").val()
 var win = window.open(updateDst, 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()});
     }
@@ -363,7 +377,3 @@ var timer = setInterval(function() {
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>

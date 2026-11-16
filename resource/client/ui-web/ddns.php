@@ -1,5 +1,16 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : null;
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : null;
+$checkWGinstall = file_exists('/usr/bin/wg');
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +22,7 @@
   <meta name="description" content="">
   <meta name="author" content="">
 
-<title>DDNS & Wireguard</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -35,11 +46,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
-<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
-
-<?php $checkWGinstall = file_exists('/usr/bin/wg'); ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -57,21 +63,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -143,7 +149,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -195,14 +201,14 @@
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">域名</span>
         </div>
-          <input id="CFdomain" type="text" class="form-control" value="<?php echo htmlspecialchars($de_GWDconf->ddns->ddnsCF->cfDomain ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="CFdomain" type="text" class="form-control" value="<?php echo gwd_h($de_GWDconf->ddns->ddnsCF->cfDomain ?? ''); ?>">
       </div>
 
       <div class="col-md-7 input-group my-2">
         <div class="input-group-prepend">
           <span class="input-group-text" style="min-width: 120px;">CF Token</span>
         </div>
-          <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo htmlspecialchars($de_GWDconf->ddns->ddnsCF->cfToken ?? $de_GWDconf->ddns->ddnsCF->cfAPIkey ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+          <input id="CFtoken" type="text" class="form-control" placeholder="Cloudflare API Token (Zone:DNS:Edit)" value="<?php echo gwd_h($de_GWDconf->ddns->ddnsCF->cfToken ?? $de_GWDconf->ddns->ddnsCF->cfAPIkey ?? ''); ?>">
       </div>
     </div>
           </div>
@@ -238,10 +244,10 @@
           </div>
           <div id="WGbody" class="card-body" style="display:none">
 <?php
-  $sprivatekey = htmlspecialchars($de_GWDconf->wireguard->server->sprivatekey ?? '', ENT_QUOTES, 'UTF-8');
-  $spublickey = htmlspecialchars($de_GWDconf->wireguard->server->spublickey ?? '', ENT_QUOTES, 'UTF-8');
-  $WGaddress = htmlspecialchars($de_GWDconf->wireguard->server->WGaddress ?? '', ENT_QUOTES, 'UTF-8');
-  $WGport = htmlspecialchars($de_GWDconf->wireguard->server->WGport ?? '', ENT_QUOTES, 'UTF-8');
+  $sprivatekey = gwd_h($de_GWDconf->wireguard->server->sprivatekey ?? '');
+  $spublickey = gwd_h($de_GWDconf->wireguard->server->spublickey ?? '');
+  $WGaddress = gwd_h($de_GWDconf->wireguard->server->WGaddress ?? '');
+  $WGport = gwd_h($de_GWDconf->wireguard->server->WGport ?? '');
 
   if ($sprivatekey == null || $sprivatekey == '')
   {
@@ -275,13 +281,15 @@ EOT;
 
 <div id="WGclients" class="form-row mb-1">
 <?php
-$wgClientsCount = isset($de_GWDconf->wireguard->clients) && is_countable($de_GWDconf->wireguard->clients) ? count($de_GWDconf->wireguard->clients) : 0;
+$wgClientsList = (isset($de_GWDconf->wireguard->clients) && is_array($de_GWDconf->wireguard->clients)) ? array_values($de_GWDconf->wireguard->clients) : [];
+$wgClientsCount = count($wgClientsList);
 for( $i=0; $i<$wgClientsCount; $i++){
+  $clientObj = is_object($wgClientsList[$i]) ? $wgClientsList[$i] : new stdClass();
   $nodeNUM = $i+1;
-  $rawCprivatekey = $de_GWDconf->wireguard->clients[$i]->cprivatekey ?? '';
-  $cprivatekey = htmlspecialchars($rawCprivatekey, ENT_QUOTES, 'UTF-8');
-  $cpublickey = htmlspecialchars($de_GWDconf->wireguard->clients[$i]->cpublickey ?? '', ENT_QUOTES, 'UTF-8');
-  $mark = htmlspecialchars($de_GWDconf->wireguard->clients[$i]->mark ?? '', ENT_QUOTES, 'UTF-8');
+  $rawCprivatekey = (isset($clientObj->cprivatekey) && is_scalar($clientObj->cprivatekey)) ? (string)$clientObj->cprivatekey : '';
+  $cprivatekey = gwd_h($rawCprivatekey);
+  $cpublickey = gwd_h($clientObj->cpublickey ?? '');
+  $mark = gwd_h($clientObj->mark ?? '');
 
   if ($rawCprivatekey == null || $rawCprivatekey == '' || $rawCprivatekey == '0000000000000000000000000000000000000000000=')
   {
@@ -413,7 +421,7 @@ $(WGremove).parent().parent('.input-group').remove()
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -425,6 +433,8 @@ $('#buttonShowIP').click(function(){
 $("#buttonShowIPLoading").attr("class", "spinner-border spinner-border-sm")
 $.get('./act/checkDDNSip.php', function(data){
   $('#wanIP').attr("value",data)
+  $("#buttonShowIPLoading").removeClass()
+}).fail(function(){
   $("#buttonShowIPLoading").removeClass()
 })
 })
@@ -447,6 +457,9 @@ cftoken=$('#CFtoken').val().trim()
 $.post('./act/onDDNScf.php', {CFdomain:cfdomain, CFtoken:cftoken}, function(result){
   $("#buttonddnsCFonLoading").removeClass()
   $('#buttonddnsCFon').attr('class', 'btn btn-success btn-sm mt-1')
+}).fail(function(xhr){
+  $("#buttonddnsCFonLoading").removeClass()
+  alert($.trim(xhr.responseText) || "DDNS保存失败")
 })
 })
 
@@ -458,6 +471,8 @@ $.post('./act/offDDNScf.php', function(result){
   $('#ddnsCFswitch').css('display', 'block'); 
   $('#ddnsCFbutton').css('display', 'none'); 
   $('#ddnsCFbody').css('display', 'none'); 
+}).fail(function(){
+  $("#buttonddnsCFoffLoading").removeClass()
 })
 })
 
@@ -522,8 +537,12 @@ WGswitch()
 $('#buttonWGinstall').click(function(){
 $.post('./act/installWG.php', function(){});
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
@@ -550,6 +569,9 @@ for( let i = 0; i<len; i++){
 $.post('./act/onWG.php', {WGaddress:WGaddress, WGport:WGport, sprivatekey:sprivatekey, spublickey:spublickey, WGclientsList:WGclientsList}, function(result){
   $("#buttonOnWGloading").removeClass()
   $('#buttonOnWG').attr('class', 'btn btn-success btn-sm mt-1')
+}).fail(function(xhr){
+  $("#buttonOnWGloading").removeClass()
+  alert($.trim(xhr.responseText) || "WireGuard配置保存失败")
 })
 })
 
@@ -561,6 +583,8 @@ $.post('./act/offWG.php', function(result){
   $("#WGswitch").css("display", "block")
   $("#WGbutton").css("display", "none")
   $("#WGbody").css("display", "none")
+}).fail(function(){
+  $("#buttonOffWGloading").removeClass()
 })
 })
 
@@ -573,7 +597,3 @@ $.post('./act/offWG.php', function(result){
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>

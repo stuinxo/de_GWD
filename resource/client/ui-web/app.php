@@ -1,5 +1,17 @@
-<?php require_once('auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
+<?php
+require_once('auth.php');
+if (empty($auth)) {
+    header('Location: login.php');
+    exit;
+}
+$de_GWDconf = gwd_read_conf_object();
+$pageAlias = isset($de_GWDconf->address->alias) && is_scalar($de_GWDconf->address->alias) ? trim((string)$de_GWDconf->address->alias) : '';
+$pageTitle = ($pageAlias !== '') ? $pageAlias : '寒月';
+$checkJellyfin = (isset($de_GWDconf->app->jellyfin) && is_scalar($de_GWDconf->app->jellyfin)) ? (string)$de_GWDconf->app->jellyfin : null;
+$checkBitwarden = (isset($de_GWDconf->app->bitwarden) && is_scalar($de_GWDconf->app->bitwarden)) ? (string)$de_GWDconf->app->bitwarden : null;
+$checkNFS = file_exists('/etc/auto.nfs');
+$checkDocker = file_exists('/usr/bin/docker');
+?>
 <!DOCTYPE html>
 <html>
 
@@ -11,7 +23,7 @@
   <meta name="description" content="">
   <meta name="author" content="">
 
-<title>应用</title>
+<title><?php echo gwd_h($pageTitle); ?></title>
 
   <!-- Custom fonts for this template-->
   <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet" type="text/css">
@@ -33,12 +45,6 @@
 </head>
 
 <body id="page-top" class="sidebar-toggled">
-<?php $de_GWDconf = gwd_read_conf_object(); ?>
-<?php $checkJellyfin = isset($de_GWDconf->app->jellyfin) ? $de_GWDconf->app->jellyfin : null; ?>
-<?php $checkBitwarden = isset($de_GWDconf->app->bitwarden) ? $de_GWDconf->app->bitwarden : null; ?>
-
-<?php $checkNFS = file_exists('/etc/auto.nfs'); ?>
-<?php $checkDocker = file_exists('/usr/bin/docker') ?>
   <nav class="navbar navbar-expand navbar-dark bg-dark static-top">
 
     <a class="navbar-brand mr-1" href="index.php">寒月</a>
@@ -56,21 +62,21 @@
     <!-- Navbar -->
     <ul class="nav navbar-nav ml-auto ml-md-0">
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkJellyfin === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8097')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8097')">
           <i class="fab fa-youtube"></i>
           <span>Jellyfin</span>
         </a>
       </li>
 
       <li class="nav-item no-arrow mx-1" style="display:<?php if ($checkBitwarden === 'installed') echo 'block'; else echo 'none';?>">
-        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.origin+':8099')">
+        <a class="nav-link" href="javascript:void(0)" onclick="window.open(location.protocol+'//'+location.hostname+':8099')">
           <i class="fas fa-shield-alt"></i>
           <span>Bitwarden</span>
         </a>
       </li>
       
       <li class="nav-item no-arrow mx-1">
-        <a class="nav-link" href="/admin/" onclick="javascript:event.target.port=location.port" target="_blank">
+        <a class="nav-link" href="/admin/" target="_blank">
           <i class="fab fa-raspberry-pi"></i>
           <span>Pi-Hole</span>
         </a>
@@ -143,7 +149,7 @@
         <h5 id="markThisLabel" class="modal-title">备注本机</h5>
       </div>
       <div class="modal-body">
-        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo htmlspecialchars($de_GWDconf->address->alias ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+        <input id="markName" type="text" class="form-control" placeholder="备注名" required="required" value="<?php echo gwd_h($de_GWDconf->address->alias ?? ''); ?>">
       </div>
       <div class="modal-footer">
         <button id="buttonMarkThis" type="button" class="btn btn-outline-dark btn-sm">应用</button>
@@ -176,9 +182,9 @@ $NFSnum = count($arrayNFS);
 for( $i=0; $i<$NFSnum; $i++){
   $NFSstr1 = explode(" ",$arrayNFS[$i]);
   $NFSstr2 = explode(":",$NFSstr1[2] ?? '');
-  $NFSpoint = htmlspecialchars($NFSstr1[0] ?? '', ENT_QUOTES, 'UTF-8');
-  $NFSserver = htmlspecialchars($NFSstr2[0] ?? '', ENT_QUOTES, 'UTF-8');
-  $NFSaddress = htmlspecialchars($NFSstr2[1] ?? '', ENT_QUOTES, 'UTF-8');
+  $NFSpoint = gwd_h($NFSstr1[0] ?? '');
+  $NFSserver = gwd_h($NFSstr2[0] ?? '');
+  $NFSaddress = gwd_h($NFSstr2[1] ?? '');
 print <<<EOT
 <div class="form-row">
   <div class="col-md-4 input-group my-2">
@@ -306,19 +312,24 @@ EOT;
   </div>
   <!-- /#wrapper -->
 <script>
-function NFSdel(NFSdel){
-var NFSnum = $(NFSdel).parent().parent().find('input').attr('id')
-var NFSnum = NFSnum.replace(/[^0-9]/ig,"")
-var NFSpoint = $('#NFSpoint'+NFSnum).val()
+function NFSdel(btn){
+var $row = $(btn).closest('.form-row')
+var NFSpoint = $row.find("input[id^='NFSpoint']").val()
+if (!NFSpoint) {
+  $row.remove()
+  return
+}
 $.post('./act/offNFS.php', {NFSpoint:NFSpoint}, function(result){
-  $(NFSdel).parent().parent('.form-row').remove()
+  $row.remove()
+}).fail(function(xhr){
+  alert($.trim(xhr.responseText) || '卸载NFS失败')
 })
 }
 
 
 $(function(){
 $('#buttonLogout').click(function(){
-$.post('auth.php', {logout:'true'}, function(result){window.location.href="index.php"})
+$.post('auth.php', {logout:'true'}).always(function(){window.location.href="login.php"})
 })
 
 $('#buttonMarkThis').click(function(){
@@ -329,8 +340,12 @@ $.post('./act/markThis.php', {markName:markNametxt}, function(result){window.loc
 $('#buttonNFSinstall').click(function(){
 $.post('./act/installNFS.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
@@ -373,45 +388,65 @@ $('#buttonNFSAdd').click(function(){
   $("#NFSmodal").modal('show')
   $(":hidden#NFSmodalID").val(i)
   $("#NFSpath").val("选择路径并应用")
-  $.get('./act/getNFSlist.php', {NFSserver:NFSserver}, function(data){
-  var data = data.split('\n');
-  var len = data.length;
   $("li[id^='NFSlistLine']").remove()
-  for( let i = 0; i<len; i++){
-    let NFSlistLine = data[i];
-    $('<li>', {id: 'NFSlistLine' + i, type: 'button', 'class': 'list-group-item'}).text(NFSlistLine).appendTo('#NFSlist');
-    $('#NFSlistLine'+i).click(function(){
-      $("#NFSpath").val(NFSlistLine.split(' ')[0])
+  $.post('./act/getNFSlist.php', {NFSserver:NFSserver}, function(data){
+  var lines = data.split('\n');
+  $("li[id^='NFSlistLine']").remove()
+  for( let j = 0; j<lines.length; j++){
+    let NFSlistLine = $.trim(lines[j]);
+    if (!NFSlistLine) continue;
+    $('<li>', {id: 'NFSlistLine' + j, type: 'button', 'class': 'list-group-item'}).text(NFSlistLine).appendTo('#NFSlist');
+    $('#NFSlistLine'+j).click(function(){
+      $("#NFSpath").val(NFSlistLine.split(/\s+/)[0])
   })
   }
+  }).fail(function(xhr){
+    $("li[id^='NFSlistLine']").remove()
+    $('<li>', {id: 'NFSlistLine0', 'class': 'list-group-item text-danger'}).text($.trim(xhr.responseText) || '获取NFS共享列表失败').appendTo('#NFSlist')
   })
   })
 })
 
 $('#confirmNFSaddr').click(function(){
   var NFSmodalID =  $(":hidden#NFSmodalID").val()
-  var NFSaddress = $('#NFSpath').val()
-  $("#NFSaddress"+NFSmodalID).text(NFSaddress)
-  $("#NFSpoint"+NFSmodalID).val("/mnt/"+NFSaddress.split('/')[NFSaddress.split('/').length - 1])
+  var selectedPath = $.trim($('#NFSpath').val() || '')
+  // Derive a safe mount point name: last non-empty path segment, restricted to [A-Za-z0-9._-]
+  var segs = selectedPath.split('/').filter(function(s){ return s !== '' })
+  var mntName = (segs.length ? segs[segs.length - 1] : '').replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '')
+  if (!selectedPath || selectedPath.charAt(0) !== '/' || !mntName) {
+    alert('请选择有效的NFS共享路径')
+    return
+  }
+  $("#NFSaddress"+NFSmodalID).text(selectedPath)
+  $("#NFSpoint"+NFSmodalID).val("/mnt/"+mntName)
 var NFSlist = []
-var len = $("#NFSbody .form-row").length
-var NFSpoint, NFSserver, NFSaddress
-for( let i = 0; i<len; i++){
-    var NFSpoint = $('#NFSpoint'+i).val()
-    var NFSserver = $('#NFSserver'+i).val()
-    var NFSaddress = $('#NFSaddress'+i).text()
+$('#NFSbody .form-row').each(function(){
+    var NFSpoint = $(this).find("input[id^='NFSpoint']").val()
+    var NFSserver = $(this).find("input[id^='NFSserver']").val()
+    var NFSaddress = $(this).find("span[id^='NFSaddress']").text()
     if ( NFSpoint !== '' && NFSserver !== '' && NFSaddress !== '') {
     NFSlist.push({NFSpoint, NFSserver, NFSaddress})
     }
-}
-$.post('./act/onNFS.php', {NFSlist:NFSlist}, function(result){window.location.reload()})
+})
+$.post('./act/onNFS.php', {NFSlist:NFSlist}, function(result){
+  if (/^skipped \d+/.test($.trim(result || ''))) {
+    alert('已保存，但有 ' + $.trim(result).split(' ')[1] + ' 条无效的NFS挂载被跳过')
+  }
+  window.location.reload()
+}).fail(function(xhr){
+  alert($.trim(xhr.responseText) || 'NFS挂载保存失败')
+})
 })
 
 $('#buttonDockerInstall').click(function(){
 $.post('./act/installDocker.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
@@ -426,8 +461,12 @@ $('#dockerBody').css('display', 'block');
 $('#buttonBWinstall').click(function(){
 $.post('./act/installBitwarden.php', function(){})
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
@@ -439,6 +478,9 @@ $("#bitwardenBackupLoading").attr("class", "spinner-border spinner-border-sm")
 $.post('./act/backupBitwarden.php', function(result){
   $("#bitwardenBackupLoading").removeClass()
   window.location.href = "./act/backupDownload.php?type=bitwarden"
+}).fail(function(xhr){
+  $("#bitwardenBackupLoading").removeClass()
+  alert($.trim(xhr.responseText) || 'Bitwarden备份失败')
 })
 })
 
@@ -464,6 +506,10 @@ $.ajax({
         type: 'post',
         success: function(result){
           $("#buttonBitwardenRestoreLoading").removeClass()
+        },
+        error: function(xhr){
+          $("#buttonBitwardenRestoreLoading").removeClass()
+          alert($.trim(xhr.responseText) || 'Bitwarden恢复上传失败')
         }
       })
 })
@@ -471,8 +517,12 @@ $.ajax({
 $('#buttonJFinstall').click(function(){
 $.post('./act/installJellyfin.php', function(){});
 var win = window.open('/ttyd', 'popupWindow', 'width=900, height=900, scrollbars=yes')
+if (!win) {
+    alert('弹出窗口被拦截，请允许弹窗后重试');
+    return;
+}
 var timer = setInterval(function() { 
-    if(win.closed) {
+    if(!win || win.closed) {
         clearInterval(timer);
         $.post('./act/installZ.php', function(result){window.location.reload()})
     }
@@ -484,6 +534,9 @@ $("#JellyfinBackupLoading").attr("class", "spinner-border spinner-border-sm")
 $.post('./act/backupJellyfin.php', function(result){
   $("#JellyfinBackupLoading").removeClass()
   window.location.href = "./act/backupDownload.php?type=jellyfin"
+}).fail(function(xhr){
+  $("#JellyfinBackupLoading").removeClass()
+  alert($.trim(xhr.responseText) || 'Jellyfin备份失败')
 })
 })
 
@@ -509,6 +562,10 @@ $.ajax({
         type: 'post',
         success: function(result){
           $("#buttonJellyfinRestoreLoading").removeClass()
+        },
+        error: function(xhr){
+          $("#buttonJellyfinRestoreLoading").removeClass()
+          alert($.trim(xhr.responseText) || 'Jellyfin恢复上传失败')
         }
       })
 })
@@ -522,7 +579,3 @@ $.ajax({
 </body>
 
 </html>
-
-<?php }?>
-<?php  if(!$auth){ ?>
-<?php header('Location: login.php');} ?>
