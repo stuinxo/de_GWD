@@ -8,17 +8,7 @@ if [[ -n "$updateCMDaddr" ]]; then
   curl -fsSL --connect-timeout 8 -m 30 -o "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || true
 
   if [[ $(du -sk "$tmpUpdate" 2>/dev/null | awk '{print$1}') -le 1 ]]; then
-    systemctl stop nftables 2>/dev/null || true
-
-    rm -rf /etc/resolv.conf
-    cat << EOF >/etc/resolv.conf
-nameserver 119.29.29.29
-nameserver 180.76.76.76
-nameserver 114.114.114.114
-nameserver 223.5.5.5
-EOF
-
-    wget -T 15 -t 3 -qO "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || curl -fsSL --connect-timeout 10 -m 30 -o "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || true
+    wget -T 15 -t 2 -qO "$tmpUpdate" "$updateCMDaddr" 2>/dev/null || true
   fi
 
   if [[ -s "$tmpUpdate" ]] && bash -n "$tmpUpdate" 2>/dev/null; then
@@ -41,7 +31,7 @@ if [[ ! "$updateToken" =~ ^[0-9a-f]{24,64}$ ]]; then
   conf_jq --arg tok "$updateToken" '.update.updateToken = $tok'
 fi
 
-kill $(ps -e | grep 'ttyd' | awk '{print$1}') >/dev/null 2>&1 || true
+pkill -f "/usr/bin/ttyd -p $updatePort" >/dev/null 2>&1 || true
 tmux kill-session -t updateGWD >/dev/null 2>&1 || true
 if [[ -f /etc/systemd/system/updateGWD.service ]]; then
   sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -b /u_$updateToken -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service

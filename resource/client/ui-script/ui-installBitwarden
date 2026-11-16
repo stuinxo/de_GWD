@@ -36,7 +36,7 @@ location / {
   }
   
 location /notifications/hub {
-  proxy_pass                  http://127.0.0.1:3012;
+  proxy_pass                  http://127.0.0.1:8098;
   proxy_http_version          1.1;
   proxy_set_header            Upgrade \$http_upgrade;
   proxy_set_header            Connection "upgrade";
@@ -61,9 +61,7 @@ docker run -d \
   -e TZ=Asia/Shanghai \
   -p 8098:80 \
   -v /opt/bitwarden/:/data/ \
-  --dns 1.1.1.1 \
   --restart always \
-  --privileged=true \
   vaultwarden/server:latest
 }
 

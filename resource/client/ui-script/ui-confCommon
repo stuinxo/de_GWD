@@ -48,7 +48,8 @@ _conf_jq_inner() {
   fi
   if [[ -f "$GWD_CONF_FILE" ]] && jq -e 'type == "object"' "$GWD_CONF_FILE" >/dev/null 2>&1; then
     cp -f "$GWD_CONF_FILE" "$GWD_CONF_BAK" 2>/dev/null || true
-    chmod 600 "$GWD_CONF_BAK" 2>/dev/null || true
+    chown root:www-data "$GWD_CONF_BAK" 2>/dev/null || true
+    chmod 640 "$GWD_CONF_BAK" 2>/dev/null || true
   fi
   chown root:www-data "$tmp" 2>/dev/null || true
   chmod 660 "$tmp" 2>/dev/null || true

@@ -1,3 +1,7 @@
 #!/bin/bash
-pingTCP=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-echo "$(curl -o /dev/null -m 5 -kIsw '%{time_connect}\n' https://$pingTCP) * 1000" | bc | awk '{printf ("%.0f\n",$1)}' 
+[[ "$1" =~ ^[0-9]+$ ]] || exit 0
+pingTCP=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' | tr -d '[:space:]')
+pingTCP="${pingTCP#*//}"
+pingTCP="${pingTCP%%/*}"
+[[ -n "$pingTCP" && "$pingTCP" =~ ^[A-Za-z0-9.:-]+$ ]] || exit 0
+echo "$(curl -o /dev/null -m 5 -kIsw '%{time_connect}\n' "https://$pingTCP") * 1000" | bc | awk '{printf ("%.0f\n",$1)}'

@@ -1,9 +1,14 @@
 #!/bin/bash
-NFSpoint=$(echo "$1" | sed 's/\//\\\//g')
-sed -i "/$NFSpoint/d" /etc/auto.nfs
+target="$1"
+[[ "$target" =~ ^/mnt/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || exit 1
+if [[ -f /etc/auto.nfs ]]; then
+  tmpNfs=$(mktemp /tmp/de_GWD-auto-nfs.XXXXXX) || exit 1
+  awk -v pt="$target" '$1 != pt' /etc/auto.nfs > "$tmpNfs" && mv -f "$tmpNfs" /etc/auto.nfs || rm -f "$tmpNfs"
+  chmod 644 /etc/auto.nfs 2>/dev/null || true
+fi
 
 systemctl restart autofs
 
-awk '{print$1}' /etc/auto.nfs | while read line; do
-cd $line
+awk '{print $1}' /etc/auto.nfs 2>/dev/null | while IFS= read -r line; do
+  [[ -n "$line" ]] && cd "$line" >/dev/null 2>&1 || true
 done

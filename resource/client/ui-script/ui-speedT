@@ -1,3 +1,7 @@
 #!/bin/bash
-speedT=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-wget -O /dev/null https://$speedT/spt 2>&1 | sed '$d' | awk 'END{print$3}' | sed 's/(//'
+[[ "$1" =~ ^[0-9]+$ ]] || exit 0
+speedT=$(jq -r --argjson domainNUM "$1" '.v2node[$domainNUM].domain // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' | tr -d '[:space:]')
+speedT="${speedT#*//}"
+speedT="${speedT%%/*}"
+[[ -n "$speedT" && "$speedT" =~ ^[A-Za-z0-9.:-]+$ ]] || exit 0
+timeout 20 wget -q -O /dev/null -- "https://$speedT/spt" 2>&1 | sed '$d' | awk 'END{print$3}' | sed 's/(//'

@@ -1,8 +1,9 @@
 #!/bin/bash
-[[ $(jq -r '.outbounds[0].streamSettings.security' /opt/de_GWD/vtrui/config.json 2>/dev/null) = "reality" ]] && exit 0
+[[ $(jq -r '.outbounds[0].streamSettings.security // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null) = "reality" ]] && exit 0
 
-domain=$(jq -r '.outbounds[0].settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
-port=$(jq -r '.outbounds[0].settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+domain=$(jq -r '.outbounds[0].settings.vnext[0].address // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+port=$(jq -r '.outbounds[0].settings.vnext[0].port // empty' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
+[[ -n "$domain" ]] || exit 0
 
 if [[ "$port" = "443" ]]; then
   jq -r --arg d "$domain" '.v2node | to_entries[] | select(.value.domain == $d or .value.domain == ($d + ":443")) | .key' /opt/de_GWD/0conf

@@ -1,7 +1,35 @@
 #!/bin/bash
-source /opt/de_GWD/ui-confCommon
-jq 'del(.outbounds[] | select(.tag == "divert"))' /opt/de_GWD/vtrui/config.json |\
-jq 'del(.routing.rules[] | select(.outboundTag == "divert"))' | sponge /opt/de_GWD/vtrui/config.json
+source "$(dirname "$0")/ui-confCommon" 2>/dev/null || source /opt/de_GWD/ui-confCommon
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+xray_cfg_jq 'del(.outbounds[]? | select((.tag // "") == "divert")) | del(.routing.rules[]? | select((.outboundTag // "") == "divert"))'
+
+if [[ -d /opt/de_GWD/nftables ]]; then
+  >/opt/de_GWD/nftables/IP_listBlan
+  >/opt/de_GWD/nftables/IP_listWlan
+  nft flush set ip de_GWD listBlan 2>/dev/null || true
+  nft flush set ip de_GWD listWlan 2>/dev/null || true
+  cat << 'EOF' >/opt/de_GWD/nftables/SET_listBlan.nft
+#!/usr/sbin/nft -f
+table ip de_GWD {
+        set listBlan {
+                type ipv4_addr
+                flags interval
+                auto-merge
+        }
+}
+EOF
+  cat << 'EOF' >/opt/de_GWD/nftables/SET_listWlan.nft
+#!/usr/sbin/nft -f
+table ip de_GWD {
+        set listWlan {
+                type ipv4_addr
+                flags interval
+                auto-merge
+        }
+}
+EOF
+  chmod +x /opt/de_GWD/nftables/SET_listBlan.nft /opt/de_GWD/nftables/SET_listWlan.nft 2>/dev/null || true
+fi
 
 conf_jq '.v2nodeDIV.nodeDT.status="off"'
 

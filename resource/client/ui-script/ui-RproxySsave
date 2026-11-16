@@ -1,89 +1,65 @@
 #!/bin/bash
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxySmappingList=$(jq -c '.FORWARD.Rproxy.server.mapping // []' /opt/de_GWD/0conf 2>/dev/null)
+
+[[ "$RproxyStunnelPort" =~ ^[0-9]+$ ]] && (( RproxyStunnelPort >= 1 && RproxyStunnelPort <= 65535 )) || exit 1
+[[ -n "$RproxyStunnelUUID" ]] || exit 1
+
 rm -rf /opt/de_GWD/RproxyS
 mkdir -p /opt/de_GWD/RproxyS
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyS/RproxyS
 chmod +x /opt/de_GWD/RproxyS/RproxyS
 
-RproxySmappingStatus=$(jq -r '.FORWARD.Rproxy.server.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-RproxyStunnelPort=$(jq -r '.FORWARD.Rproxy.server.tunnel.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.server.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxySmappingList=$(jq -r '.FORWARD.Rproxy.server.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-cat << EOF >/opt/de_GWD/RproxyS/config.json
-{
-  "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
-  },
-  "dns":{
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
-  },
-  "routing":{
-    "rules":[]
-  },
-  "inbounds": [
-    {
-      "tag": "reverseTunnel",
-      "port": $RproxyStunnelPort,
-      "protocol": "vless",
-      "settings":{
-        "decryption": "none",
-        "clients":[
-          {
-            "id":"$RproxyStunnelUUID",
-            "reverse":{"tag":"portal"}
+rproxySCfg=$(jq -nc \
+  --argjson tport "$RproxyStunnelPort" \
+  --arg tuuid "$RproxyStunnelUUID" \
+  --arg mappingStatus "$RproxySmappingStatus" \
+  --argjson mappingList "${RproxySmappingList:-[]}" '
+  {
+    log: {access: "none", error: "none", loglevel: "none"},
+    dns: {queryStrategy: "UseIP", disableCache: true, servers: ["tcp+local://127.0.0.1:53"]},
+    routing: {rules: []},
+    inbounds: [
+      {
+        tag: "reverseTunnel",
+        port: $tport,
+        protocol: "vless",
+        settings: {
+          decryption: "none",
+          clients: [{id: $tuuid, reverse: {tag: "portal"}}]
+        },
+        streamSettings: {
+          network: "tcp",
+          security: "tls",
+          tlsSettings: {
+            certificates: [{certificateFile: "/var/www/ssl/de_GWD.cer", keyFile: "/var/www/ssl/de_GWD.key"}]
           }
-        ]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "certificates": [
-            {
-              "certificateFile": "/var/www/ssl/de_GWD.cer",
-              "keyFile": "/var/www/ssl/de_GWD.key"
-            }
-          ]
         }
       }
-    }
-  ],
-  "outbounds": [
-    {
-      "tag": "direct",
-      "protocol": "freedom"
-    }
-  ]
-}
-EOF
+    ],
+    outbounds: [{tag: "direct", protocol: "freedom"}]
+  }
+  | if $mappingStatus == "on" and ($mappingList | type) == "array" then
+      reduce range(0; $mappingList | length) as $i (.;
+        .routing.rules += [{type: "field", inboundTag: ["mapping\($i)"], outboundTag: "portal"}]
+        | .inbounds += [{
+            tag: "mapping\($i)",
+            port: ($mappingList[$i].port | tonumber),
+            protocol: "dokodemo-door",
+            settings: {
+              address: "127.0.0.1",
+              port: ($mappingList[$i].port | tonumber),
+              network: $mappingList[$i].protocol
+            }
+          }]
+      )
+    else . end
+') || exit 1
 
-
-jq --arg mappingStatus "$RproxySmappingStatus" \
-   --argjson mappingList "${RproxySmappingList:-[]}" '
-  if $mappingStatus == "on" and ($mappingList | type) == "array" then
-    reduce range(0; $mappingList | length) as $i (.;
-      .routing.rules += [{"type": "field", "inboundTag": ["mapping\($i)"], "outboundTag": "portal"}]
-      | .inbounds += [{
-          "tag": "mapping\($i)",
-          "port": ($mappingList[$i].port | tonumber),
-          "protocol": "dokodemo-door",
-          "settings": {
-            "address": "127.0.0.1",
-            "port": ($mappingList[$i].port | tonumber),
-            "network": $mappingList[$i].protocol
-          }
-        }]
-    )
-  else . end
-' /opt/de_GWD/RproxyS/config.json | sponge /opt/de_GWD/RproxyS/config.json
-
-chown root:www-data /opt/de_GWD/RproxyS/config.json 2>/dev/null || true
-chmod 640 /opt/de_GWD/RproxyS/config.json
+xray_write_json_file /opt/de_GWD/RproxyS/config.json "$rproxySCfg" || exit 1
 chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
 chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 
@@ -101,7 +77,8 @@ Restart=always
 RestartSec=2
 TimeoutStopSec=5
 
-AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 
 [Install]
@@ -109,4 +86,10 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload >/dev/null
 systemctl enable RproxyS >/dev/null 2>&1
-systemctl restart RproxyS
+if ! systemctl restart RproxyS >/dev/null 2>&1; then
+  if systemd-detect-virt --container >/dev/null 2>&1; then
+    sed -i '/^AmbientCapabilities=/d;/^CapabilityBoundingSet=/d' /etc/systemd/system/RproxyS.service
+    systemctl daemon-reload >/dev/null
+    systemctl restart RproxyS
+  fi
+fi

@@ -12,7 +12,8 @@ rm -rf /var/www/html/__MACOSX
 
 if jq -e 'type == "object"' /opt/de_GWD/0conf >/dev/null 2>&1; then
 	cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak
-	chmod 600 /opt/de_GWD/0conf_bak
+	chown root:www-data /opt/de_GWD/0conf_bak 2>/dev/null || true
+	chmod 640 /opt/de_GWD/0conf_bak
 elif jq -e 'type == "object"' /opt/de_GWD/0conf_bak >/dev/null 2>&1; then
 	cp -f /opt/de_GWD/0conf_bak /opt/de_GWD/0conf
 	chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true

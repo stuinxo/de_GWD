@@ -7,6 +7,66 @@ uuid_to_path() {
     printf '/%s' "$first"
 }
 
+xray_cfg_jq() {
+    local cfg="${XRAY_CONF_PATH:-/opt/de_GWD/vtrui/config.json}"
+    local dir tmp
+    dir=$(dirname "$cfg")
+    mkdir -p "$dir" 2>/dev/null || true
+    tmp=$(mktemp "${dir}/.xray.cfg.XXXXXX") || return 1
+    if ! jq "$@" "$cfg" >"$tmp" || [[ ! -s "$tmp" ]] || ! jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        return 1
+    fi
+    chown root:www-data "$tmp" 2>/dev/null || true
+    if chgrp www-data "$tmp" 2>/dev/null; then
+        chmod 640 "$tmp" 2>/dev/null || true
+    else
+        chmod 644 "$tmp" 2>/dev/null || true
+    fi
+    mv -f "$tmp" "$cfg"
+}
+
+xray_write_json_file() {
+    local dest="$1"
+    local content="$2"
+    local dir tmp
+    dir=$(dirname "$dest")
+    mkdir -p "$dir" 2>/dev/null || true
+    tmp=$(mktemp "${dir}/.xray.write.XXXXXX") || return 1
+    if ! printf '%s\n' "$content" >"$tmp" || ! jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
+        rm -f "$tmp"
+        return 1
+    fi
+    chown root:www-data "$tmp" 2>/dev/null || true
+    if chgrp www-data "$tmp" 2>/dev/null; then
+        chmod 640 "$tmp" 2>/dev/null || true
+    else
+        chmod 644 "$tmp" 2>/dev/null || true
+    fi
+    mv -f "$tmp" "$dest"
+}
+
+build_freedom_direct_outbound() {
+    local tag="${1:-direct}"
+    local mark="${2:-255}"
+    jq -nc \
+      --arg tag "$tag" \
+      --argjson mark "${mark:-0}" '
+      {
+        tag: $tag,
+        protocol: "freedom",
+        settings: {
+          finalRules: [{"action": "allow", "ip": ["geoip:private", "0.0.0.0/0", "::/0"]}]
+        },
+        streamSettings: {
+          sockopt: (
+            if $mark > 0 then {mark: $mark, tcpFastOpen: true, tcpNoDelay: true}
+            else {tcpFastOpen: true, tcpNoDelay: true} end
+          )
+        }
+      }'
+}
+
 build_vless_xhttp_outbound() {
     local tag="$1"
     local domain="$2"
@@ -22,48 +82,52 @@ build_vless_xhttp_outbound() {
         path=$(uuid_to_path "$uuid")
     fi
     [[ "${path:0:1}" != "/" ]] && path="/$path"
+    [[ ! "$port" =~ ^[0-9]+$ ]] && port="443"
+    [[ ! "$mark" =~ ^[0-9]+$ ]] && mark="0"
 
-    local sockoptJson=""
-    if [[ -n "$mark" && "$mark" != "0" ]]; then
-        sockoptJson='"sockopt": { "mark": '"$mark"', "tcpFastOpen": true, "tcpNoDelay": true }'
-    else
-        sockoptJson='"sockopt": { "tcpFastOpen": true, "tcpNoDelay": true }'
-    fi
-
-    cat << EOF
-{
-  "tag": "$tag",
-  "protocol": "vless",
-  "settings": {
-    "vnext": [
+    jq -nc \
+      --arg tag "$tag" \
+      --arg domain "$domain" \
+      --argjson port "$port" \
+      --arg uuid "$uuid" \
+      --arg tls "$tls" \
+      --arg path "$path" \
+      --argjson mark "$mark" '
       {
-        "address": "$domain",
-        "port": $port,
-        "users": [
-          {
-            "id": "$uuid",
-            "encryption": "none"
-          }
-        ]
-      }
-    ]
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "serverName": "$tls",
-      "alpn": ["h2"],
-      "allowInsecure": false
-    },
-    "xhttpSettings": {
-      "path": "$path",
-      "mode": "packet-up"
-    },
-    $sockoptJson
-  }
-}
-EOF
+        tag: $tag,
+        protocol: "vless",
+        settings: {
+          vnext: [
+            {
+              address: $domain,
+              port: $port,
+              users: [
+                {
+                  id: $uuid,
+                  encryption: "none"
+                }
+              ]
+            }
+          ]
+        },
+        streamSettings: {
+          network: "xhttp",
+          security: "tls",
+          tlsSettings: {
+            serverName: $tls,
+            alpn: ["h2"],
+            allowInsecure: false
+          },
+          xhttpSettings: {
+            path: $path,
+            mode: "packet-up"
+          },
+          sockopt: (
+            if $mark > 0 then {mark: $mark, tcpFastOpen: true, tcpNoDelay: true}
+            else {tcpFastOpen: true, tcpNoDelay: true} end
+          )
+        }
+      }'
 }
 
 build_vless_xhttp_inbound_nginx_tls() {
@@ -74,38 +138,37 @@ build_vless_xhttp_inbound_nginx_tls() {
         path=$(uuid_to_path "$uuid")
     fi
     [[ "${path:0:1}" != "/" ]] && path="/$path"
+    [[ ! "$port" =~ ^[0-9]+$ ]] && port="9890"
 
-    cat << EOF
-{
-  "listen": "127.0.0.1",
-  "port": $port,
-  "protocol": "vless",
-  "settings": {
-    "clients": [
+    jq -nc \
+      --argjson port "$port" \
+      --arg uuid "$uuid" \
+      --arg path "$path" '
       {
-        "id": "$uuid"
-      }
-    ],
-    "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "none",
-    "xhttpSettings": {
-      "path": "$path",
-      "mode": "auto"
-    },
-    "sockopt": {
-      "tcpFastOpen": true,
-      "tcpMptcp": true
-    }
-  },
-  "sniffing": {
-    "enabled": true,
-    "destOverride": ["http", "tls", "quic"]
-  }
-}
-EOF
+        listen: "127.0.0.1",
+        port: $port,
+        protocol: "vless",
+        settings: {
+          clients: [{id: $uuid}],
+          decryption: "none"
+        },
+        streamSettings: {
+          network: "xhttp",
+          security: "none",
+          xhttpSettings: {
+            path: $path,
+            mode: "auto"
+          },
+          sockopt: {
+            tcpFastOpen: true,
+            tcpMptcp: true
+          }
+        },
+        sniffing: {
+          enabled: true,
+          destOverride: ["http", "tls", "quic"]
+        }
+      }'
 }
 
 build_vless_xhttp_inbound_direct_tls() {
@@ -117,43 +180,49 @@ build_vless_xhttp_inbound_direct_tls() {
     local tag="${6:-inbound-fwd}"
 
     [[ "${path:0:1}" != "/" ]] && path="/$path"
+    [[ ! "$port" =~ ^[0-9]+$ ]] && return 1
 
-    cat << EOF
-{
-  "tag": "$tag",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "vless",
-  "settings": {
-    "clients": $uuids_json,
-    "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "xhttp",
-    "security": "tls",
-    "tlsSettings": {
-      "certificates": [
-        {
-          "certificateFile": "$cer",
-          "keyFile": "$key"
+    jq -nc \
+      --arg tag "$tag" \
+      --argjson port "$port" \
+      --argjson clients "${uuids_json:-[]}" \
+      --arg path "$path" \
+      --arg cer "$cer" \
+      --arg key "$key" '
+      {
+        tag: $tag,
+        listen: "0.0.0.0",
+        port: $port,
+        protocol: "vless",
+        settings: {
+          clients: $clients,
+          decryption: "none"
+        },
+        streamSettings: {
+          network: "xhttp",
+          security: "tls",
+          tlsSettings: {
+            certificates: [
+              {
+                certificateFile: $cer,
+                keyFile: $key
+              }
+            ]
+          },
+          xhttpSettings: {
+            path: $path,
+            mode: "auto"
+          },
+          sockopt: {
+            tcpFastOpen: true,
+            tcpNoDelay: true
+          }
+        },
+        sniffing: {
+          enabled: true,
+          destOverride: ["http", "tls", "quic"]
         }
-      ]
-    },
-    "xhttpSettings": {
-      "path": "$path",
-      "mode": "auto"
-    },
-    "sockopt": {
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  },
-  "sniffing": {
-    "enabled": true,
-    "destOverride": ["http", "tls", "quic"]
-  }
-}
-EOF
+      }'
 }
 
 build_vless_xhttp_uri() {

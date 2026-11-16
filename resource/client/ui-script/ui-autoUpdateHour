@@ -7,10 +7,14 @@ sed -i '/autoUpdate/d' "$tmpCron"
 crontab "$tmpCron"
 rm -rf /opt/de_GWD/autoUpdate
 elif [[ "$1" =~ ^([0-9]|1[0-9]|2[0-3])$ ]]; then
-cat << "EOF" >/opt/de_GWD/autoUpdate
-#!/bin/bash
-localVer=$(awk 'NR==1' /var/www/html/act/version.php)
-remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 https://raw.githubusercontent.com/stuinxo/de_GWD/v2/version.php | head -n 1 | tr -d '\r ')
+branch="${BRANCH:-v2}"
+{
+  printf '%s\n' '#!/bin/bash'
+  printf '%s\n' "PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'"
+  printf 'branch=%q\n' "$branch"
+  cat << "EOF"
+localVer=$(awk 'NR==1' /var/www/html/act/version.php 2>/dev/null | tr -d '\r ')
+remoteVer=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/version.php" | head -n 1 | tr -d '\r ')
 
 if [[ -z "$remoteVer" ]] || [[ ! "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] || [[ "$remoteVer" == "$localVer" ]]; then
   exit 0
@@ -23,9 +27,14 @@ if [[ "$VerCP" = "$localVer" ]]; then
   tmpClean=$(mktemp /tmp/de_GWD-autoUpdate-clean.XXXXXX) || { rm -f "$tmpAuto"; exit 1; }
   trap 'rm -f "$tmpAuto" "$tmpClean"' EXIT
 
-  if wget -t 5 -T 10 -cqO "$tmpAuto" https://raw.githubusercontent.com/stuinxo/de_GWD/v2/client &&
+  if curl -fsSL --connect-timeout 10 -m 60 -o "$tmpAuto" "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/client" &&
      [[ $(du -sk "$tmpAuto" 2>/dev/null | awk '{print $1}') -gt 70 ]] &&
      grep -q 'updateGWD()' "$tmpAuto"; then
+    expectedSha=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/${branch}/client.sha256sum" 2>/dev/null | awk 'NR==1 {print $1}' | tr -d '\r ' | tr 'A-F' 'a-f')
+    if [[ "$expectedSha" =~ ^[0-9a-f]{64}$ ]]; then
+      actualSha=$(sha256sum "$tmpAuto" 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f')
+      [[ "$actualSha" == "$expectedSha" ]] || exit 1
+    fi
     awk '{lines[NR]=$0} END {n=NR; while(n>0 && lines[n]=="") n--; if(n>0 && lines[n]=="start_menu") n--; for(i=1;i<=n;i++) print lines[i]}' "$tmpAuto" >"$tmpClean"
     printf '%s\n' 'updateGWD auto' >>"$tmpClean"
     if bash -n "$tmpClean" 2>/dev/null; then
@@ -37,6 +46,7 @@ if [[ "$VerCP" = "$localVer" ]]; then
   fi
 fi
 EOF
+} >/opt/de_GWD/autoUpdate
 chmod +x /opt/de_GWD/autoUpdate
 
 tmpCron=$(mktemp /tmp/de_GWD-cron.XXXXXX) || exit 1

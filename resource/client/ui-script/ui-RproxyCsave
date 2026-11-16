@@ -1,91 +1,73 @@
 #!/bin/bash
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+RproxyCmappingStatus=$(jq -r '.FORWARD.Rproxy.client.mappingStatus // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelAddress=$(jq -r '.FORWARD.Rproxy.client.tunnel.address // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.client.tunnel.uuid // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+RproxyCmappingList=$(jq -c '.FORWARD.Rproxy.client.mapping // []' /opt/de_GWD/0conf 2>/dev/null)
+
+domain=$(echo -e "$RproxyStunnelAddress" | cut -d: -f1)
+port=$(echo -e "$RproxyStunnelAddress" | cut -d: -f2 | grep '^[[:digit:]]*$')
+[[ -z $port ]] && port="443"
+[[ -n "$domain" && -n "$RproxyStunnelUUID" ]] || exit 1
+
 rm -rf /opt/de_GWD/RproxyC
 mkdir -p /opt/de_GWD/RproxyC
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/RproxyC/RproxyC
 chmod +x /opt/de_GWD/RproxyC/RproxyC
 
-RproxyCmappingStatus=$(jq -r '.FORWARD.Rproxy.client.mappingStatus' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-RproxyStunnelAddress=$(jq -r '.FORWARD.Rproxy.client.tunnel.address' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxyStunnelUUID=$(jq -r '.FORWARD.Rproxy.client.tunnel.uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-RproxyCmappingList=$(jq -r '.FORWARD.Rproxy.client.mapping' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-
-domain=$(echo -e $RproxyStunnelAddress | cut -d: -f1)
-port=$(echo -e $RproxyStunnelAddress | cut -d: -f2 | grep '^[[:digit:]]*$')
-[[ -z $port ]] && port="443"
-
-cat << EOF >/opt/de_GWD/RproxyC/config.json
-{
-  "log": {
-    "access":"none",
-    "error":"none",
-    "loglevel":"none"
-  },
-  "dns":{
-    "queryStrategy":"UseIP",
-    "disableCache":true,
-    "servers":["tcp+local://127.0.0.1:53"]
-  },
-  "routing":{
-    "rules":[]
-  },
-  "outbounds": [
-    {
-      "tag": "reverseTunnel",
-      "protocol": "vless",
-      "settings": {
-        "address": "$domain",
-        "port": $port,
-        "id": "$RproxyStunnelUUID",
-        "encryption": "none",
-        "reverse": {
-          "tag": "bridge"
-        }
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "$domain"
+rproxyCCfg=$(jq -nc \
+  --arg domain "$domain" \
+  --argjson port "$port" \
+  --arg tuuid "$RproxyStunnelUUID" \
+  --arg mappingStatus "$RproxyCmappingStatus" \
+  --argjson mappingList "${RproxyCmappingList:-[]}" '
+  {
+    log: {access: "none", error: "none", loglevel: "none"},
+    dns: {queryStrategy: "UseIP", disableCache: true, servers: ["tcp+local://127.0.0.1:53"]},
+    routing: {rules: []},
+    outbounds: [
+      {
+        tag: "reverseTunnel",
+        protocol: "vless",
+        settings: {
+          address: $domain,
+          port: $port,
+          id: $tuuid,
+          encryption: "none",
+          reverse: {tag: "bridge"}
         },
-        "sockopt": {
-          "mark": 255,
-          "tcpFastOpen": true,
-          "tcpNoDelay": true
+        streamSettings: {
+          network: "tcp",
+          security: "tls",
+          tlsSettings: {serverName: $domain},
+          sockopt: {mark: 255, tcpFastOpen: true, tcpNoDelay: true}
         }
       }
-    }
-  ]
-}
-EOF
-
-
-jq --arg mappingStatus "$RproxyCmappingStatus" \
-   --argjson mappingList "${RproxyCmappingList:-[]}" '
-  if $mappingStatus == "on" and ($mappingList | type) == "array" then
-    reduce range(0; $mappingList | length) as $i (.;
-      .routing.rules += [{
-        "type": "field",
-        "inboundTag": ["bridge"],
-        "port": ($mappingList[$i].extPort | tostring),
-        "network": $mappingList[$i].extProtocol,
-        "outboundTag": "mapping\($i)"
-      }]
-      | .outbounds += [{
-          "tag": "mapping\($i)",
-          "protocol": "freedom",
-          "settings": {
-            "redirect": "\($mappingList[$i].intIP):\($mappingList[$i].intPort)",
-            "finalRules": [{"action": "allow", "ip": ["0.0.0.0/0", "::/0"]}]
-          },
-          "streamSettings": {"sockopt": {"mark": 255, "tcpFastOpen": true, "tcpNoDelay": true}}
+    ]
+  }
+  | if $mappingStatus == "on" and ($mappingList | type) == "array" then
+      reduce range(0; $mappingList | length) as $i (.;
+        .routing.rules += [{
+          type: "field",
+          inboundTag: ["bridge"],
+          port: ($mappingList[$i].extPort | tostring),
+          network: $mappingList[$i].extProtocol,
+          outboundTag: "mapping\($i)"
         }]
-    )
-  else . end
-' /opt/de_GWD/RproxyC/config.json | sponge /opt/de_GWD/RproxyC/config.json
+        | .outbounds += [{
+            tag: "mapping\($i)",
+            protocol: "freedom",
+            settings: {
+              redirect: "\($mappingList[$i].intIP):\($mappingList[$i].intPort)",
+              finalRules: [{action: "allow", ip: ["0.0.0.0/0", "::/0"]}]
+            },
+            streamSettings: {sockopt: {mark: 255, tcpFastOpen: true, tcpNoDelay: true}}
+          }]
+      )
+    else . end
+') || exit 1
 
-chown root:www-data /opt/de_GWD/RproxyC/config.json 2>/dev/null || true
-chmod 640 /opt/de_GWD/RproxyC/config.json
+xray_write_json_file /opt/de_GWD/RproxyC/config.json "$rproxyCCfg" || exit 1
 chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
 chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 

@@ -2,10 +2,13 @@
 source /opt/de_GWD/xray-common
 source /opt/de_GWD/ui-confCommon
 
-FWD1port=$(jq -r '.FORWARD.FWD1.port' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-FWD1uuid=$(jq -r '.FORWARD.FWD1.uuid[].FWD1uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-FWD1upstream=$(jq -r '.FORWARD.FWD1.upstream' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-FWD1path=$(jq -r '.FORWARD.FWD1.path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1port=$(jq -r '.FORWARD.FWD1.port // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1uuid=$(jq -r '.FORWARD.FWD1.uuid[]?.FWD1uuid // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1upstream=$(jq -r '.FORWARD.FWD1.upstream // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+FWD1path=$(jq -r '.FORWARD.FWD1.path // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+
+[[ "$FWD1port" =~ ^[0-9]+$ ]] && (( FWD1port >= 1 && FWD1port <= 65535 )) || exit 1
+[[ -n "$FWD1uuid" ]] || exit 1
 
 rm -rf /opt/de_GWD/vtrui1
 mkdir -p /opt/de_GWD/vtrui1
@@ -32,6 +35,7 @@ if [[ -n "$v2nodeID" ]]; then
     uuid=$(jq -r --argjson v2nodeID "$v2nodeID" '.v2node[$v2nodeID].uuid' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
     upstream_path=$(jq -r --argjson v2nodeID "$v2nodeID" '.v2node[$v2nodeID].path' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 fi
+[[ -n "$address" && -n "$uuid" ]] || exit 1
 domain=$(echo "$address" | cut -d: -f1)
 port=$(echo "$address" | cut -d: -f2 | grep '^[[:digit:]]*$')
 [[ -z "$port" ]] && port="443"
@@ -48,52 +52,24 @@ for u in $FWD1uuid; do
     clients_json=$(jq --arg id "$u" '. += [{"id": $id}]' <<< "$clients_json")
 done
 
-FWD1in=$(build_vless_xhttp_inbound_direct_tls "$FWD1port" "$clients_json" "$FWD1path" "/var/www/ssl/de_GWD.cer" "/var/www/ssl/de_GWD.key" "forward1")
+FWD1in=$(build_vless_xhttp_inbound_direct_tls "$FWD1port" "$clients_json" "$FWD1path" "/var/www/ssl/de_GWD.cer" "/var/www/ssl/de_GWD.key" "forward1") || exit 1
+OBfwd=$(build_vless_xhttp_outbound "fwd1-outbound" "$domain" "$port" "$uuid" "$tls" "$upstream_path" 255) || exit 1
+OBdir=$(build_freedom_direct_outbound "direct" 255) || exit 1
 
-cat << EOF >/opt/de_GWD/vtrui1/config.json
-{
-  "log": {
-    "access": "none",
-    "error": "none",
-    "loglevel": "none"
-  },
-  "dns": {
-    "tag": "dnsflow",
-    "queryStrategy": "UseIP",
-    "disableCache": true,
-    "servers": ["tcp+local://127.0.0.1:53"]
-  },
-  "routing": {
-    "rules": []
-  },
-  "inbounds": [
-    $FWD1in
-  ]
-}
-EOF
+fwd1Cfg=$(jq -nc \
+  --argjson inb "$FWD1in" \
+  --argjson obfwd "$OBfwd" \
+  --argjson obdir "$OBdir" '
+  {
+    log: {access: "none", error: "none", loglevel: "none"},
+    dns: {tag: "dnsflow", queryStrategy: "UseIP", disableCache: true, servers: ["tcp+local://127.0.0.1:53"]},
+    routing: {rules: []},
+    inbounds: [$inb],
+    outbounds: [$obfwd, $obdir]
+  }') || exit 1
 
-OBfwd=$(build_vless_xhttp_outbound "fwd1-outbound" "$domain" "$port" "$uuid" "$tls" "$upstream_path" 255)
+xray_write_json_file /opt/de_GWD/vtrui1/config.json "$fwd1Cfg" || exit 1
 
-OBdir=$(cat << EOF
-{
-  "tag": "direct",
-  "protocol": "freedom",
-  "streamSettings": {
-    "sockopt": {
-      "mark": 255,
-      "tcpFastOpen": true
-    }
-  }
-}
-EOF
-)
-
-jq '.outbounds=[]' /opt/de_GWD/vtrui1/config.json |\
-jq --argjson OBfwd "$OBfwd" '.outbounds += [$OBfwd]' |\
-jq --argjson OBdir "$OBdir" '.outbounds += [$OBdir]' | sponge /opt/de_GWD/vtrui1/config.json
-
-chown root:www-data /opt/de_GWD/vtrui1/config.json 2>/dev/null || true
-chmod 640 /opt/de_GWD/vtrui1/config.json 2>/dev/null || true
 chown root:www-data /var/www/ssl/*.key 2>/dev/null || true
 chmod 640 /var/www/ssl/*.key 2>/dev/null || true
 

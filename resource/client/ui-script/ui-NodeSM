@@ -1,67 +1,87 @@
 #!/bin/bash
 # ui-NodeSM: Manage Predefined Service Routing (NodeSM)
-source /opt/de_GWD/ui-confCommon
+source "$(dirname "$0")/ui-confCommon" 2>/dev/null || source /opt/de_GWD/ui-confCommon
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
 
 # 1. Clean up existing nodeSM outbounds and routing rules
-jq 'del(.outbounds[] | select(.tag != null and (.tag | startswith("nodeSM"))))' /opt/de_GWD/vtrui/config.json |\
-jq 'del(.routing.rules[] | select(.outboundTag != null and (type == "object") and (.outboundTag | (type == "string" and startswith("nodeSM")))))' |\
-jq 'del(.routing.rules[] | select(.domain == ["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]))' |\
-jq 'del(.routing.rules[] | select(.domain == ["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]))' | sponge /opt/de_GWD/vtrui/config.json
+xray_cfg_jq '
+  del(.outbounds[]? | select(.tag != null and (.tag | startswith("nodeSM"))))
+  | del(.routing.rules[]? | select((type == "object") and (.outboundTag != null) and (.outboundTag | (type == "string" and startswith("nodeSM")))))
+  | del(.routing.rules[]? | select(.domain == ["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]))
+  | del(.routing.rules[]? | select(.domain == ["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]))
+' || exit 1
 
-# Standard service list: name -> domains
-declare -A SERVICE_DOMAINS
-SERVICE_DOMAINS=(
-  ["openai"]='["geosite:openai"]'
-  ["claude"]='["geosite:anthropic"]'
-  ["gemini"]='["geosite:google-gemini"]'
-  ["grok"]='["geosite:xai"]'
-  ["youtube"]='["geosite:youtube"]'
-  ["netflix"]='["geosite:netflix"]'
-  ["hdh"]='["geosite:hbo","geosite:disney","geosite:hulu"]'
-  ["bahamut"]='["geosite:bahamut"]'
-  ["tvb"]='["geosite:tvb"]'
-  ["telegram"]='["geosite:telegram"]'
-  ["twitter"]='["geosite:twitter"]'
-  ["discord"]='["geosite:discord"]'
-  ["reddit"]='["geosite:reddit"]'
-  ["github"]='["geosite:github"]'
-  ["wikipedia"]='["geosite:wikimedia"]'
-)
+node_sm_domains() {
+  case "$1" in
+    openai)    echo '["geosite:openai"]' ;;
+    claude)    echo '["geosite:anthropic"]' ;;
+    gemini)    echo '["geosite:google-gemini"]' ;;
+    grok)      echo '["geosite:xai"]' ;;
+    meta)      echo '["geosite:meta","domain:muse.ai","domain:meta.ai","domain:metaaiusercontent.com","domain:metaaivm.com","domain:llama.com"]' ;;
+    youtube)   echo '["geosite:youtube"]' ;;
+    netflix)   echo '["geosite:netflix"]' ;;
+    hdh)       echo '["geosite:hbo","geosite:disney","geosite:hulu"]' ;;
+    bahamut)   echo '["geosite:bahamut"]' ;;
+    tvb)       echo '["geosite:tvb"]' ;;
+    telegram)  echo '["geosite:telegram"]' ;;
+    twitter)   echo '["geosite:twitter"]' ;;
+    discord)   echo '["geosite:discord"]' ;;
+    reddit)    echo '["geosite:reddit"]' ;;
+    github)    echo '["geosite:github"]' ;;
+    wikipedia) echo '["geosite:wikimedia"]' ;;
+    *) return 1 ;;
+  esac
+}
 
-# Parse key=value arguments from CLI
-declare -A PARAM_MAP
+NODE_SM_SVCS=(openai claude gemini grok meta youtube netflix hdh bahamut tvb telegram twitter discord reddit github wikipedia)
+
+PARAM_ENTRIES=()
 for arg in "$@"; do
   if [[ "$arg" =~ ^([a-zA-Z0-9_]+)=([0-9]+)$ ]]; then
-    PARAM_MAP["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    PARAM_ENTRIES+=("${BASH_REMATCH[1]}=${BASH_REMATCH[2]}")
   fi
 done
 
 # If positional arguments are passed in old legacy order (e.g. ui-NodeSM r 1 2 3 4 5 6 7 8)
-LEGACY_KEYS=("youtube" "netflix" "hdh" "tvb" "bahamut" "openai" "apple" "steam")
-if [[ ${#PARAM_MAP[@]} -eq 0 && -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+LEGACY_KEYS=(youtube netflix hdh tvb bahamut openai apple steam)
+if [[ ${#PARAM_ENTRIES[@]} -eq 0 && -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
   idx=2
   for lk in "${LEGACY_KEYS[@]}"; do
     val="${!idx}"
     if [[ -n "$val" ]]; then
-      PARAM_MAP["$lk"]="$val"
+      PARAM_ENTRIES+=("${lk}=${val}")
     fi
     ((idx++))
   done
 fi
 
+get_param_val() {
+  local key="$1" found=1 out="" entry
+  for entry in "${PARAM_ENTRIES[@]}"; do
+    if [[ "${entry%%=*}" == "$key" ]]; then
+      out="${entry#*=}"
+      found=0
+    fi
+  done
+  if (( found == 0 )); then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  return 1
+}
+
 # Apply standard services
-for svc in "${!SERVICE_DOMAINS[@]}"; do
-  routingDomain="${SERVICE_DOMAINS[$svc]}"
+for svc in "${NODE_SM_SVCS[@]}"; do
+  routingDomain=$(node_sm_domains "$svc")
   tag="nodeSM${svc}"
 
-  if [[ -n "${PARAM_MAP[$svc]}" ]]; then
-    val="${PARAM_MAP[$svc]}"
+  if val=$(get_param_val "$svc"); then
     if [[ "$val" != "0" ]]; then
       node_idx=$((val - 1))
-      address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' /opt/de_GWD/0conf 2>/dev/null)
-      tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
-      uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
-      path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
+      address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' "$GWD_CONF_FILE" 2>/dev/null)
+      tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' "$GWD_CONF_FILE" 2>/dev/null)
+      uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' "$GWD_CONF_FILE" 2>/dev/null)
+      path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' "$GWD_CONF_FILE" 2>/dev/null)
 
       if [[ -n "$address" && "$address" != "null" ]]; then
         conf_jq --arg svc "$svc" --arg address "$address" '.v2nodeDIV.nodeSM[$svc]=$address'
@@ -73,11 +93,11 @@ for svc in "${!SERVICE_DOMAINS[@]}"; do
     fi
   else
     # Restore from 0conf if already configured
-    address=$(jq -r --arg svc "$svc" '.v2nodeDIV.nodeSM[$svc] // empty' /opt/de_GWD/0conf 2>/dev/null)
+    address=$(jq -r --arg svc "$svc" '.v2nodeDIV.nodeSM[$svc] // empty' "$GWD_CONF_FILE" 2>/dev/null)
     if [[ -n "$address" ]]; then
-      tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
-      uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
-      path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
+      tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' "$GWD_CONF_FILE" 2>/dev/null)
+      uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' "$GWD_CONF_FILE" 2>/dev/null)
+      path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' "$GWD_CONF_FILE" 2>/dev/null)
       [[ -z "$tls" ]] && tls=$(echo "$address" | cut -d: -f1)
 
       if [[ -n "$uuid" ]]; then
@@ -90,14 +110,13 @@ done
 
 # Apply Apple rules
 apple_domains='["geosite:apple","geosite:apple-dev","geosite:apple-update","geosite:icloud","geosite:apple@cn","geosite:apple-cn"]'
-if [[ -n "${PARAM_MAP[apple]}" ]]; then
-  val="${PARAM_MAP[apple]}"
+if val=$(get_param_val "apple"); then
   if [[ "$val" != "0" ]]; then
     node_idx=$((val - 1))
-    address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' /opt/de_GWD/0conf 2>/dev/null)
-    tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
-    uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
-    path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' /opt/de_GWD/0conf 2>/dev/null)
+    address=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].domain // empty' "$GWD_CONF_FILE" 2>/dev/null)
+    tls=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].tls // empty' "$GWD_CONF_FILE" 2>/dev/null)
+    uuid=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].uuid // empty' "$GWD_CONF_FILE" 2>/dev/null)
+    path=$(jq -r --argjson nodecheck "$node_idx" '.v2node[$nodecheck].path // empty' "$GWD_CONF_FILE" 2>/dev/null)
 
     if [[ -n "$address" && "$address" != "null" ]]; then
       conf_jq --arg address "$address" '.v2nodeDIV.nodeSM.apple=$address'
@@ -109,11 +128,11 @@ if [[ -n "${PARAM_MAP[apple]}" ]]; then
     /opt/de_GWD/ui-V2routingDomain 'direct' "$apple_domains"
   fi
 else
-  address=$(jq -r '.v2nodeDIV.nodeSM.apple // empty' /opt/de_GWD/0conf 2>/dev/null)
+  address=$(jq -r '.v2nodeDIV.nodeSM.apple // empty' "$GWD_CONF_FILE" 2>/dev/null)
   if [[ -n "$address" ]]; then
-    tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' /opt/de_GWD/0conf 2>/dev/null)
-    uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' /opt/de_GWD/0conf 2>/dev/null)
-    path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' /opt/de_GWD/0conf 2>/dev/null)
+    tls=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].tls // empty' "$GWD_CONF_FILE" 2>/dev/null)
+    uuid=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].uuid // empty' "$GWD_CONF_FILE" 2>/dev/null)
+    path=$(jq -r --arg nodecheck "$address" '[.v2node[]? | select(.domain == $nodecheck)][0].path // empty' "$GWD_CONF_FILE" 2>/dev/null)
     [[ -z "$tls" ]] && tls=$(echo "$address" | cut -d: -f1)
     if [[ -n "$uuid" ]]; then
       /opt/de_GWD/ui-V2routingDomain "nodeSMapple" "$apple_domains"
@@ -128,8 +147,7 @@ fi
 
 # Apply Steam rules
 steam_domains='["domain:steamserver.net","geosite:steam@cn","geosite:category-games@cn"]'
-if [[ -n "${PARAM_MAP[steam]}" ]]; then
-  val="${PARAM_MAP[steam]}"
+if val=$(get_param_val "steam"); then
   if [[ "$val" != "0" ]]; then
     conf_jq '.v2nodeDIV.nodeSM.steam="proxy"'
   else
@@ -137,7 +155,7 @@ if [[ -n "${PARAM_MAP[steam]}" ]]; then
     /opt/de_GWD/ui-V2routingDomain 'direct' "$steam_domains"
   fi
 else
-  steam_status=$(jq -r '.v2nodeDIV.nodeSM.steam' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+  steam_status=$(jq -r '.v2nodeDIV.nodeSM.steam' "$GWD_CONF_FILE" 2>/dev/null | grep -v '^null$')
   if [[ "$steam_status" != "proxy" ]]; then
     /opt/de_GWD/ui-V2routingDomain 'direct' "$steam_domains"
   fi
@@ -149,7 +167,7 @@ if [[ -x /opt/de_GWD/ui-submitListBWsm ]]; then
 fi
 
 # Determine if any nodeSM rule is active
-has_custom=$(jq '.v2nodeDIV.nodeSM | del(.status) | keys | length' /opt/de_GWD/0conf 2>/dev/null)
+has_custom=$(jq '.v2nodeDIV.nodeSM | del(.status) | keys | length' "$GWD_CONF_FILE" 2>/dev/null)
 if [[ -z "$has_custom" || "$has_custom" -eq 0 ]]; then
   conf_jq '.v2nodeDIV.nodeSM.status="off"'
 else
@@ -159,5 +177,6 @@ fi
 # Restart services if requested
 if [[ "$1" == "r" ]]; then
   systemctl restart smartdns 2>/dev/null || true
+  systemctl restart mosdns 2>/dev/null || true
   systemctl restart vtrui 2>/dev/null || true
 fi

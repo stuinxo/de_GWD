@@ -1,3 +1,6 @@
 #!/bin/bash
-pingTCPDOH=$(jq -r '.dns.doh[]' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$' | awk NR==2 | cut -d/ -f1)
-echo "$(curl -o /dev/null -m 5 -kIsw '%{time_connect}\n' https://$pingTCPDOH) * 1000" | bc | awk '{printf ("%.0f\n",$1)}' 
+pingTCPDOH=$(jq -r '.dns.doh[1] // empty' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+pingTCPDOH="${pingTCPDOH#*//}"
+pingTCPDOH=$(printf '%s' "$pingTCPDOH" | cut -d/ -f1 | tr -d '[:space:]')
+[[ -n "$pingTCPDOH" ]] || exit 0
+echo "$(curl -o /dev/null -m 5 -kIsw '%{time_connect}\n' "https://$pingTCPDOH") * 1000" | bc | awk '{printf ("%.0f\n",$1)}'

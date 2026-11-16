@@ -19,13 +19,9 @@ if [[ -z "$path" ]]; then
 fi
 [[ "${path:0:1}" != "/" ]] && path="/$path"
 
-OBdefault=$(build_vless_xhttp_outbound "default" "$domain" "$port" "$uuid" "$tls" "$path" 255)
+OBdefault=$(build_vless_xhttp_outbound "default" "$domain" "$port" "$uuid" "$tls" "$path" 255) || exit 1
 
-if tmpCfg=$(jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json 2>/dev/null) && [[ -n "$tmpCfg" ]]; then
-    printf '%s\n' "$tmpCfg" | sponge /opt/de_GWD/vtrui/config.json
-else
-    exit 1
-fi
+xray_cfg_jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' || exit 1
 
 /opt/de_GWD/ui-NodeSave >/dev/null 2>&1 || true
 

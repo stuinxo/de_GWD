@@ -28,11 +28,11 @@ jq -nc --slurpfile conf /opt/de_GWD/0conf --slurpfile xray /opt/de_GWD/vtrui/con
       else {num: ($m.key + 1), name: (if ($m.value.name // "") != "" then $m.value.name else $addr end)}
       end
     end;
-  (["openai","claude","gemini","grok","youtube","netflix","hdh","bahamut","tvb","telegram","twitter","discord","reddit","github","wikipedia"]
+  (["openai","claude","gemini","grok","meta","youtube","netflix","hdh","bahamut","tvb","telegram","twitter","discord","reddit","github","wikipedia"]
    | map({ (.): match_node(find_outbound("nodeSM" + .); "-none-") })
    | add)
   + {
     apple: match_node(find_outbound("nodeSMapple"); "直连"),
     steam: (if ($c.v2nodeDIV.nodeSM.steam // "") == "proxy" then {num: 1, name: "默认代理"} else {num: 0, name: "直连"} end)
   }
-' 2>/dev/null || echo '{"openai":{"num":0,"name":"-none-"},"claude":{"num":0,"name":"-none-"},"gemini":{"num":0,"name":"-none-"},"grok":{"num":0,"name":"-none-"},"youtube":{"num":0,"name":"-none-"},"netflix":{"num":0,"name":"-none-"},"hdh":{"num":0,"name":"-none-"},"bahamut":{"num":0,"name":"-none-"},"tvb":{"num":0,"name":"-none-"},"telegram":{"num":0,"name":"-none-"},"twitter":{"num":0,"name":"-none-"},"discord":{"num":0,"name":"-none-"},"reddit":{"num":0,"name":"-none-"},"github":{"num":0,"name":"-none-"},"wikipedia":{"num":0,"name":"-none-"},"apple":{"num":0,"name":"直连"},"steam":{"num":0,"name":"直连"}}'
+' 2>/dev/null || echo '{"openai":{"num":0,"name":"-none-"},"claude":{"num":0,"name":"-none-"},"gemini":{"num":0,"name":"-none-"},"grok":{"num":0,"name":"-none-"},"meta":{"num":0,"name":"-none-"},"youtube":{"num":0,"name":"-none-"},"netflix":{"num":0,"name":"-none-"},"hdh":{"num":0,"name":"-none-"},"bahamut":{"num":0,"name":"-none-"},"tvb":{"num":0,"name":"-none-"},"telegram":{"num":0,"name":"-none-"},"twitter":{"num":0,"name":"-none-"},"discord":{"num":0,"name":"-none-"},"reddit":{"num":0,"name":"-none-"},"github":{"num":0,"name":"-none-"},"wikipedia":{"num":0,"name":"-none-"},"apple":{"num":0,"name":"直连"},"steam":{"num":0,"name":"直连"}}'

@@ -52,18 +52,22 @@ EOF
 if [[ -n $doh1 ]]; then
 doh1Domain=$(echo "$doh1" | cut -d/ -f1 | cut -d: -f1)
 doh1IP=$(dig @127.0.0.1 "$doh1Domain" -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-[[ -n $doh1Domain && -n $doh1IP ]] && yq eval -i ".plugins.[0].args.entries += [\"$doh1Domain $doh1IP\"]" /opt/de_GWD/mosdns/hosts.yaml
+if [[ "$doh1Domain" =~ ^[A-Za-z0-9._-]+$ && "$doh1IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  printf '        - %s %s\n' "$doh1Domain" "$doh1IP" >> /opt/de_GWD/mosdns/hosts.yaml
+fi
 fi
 
 if [[ -n $doh2 ]]; then
 doh2Domain=$(echo "$doh2" | cut -d/ -f1 | cut -d: -f1)
 doh2IP=$(dig @127.0.0.1 "$doh2Domain" -4p 5331 +short 2>/dev/null | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$' | grep -v "127.0.0.1" | xargs -n 1 | awk NR==1)
-[[ -n $doh2Domain && -n $doh2IP ]] && yq eval -i ".plugins.[0].args.entries += [\"$doh2Domain $doh2IP\"]" /opt/de_GWD/mosdns/hosts.yaml
+if [[ "$doh2Domain" =~ ^[A-Za-z0-9._-]+$ && "$doh2IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  printf '        - %s %s\n' "$doh2Domain" "$doh2IP" >> /opt/de_GWD/mosdns/hosts.yaml
+fi
 fi
 
 while IFS=$'\t' read -r hostIP hostDomain; do
-  [[ -n "$hostDomain" && -n "$hostIP" ]] || continue
-  yq eval -i ".plugins.[0].args.entries += [\"$hostDomain $hostIP\"]" /opt/de_GWD/mosdns/hosts.yaml
+  [[ "$hostDomain" =~ ^[A-Za-z0-9._-]+$ && "$hostIP" =~ ^[0-9a-fA-F:.]+$ ]] || continue
+  printf '        - %s %s\n' "$hostDomain" "$hostIP" >> /opt/de_GWD/mosdns/hosts.yaml
 done < <(jq -r '.dns.hosts | if type == "object" then to_entries[] | "\(.value)\t\(.key)" else empty end' /opt/de_GWD/0conf 2>/dev/null)
 
 if [[ -f /opt/de_GWD/pihole/pihole.toml ]]; then
@@ -172,10 +176,6 @@ plugins:
       listen: 127.0.0.1:5341
 EOF
 
-doh1re_origin=$(jq -r '.dns.doh1re' /opt/de_GWD/0conf)
-doh2re_origin=$(jq -r '.dns.doh2re' /opt/de_GWD/0conf)
-if [[ $doh1re_origin != $doh1IP ]] || [[ $doh2re_origin != $doh2IP ]]; then
-systemctl restart mosdns
-fi
+systemctl restart mosdns 2>/dev/null || true
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}DNS Split${cRES}"

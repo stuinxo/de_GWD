@@ -75,7 +75,11 @@ else
     [[ -z "$doh1IP" ]] && doh1IP=$(getent ahostsv4 "$doh1Domain" 2>/dev/null | awk '{print $1}' | head -n1)
 fi
 doh1Port=$(echo $doh1 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh1Path=$(echo $doh1 | cut -d/ -f2)
+if [[ "$doh1" == */* ]]; then
+    doh1Path="${doh1#*/}"
+else
+    doh1Path="dq"
+fi
 
 if [[ -z $doh1Port ]]; then
     doh1Str="$doh1IP/$doh1Path"
@@ -94,7 +98,11 @@ else
     [[ -z "$doh2IP" ]] && doh2IP=$(getent ahostsv4 "$doh2Domain" 2>/dev/null | awk '{print $1}' | head -n1)
 fi
 doh2Port=$(echo $doh2 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh2Path=$(echo $doh2 | cut -d/ -f2)
+if [[ "$doh2" == */* ]]; then
+    doh2Path="${doh2#*/}"
+else
+    doh2Path="dq"
+fi
 
 if [[ -z $doh2Port ]]; then
     doh2Str="$doh2IP/$doh2Path"

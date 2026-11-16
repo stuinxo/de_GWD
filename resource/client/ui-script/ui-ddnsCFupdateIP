@@ -1,7 +1,9 @@
 #!/bin/bash
-CFdomain=$(jq -r '.ddns.ddnsCF.cfDomain // empty' /opt/de_GWD/0conf 2>/dev/null)
-CFtoken=$(jq -r '.ddns.ddnsCF.cfToken // .ddns.ddnsCF.cfAPIkey // empty' /opt/de_GWD/0conf 2>/dev/null)
-[[ -z "$CFdomain" || -z "$CFtoken" ]] && exit 0
+CFdomain=$(jq -r '.ddns.ddnsCF.cfDomain // empty' /opt/de_GWD/0conf 2>/dev/null | tr -d '[:space:]')
+CFtoken=$(jq -r '.ddns.ddnsCF.cfToken // .ddns.ddnsCF.cfAPIkey // empty' /opt/de_GWD/0conf 2>/dev/null | tr -d '[:space:]')
+[[ -n "$CFdomain" && -n "$CFtoken" ]] || exit 0
+[[ "$CFdomain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]] || exit 1
+[[ "$CFtoken" != *[[:cntrl:]]* ]] || exit 1
 
 wanIP=$(/opt/de_GWD/ui-wanIP_cn)
 

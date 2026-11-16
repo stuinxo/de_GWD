@@ -1,7 +1,7 @@
 #!/bin/bash
-source /opt/de_GWD/ui-confCommon
-jq 'del(.outbounds[] | select(.tag == "custom"))' /opt/de_GWD/vtrui/config.json |\
-jq 'del(.routing.rules[] | select(.outboundTag == "custom"))' | sponge /opt/de_GWD/vtrui/config.json
+source "$(dirname "$0")/ui-confCommon" 2>/dev/null || source /opt/de_GWD/ui-confCommon
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+xray_cfg_jq 'del(.outbounds[]? | select((.tag // "") == "custom")) | del(.routing.rules[]? | select((.outboundTag // "") == "custom"))'
 
 conf_jq '.v2nodeDIV.nodeCU.status="off"'
 

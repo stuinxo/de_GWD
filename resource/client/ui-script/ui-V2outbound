@@ -21,6 +21,6 @@ if [[ -z $path ]]; then
 fi
 [[ "${path:0:1}" != "/" ]] && path="/$path"
 
-OBadd=$(build_vless_xhttp_outbound "$tag" "$domain" "$port" "$uuid" "$tls" "$path" 255)
+OBadd=$(build_vless_xhttp_outbound "$tag" "$domain" "$port" "$uuid" "$tls" "$path" 255) || exit 1
 
-jq --argjson OBadd "$OBadd" '.outbounds += [$OBadd]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+xray_cfg_jq --argjson OBadd "$OBadd" '.outbounds += [$OBadd]'

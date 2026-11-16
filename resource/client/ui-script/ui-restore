@@ -5,10 +5,14 @@ bakFile="/opt/de_GWD/restore/de_GWD_bak"
 [[ ! -f "$bakFile" && -f "/var/www/html/restore/de_GWD_bak" ]] && bakFile="/var/www/html/restore/de_GWD_bak"
 
 if [[ -f "$bakFile" ]] && jq -e 'type == "object"' "$bakFile" >/dev/null 2>&1; then
+  updateToken=$(jq -r '.update.updateToken // empty' /opt/de_GWD/0conf 2>/dev/null)
+  [[ "$updateToken" =~ ^[0-9a-f]{24,64}$ ]] || updateToken=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
   tmpConf=$(mktemp /opt/de_GWD/.0conf.restore.XXXXXX) || exit 1
-  if jq '
+  if jq --arg fallbackTok "$updateToken" '
     (if (.ddns.ddnsCF.cfToken // "") == "" and ((.ddns.ddnsCF.cfAPIkey // "") | type) == "string" and ((.ddns.ddnsCF.cfAPIkey // "") | length) > 0 and ((.ddns.ddnsCF.cfAPIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .ddns.ddnsCF.cfToken = .ddns.ddnsCF.cfAPIkey else . end)
     | (if (.FORWARD.token // "") == "" and ((.FORWARD.APIkey // "") | type) == "string" and ((.FORWARD.APIkey // "") | length) > 0 and ((.FORWARD.APIkey // "") | test("^[0-9a-fA-F]{37}$") | not) then .FORWARD.token = .FORWARD.APIkey else . end)
+    | (if (.update.updateToken // "") == "" then .update.updateToken = $fallbackTok else . end)
+    | (if (.v2nodeDIV.ss | type) != "object" then .v2nodeDIV.ss = {"status":"off"} else . end)
     | del(.ddns.ddns3322, .ddns.ddnsCF.cfAPIkey, .ddns.ddnsCF.cfEmail, .FORWARD.APIkey, .FORWARD.Email)
   ' "$bakFile" >"$tmpConf" && jq -e 'type == "object"' "$tmpConf" >/dev/null 2>&1; then
     conf_ensure_lock
@@ -16,7 +20,8 @@ if [[ -f "$bakFile" ]] && jq -e 'type == "object"' "$bakFile" >/dev/null 2>&1; t
       flock -x -w 30 9 || exit 1
       if [[ -f /opt/de_GWD/0conf ]] && jq -e 'type == "object"' /opt/de_GWD/0conf >/dev/null 2>&1; then
         cp -f /opt/de_GWD/0conf /opt/de_GWD/0conf_bak 2>/dev/null || true
-        chmod 600 /opt/de_GWD/0conf_bak 2>/dev/null || true
+        chown root:www-data /opt/de_GWD/0conf_bak 2>/dev/null || true
+        chmod 640 /opt/de_GWD/0conf_bak 2>/dev/null || true
       fi
       chown root:www-data "$tmpConf" 2>/dev/null || true
       chmod 660 "$tmpConf" 2>/dev/null || true
@@ -46,6 +51,11 @@ if [[ -f "$bakFile" ]] && jq -e 'type == "object"' "$bakFile" >/dev/null 2>&1; t
     /opt/de_GWD/ui-NodeDT >/dev/null 2>&1
   fi
 
+  if [[ $(jq -r '.v2nodeDIV.ss.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]] && \
+     [[ -n $(jq -r '.v2nodeDIV.ss.ssAddress // empty' /opt/de_GWD/0conf 2>/dev/null) ]]; then
+    /opt/de_GWD/ui-changeNodeSS >/dev/null 2>&1 || true
+  fi
+
   if [[ $(jq -r '.FORWARD.FWD1.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
     /opt/de_GWD/ui-FWD1save >/dev/null 2>&1
   fi
@@ -58,11 +68,25 @@ if [[ -f "$bakFile" ]] && jq -e 'type == "object"' "$bakFile" >/dev/null 2>&1; t
     /opt/de_GWD/ui-RproxySsave >/dev/null 2>&1
   fi
 
+  if [[ $(jq -r '.FORWARD.block53 // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+    /opt/de_GWD/ui-block53on >/dev/null 2>&1 || true
+  else
+    /opt/de_GWD/ui-block53off >/dev/null 2>&1 || true
+  fi
+
+  if [[ -f /etc/systemd/system/de_GWD-failover.service ]]; then
+    if [[ $(jq -r '.v2nodeDIV.failover.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+      systemctl enable --now de_GWD-failover >/dev/null 2>&1 || true
+    else
+      systemctl disable --now de_GWD-failover >/dev/null 2>&1 || true
+    fi
+  fi
+
   /opt/de_GWD/ui_4h
 
-  systemctl restart nftables
-  systemctl restart mosdns
-  systemctl restart vtrui
+  systemctl restart nftables 2>/dev/null || true
+  systemctl restart mosdns 2>/dev/null || true
+  systemctl restart vtrui 2>/dev/null || true
 else
   rm -f "$bakFile"
   exit 1

@@ -50,29 +50,51 @@ EOF
 
 /opt/de_GWD/ui-V2outbound "$tag" "$address" "$tls" "$uuid" "$path"
 
-OBdirect=`cat << EOF
-    {
-      "tag":"direct",
-      "protocol":"freedom",
-      "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}
-    }
-EOF
-`
-jq --argjson OBdirect "$OBdirect" '.outbounds+=[$OBdirect]' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
-
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+OBdirect=$(build_freedom_direct_outbound "direct" 255) || exit 1
+xray_cfg_jq --argjson OBdirect "$OBdirect" '.outbounds+=[$OBdirect]'
 
 if [[ $(jq -r '.FORWARD.FWD0.status' /opt/de_GWD/0conf 2>/dev/null) = "on" ]];then
   /opt/de_GWD/ui-FWD0save >/dev/null 2>&1
 fi
 
 if [[ -s /opt/de_GWD/extra_inbounds.json ]]; then
-  jq --slurpfile extra /opt/de_GWD/extra_inbounds.json '
+  xray_cfg_jq --slurpfile extra /opt/de_GWD/extra_inbounds.json '
     ($extra[0] // []) as $list |
     reduce $list[] as $inb (.; del(.inbounds[] | select(.tag == $inb.tag)) | .inbounds += [$inb])
-  ' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+  '
   if jq -e 'any(.inbounds[]?; .tag == "inbound-dokodemo")' /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
-    jq 'del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"direct"}] + (.routing.rules // [])' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+    OBdokodemo=$(build_freedom_direct_outbound "outbound-dokodemo" 255) || exit 1
+    xray_cfg_jq --argjson od "$OBdokodemo" 'del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | .outbounds += [$od] | del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"outbound-dokodemo"}] + (.routing.rules // [])'
   fi
+fi
+
+if [[ -d /opt/de_GWD/nftables ]]; then
+  >/opt/de_GWD/nftables/IP_listBlan
+  >/opt/de_GWD/nftables/IP_listWlan
+  nft flush set ip de_GWD listBlan 2>/dev/null || true
+  nft flush set ip de_GWD listWlan 2>/dev/null || true
+  cat << 'EOF' >/opt/de_GWD/nftables/SET_listBlan.nft
+#!/usr/sbin/nft -f
+table ip de_GWD {
+        set listBlan {
+                type ipv4_addr
+                flags interval
+                auto-merge
+        }
+}
+EOF
+  cat << 'EOF' >/opt/de_GWD/nftables/SET_listWlan.nft
+#!/usr/sbin/nft -f
+table ip de_GWD {
+        set listWlan {
+                type ipv4_addr
+                flags interval
+                auto-merge
+        }
+}
+EOF
+  chmod +x /opt/de_GWD/nftables/SET_listBlan.nft /opt/de_GWD/nftables/SET_listWlan.nft 2>/dev/null || true
 fi
 
 

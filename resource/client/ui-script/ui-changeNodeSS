@@ -63,11 +63,8 @@ OBss=$(jq -nc \
     }
   }') || exit 1
 
-if tmpCfg=$(jq --argjson OBss "$OBss" '.outbounds[0]=$OBss' /opt/de_GWD/vtrui/config.json 2>/dev/null) && [[ -n "$tmpCfg" ]]; then
-    printf '%s\n' "$tmpCfg" | sponge /opt/de_GWD/vtrui/config.json
-else
-    exit 1
-fi
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
+xray_cfg_jq --argjson OBss "$OBss" '.outbounds[0]=$OBss' || exit 1
 
 conf_jq 'if (.v2nodeDIV.ss | type) == "object" then .v2nodeDIV.ss.status="on" else . end'
 

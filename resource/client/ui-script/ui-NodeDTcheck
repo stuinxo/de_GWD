@@ -2,10 +2,11 @@
 domain=$(jq -r '.outbounds[] | select(.tag == "divert") | .settings.vnext[0].address' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 port=$(jq -r '.outbounds[] | select(.tag == "divert") | .settings.vnext[0].port' /opt/de_GWD/vtrui/config.json 2>/dev/null | grep -v '^null$')
 
+[[ -n "$domain" ]] || exit 0
 if [[ $port = "443" ]]; then
-nodecheck=$domain
+nodecheck="$domain"
 else
-nodecheck=$domain:$port
+nodecheck="$domain:$port"
 fi
 
-jq -r --arg nodecheck $nodecheck '.v2node[] | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf
+jq -r --arg nodecheck "$nodecheck" '.v2node[]? | select(.domain == $nodecheck) | .name' /opt/de_GWD/0conf

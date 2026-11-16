@@ -12,15 +12,30 @@ cRES='\E[0m'
 
 
 installCER(){
-CFtoken=$(jq -r '.FORWARD.token // .FORWARD.APIkey // empty' /opt/de_GWD/0conf 2>/dev/null)
-domain=$(jq -r '.FORWARD.domain // empty' /opt/de_GWD/0conf 2>/dev/null)
+CFtoken=$(jq -r '.FORWARD.token // .FORWARD.APIkey // empty' /opt/de_GWD/0conf 2>/dev/null | tr -d '[:space:]')
+domain=$(jq -r '.FORWARD.domain // empty' /opt/de_GWD/0conf 2>/dev/null | sed -E 's#^https?://##; s#/.*$##' | tr -d '[:space:]')
+
+if [[ -z "$domain" || ! "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]]; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid domain in 0conf${cRES}"
+  return 1
+fi
+if [[ -z "$CFtoken" || "$CFtoken" == *[[:cntrl:]]* ]]; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Missing Cloudflare API Token${cRES}"
+  return 1
+fi
 
 export CF_Token="$CFtoken"
 unset CF_Key CF_Email
 
 local mainDomain="$domain"
 local domainArgs=("-d" "$domain" "-d" "*.$domain")
-if [[ "$domain" == *.*.* ]]; then
+if [[ "$domain" =~ \.(co|org|gov|ac|net|me|plc|ltd)\.uk$ || "$domain" =~ \.(com|net|org|gov|edu|ac)\.cn$ || "$domain" =~ \.(com|net|org|edu|gov)\.(hk|tw|au)$ || "$domain" =~ \.(co|or|ne|ac|go)\.jp$ || "$domain" =~ \.(co|or|ne)\.kr$ || "$domain" =~ \.com\.(sg|br|mx|tr)$ || "$domain" =~ \.co\.(za|in|nz)$ || "$domain" =~ \.eu\.org$ ]]; then
+  if [[ "$domain" == *.*.*.* ]]; then
+    local parentDomain=$(echo "$domain" | cut -d. -f2-)
+    mainDomain="$parentDomain"
+    domainArgs=("-d" "$parentDomain" "-d" "*.$parentDomain" "-d" "*.$domain")
+  fi
+elif [[ "$domain" == *.*.* ]]; then
     local parentDomain=$(echo "$domain" | cut -d. -f2-)
     mainDomain="$parentDomain"
     domainArgs=("-d" "$parentDomain" "-d" "*.$parentDomain" "-d" "*.$domain")
@@ -93,8 +108,10 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Generate & Dep
 resetCER(){
 mkdir -p /var/www/ssl && cd /var/www/ssl
 
-rm -rf /var/www/ssl/*.pem
-rm -rf /var/www/ssl/ocsp.resp
+rm -f /var/www/ssl/ocsp.resp
+if [[ ! -f /var/www/ssl/dhparam.pem ]]; then
+  openssl dhparam -dsaparam -out /var/www/ssl/dhparam.pem 2048 2>/dev/null || openssl dhparam -out /var/www/ssl/dhparam.pem 2048
+fi
 
 sslStage=$(mktemp -d /tmp/de_GWD-ssl.XXXXXX) || return 1
 if openssl req -x509 -nodes -days 3650 \
@@ -126,8 +143,6 @@ sed -i '/ssl_trusted_certificate/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_verify/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_file/d' /etc/nginx/conf.d/.ssl_certs
-sed -i '/ssl_early_data/d' /etc/nginx/conf.d/.ssl_certs
-sed -i '/proxy_set_header/d' /etc/nginx/conf.d/.ssl_certs
 
 systemctl force-reload nginx
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Remove TLS Certificate${cRES}"

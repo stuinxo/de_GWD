@@ -1,22 +1,29 @@
 #!/bin/bash
->/etc/auto.nfs
+tmpNfs=$(mktemp /tmp/de_GWD-auto-nfs.XXXXXX) || exit 1
+trap 'rm -f "$tmpNfs"' EXIT
 
-nfsNUM=$(jq -r '.app.NFS | length' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
+nfsNUM=$(jq -r '.app.NFS | if type == "array" then length else 0 end' /opt/de_GWD/0conf 2>/dev/null)
+[[ "$nfsNUM" =~ ^[0-9]+$ ]] || nfsNUM=0
 
-for ((i=0; i<$nfsNUM; i++)); do
-NFSpoint=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSpoint' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-NFSserver=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSserver' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-NFSaddress=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSaddress' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
-mkdir -p $NFSpoint
-echo "$NFSpoint  -vers=3,rw,bg,hard,nointr,nolock,timeout=0,rsize=131072,wsize=131072,noatime,nosuid,noresvport  $NFSserver:$NFSaddress" >>/etc/auto.nfs
+for ((i=0; i<nfsNUM; i++)); do
+  NFSpoint=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSpoint // empty' /opt/de_GWD/0conf 2>/dev/null)
+  NFSserver=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSserver // empty' /opt/de_GWD/0conf 2>/dev/null)
+  NFSaddress=$(jq -r --argjson i "$i" '.app.NFS[$i].NFSaddress // empty' /opt/de_GWD/0conf 2>/dev/null)
+  [[ "$NFSpoint" =~ ^/mnt/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || continue
+  [[ "$NFSserver" =~ ^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$ && "$NFSserver" != *[[:space:]]* ]] || continue
+  [[ "$NFSaddress" =~ ^/[^[:space:][:cntrl:]]*$ ]] || continue
+  mkdir -p "$NFSpoint"
+  printf '%s  -vers=3,rw,bg,hard,nointr,nolock,timeout=0,rsize=131072,wsize=131072,noatime,nosuid,noresvport  %s:%s\n' \
+    "$NFSpoint" "$NFSserver" "$NFSaddress" >> "$tmpNfs"
 done
 
-awk '!i[$1]++' /etc/auto.nfs | sponge /etc/auto.nfs
+awk '!seen[$1]++' "$tmpNfs" > /etc/auto.nfs
+chmod 644 /etc/auto.nfs
 
 systemctl enable autofs
 systemctl restart autofs
 
-awk '{print$1}' /etc/auto.nfs | while read line; do
-cd $line
+awk '{print $1}' /etc/auto.nfs | while IFS= read -r line; do
+  [[ -n "$line" ]] && cd "$line" >/dev/null 2>&1 || true
 done
 

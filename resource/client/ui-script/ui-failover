@@ -94,10 +94,19 @@ def get_active_index():
     try:
         with open(CONF_FILE, "r", encoding="utf-8") as f:
             conf = json.load(f)
-        cur_domain = conf.get("update", {}).get("v2node", {}).get("domain", "")
+        cur_node = conf.get("update", {}).get("v2node", {})
+        cur_domain = str(cur_node.get("domain", "") or "").strip()
+        cur_port = str(cur_node.get("port", "") or "").strip()
         v2nodes = conf.get("v2node", [])
+        if not isinstance(v2nodes, list) or not cur_domain:
+            return 0
+        cur_hostport = f"{cur_domain}:{cur_port}" if cur_port and cur_port != "443" else cur_domain
         for idx, n in enumerate(v2nodes):
-            if n.get("domain", "").startswith(cur_domain):
+            if not isinstance(n, dict):
+                continue
+            nd = str(n.get("domain", "") or "").strip()
+            nd_host = nd.split(":")[0]
+            if nd == cur_hostport or (cur_port == "443" and nd == f"{cur_domain}:443") or (not cur_port and nd_host == cur_domain):
                 return idx
     except Exception:
         pass
@@ -108,7 +117,7 @@ def probe_node_health(host, port, path, timeout=4.5):
     try:
         url = f"https://{host}:{port}{path}"
         res = subprocess.run(
-            ["curl", "-s", "-m", str(timeout), "-k", "-o", "/dev/null", "-w", "%{http_code}", url],
+            ["curl", "-s", "-m", str(timeout), "-o", "/dev/null", "-w", "%{http_code}", url],
             capture_output=True,
             timeout=timeout + 1
         )
@@ -127,7 +136,7 @@ def probe_active_egress(timeout=4.0):
     for url in targets:
         try:
             res = subprocess.run(
-                ["curl", "-s", "-m", str(timeout), "-k", url, "-o", "/dev/null", "-w", "%{http_code}"],
+                ["curl", "-s", "-m", str(timeout), url, "-o", "/dev/null", "-w", "%{http_code}"],
                 capture_output=True,
                 timeout=timeout + 1
             )

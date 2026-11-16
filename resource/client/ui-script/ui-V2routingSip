@@ -1,17 +1,10 @@
 #!/bin/bash
+source "$(dirname "$0")/xray-common" 2>/dev/null || source /opt/de_GWD/xray-common
 if [[ -n $1 ]] && [[ -n $2 ]]; then
 tag=$1
 IP=$2
 
-RoutingADD=`cat << EOF
-{
-        "type": "field",
-        "source": $IP,
-        "network": "tcp,udp",
-        "outboundTag": "$tag"
-}
-EOF
-`
+RoutingADD=$(jq -nc --arg tag "$tag" --argjson source "$IP" '{type:"field",source:$source,network:"tcp,udp",outboundTag:$tag}') || exit 1
 
-jq --argjson RoutingADD "$RoutingADD" '.routing.rules+=[$RoutingADD]' /opt/de_GWD/vtrui/config.json  | sponge /opt/de_GWD/vtrui/config.json
+xray_cfg_jq --argjson RoutingADD "$RoutingADD" '.routing.rules+=[$RoutingADD]'
 fi

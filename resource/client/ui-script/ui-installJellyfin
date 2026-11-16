@@ -83,7 +83,6 @@ docker run -d \
   -v /opt/jellyfin/config:/config \
   -v /opt/jellyfin/cache:/cache \
   --mount type=bind,src=/mnt,dst=/media,bind-propagation=rshared \
-  --dns 1.1.1.1 \
   --restart always \
   nyanmisaka/jellyfin:latest
 }
