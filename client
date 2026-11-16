@@ -2421,12 +2421,17 @@ rm -rf /etc/nginx/conf.d/80.conf
 fi
 
 touch /etc/nginx/conf.d/default.conf
+local nginxConfBak
+nginxConfBak=$(mktemp /tmp/de_GWD-nginx-default.XXXXXX) || return 1
+cp -p /etc/nginx/conf.d/default.conf "$nginxConfBak" 2>/dev/null || true
 sed -i '/SERVER_BASE_START/,/SERVER_BASE_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/RESTORE_START/,/RESTORE_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/PHP_START/,/PHP_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/Pihole_START/,/Pihole_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/TTYD_START/,/TTYD_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/NETDATA_START/,/NETDATA_END/d' /etc/nginx/conf.d/default.conf
+# Older releases appended an unmarked /restore/ block; it would duplicate the managed one
+sed -i '/^[[:space:]]*location[[:space:]]*\^~[[:space:]]*\/restore\/[[:space:]]*{[[:space:]]*$/,/^[[:space:]]*}[[:space:]]*$/d' /etc/nginx/conf.d/default.conf
 
 while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
    sed -i '1d' /etc/nginx/conf.d/default.conf
@@ -2437,7 +2442,9 @@ while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/
 done
 
 if [[ -s /etc/nginx/conf.d/default.conf ]]; then
-   sed -i '${/^[[:space:]]*}[[:space:]]*$/d;}' /etc/nginx/conf.d/default.conf
+   if [[ $(tail -n 1 /etc/nginx/conf.d/default.conf 2>/dev/null) =~ ^[[:space:]]*\}[[:space:]]*$ ]]; then
+      sed -i '$d' /etc/nginx/conf.d/default.conf
+   fi
    while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
       sed -i '$d' /etc/nginx/conf.d/default.conf
    done
@@ -2559,6 +2566,16 @@ sed -i '/ssl_trusted_certificate/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_verify/d' /etc/nginx/conf.d/.ssl_certs
 sed -i '/ssl_stapling_file/d' /etc/nginx/conf.d/.ssl_certs
+
+if ! nginx -t >/dev/null 2>&1; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Nginx config test failed, restoring previous default.conf${cRES}"
+  nginx -t 2>&1 | tail -n 3
+  [[ -s "$nginxConfBak" ]] && cp -f "$nginxConfBak" /etc/nginx/conf.d/default.conf
+  rm -f "$nginxConfBak"
+  systemctl restart nginx >/dev/null 2>&1
+  return 1
+fi
+rm -f "$nginxConfBak"
 systemctl restart nginx >/dev/null 2>&1
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Nginx${cRES}"
@@ -3067,7 +3084,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 
 saveCommand(){
 mkdir -p /opt/de_GWD
-if [[ "$0" == *"/opt/de_GWD/client" || "$0" == *"/bin/dex" || "$0" == *"/bin/de_GWD" ]] && \
+if [[ "${1:-}" == "bootstrap" ]] && \
    [[ -f /opt/de_GWD/client ]] && [[ $(wc -l < /opt/de_GWD/client 2>/dev/null || echo 0) -gt 500 ]] && \
    grep -q 'installGWD()' /opt/de_GWD/client 2>/dev/null && bash -n /opt/de_GWD/client 2>/dev/null; then
   :
@@ -3254,12 +3271,15 @@ installPihole
 
 piholeSet
 
-# Pi-hole web admin uses the same initial password as the de_GWD web UI
-if [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
-  docker exec pihole pihole setpassword "$initPW" >/dev/null 2>&1 || true
-fi
-
 postInstall
+
+# Set Pi-hole web admin password AFTER postInstall restarts pihole and loads pihole.toml
+if [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
+  for _ in {1..15}; do
+    docker exec pihole pihole setpassword "$initPW" >/dev/null 2>&1 && break
+    sleep 1
+  done
+fi
 
 saveCommand
 
@@ -4993,7 +5013,7 @@ manageProtocols() {
 
 
 start_menu(){
-[[ ! -x /usr/local/bin/dex ]] && saveCommand >/dev/null 2>&1
+[[ ! -x /usr/local/bin/dex ]] && saveCommand bootstrap >/dev/null 2>&1
 serverStatus
 [[ $(systemctl is-active 'haproxy') = "active" ]] && echo -e "${PURPLE}[Enabled] HAProxy TCP Port Forward${cRES}"
 

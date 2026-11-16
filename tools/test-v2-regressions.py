@@ -916,6 +916,86 @@ def test_initial_random_password() -> None:
     )
 
 
+def test_nginxset_upgrade_from_legacy_conf() -> None:
+    """Upgrading from v2 (unmarked /restore/ block) must not produce a duplicate location; nginx -t guards restart."""
+    client_txt = CLIENT_SCRIPT.read_text(encoding="utf-8")
+    m_fn = re.search(r"(^nginxSet\(\)\{.*?^\})\s*(?=^installWebUI\(\)\{)", client_txt, flags=re.MULTILINE | re.DOTALL)
+    if not m_fn:
+        record(False, "client nginxSet() found")
+        return
+    fn = m_fn.group(1)
+    m_clean = re.search(r"touch /etc/nginx/conf.d/default.conf\n(.*?)\n+local existingConf", fn, flags=re.DOTALL)
+    legacy = (
+        "# SERVER_BASE_START\nserver {\n  listen 443 default ssl;\n# SERVER_BASE_END\n\n"
+        "# Pihole_START\nlocation /admin/ {\n  proxy_pass http://127.0.0.1:8053/admin/;\n}\n# Pihole_END\n\n"
+        "# RESTORE_START\nlocation ^~ /restore/ {\n  deny all;\n}\n# RESTORE_END\n\n"
+        "# PHP_START\nlocation ~ [^/]\\.php(/|$) {\n  fastcgi_pass unix:/run/php/php-fpm.sock;\n}\n# PHP_END\n\n"
+        "location /custom/ {\n  return 204;\n}\n\n"
+        "location ^~ /restore/ {\n  deny all;\n}\n}\n"
+    )
+    ok = False
+    remaining = ""
+    if m_clean:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            conf = tmp / "default.conf"
+            conf.write_text(legacy, encoding="utf-8")
+            fbin = tmp / "bin"
+            fbin.mkdir()
+            gsed = shutil.which("gsed")
+            if gsed:  # BSD sed lacks GNU `sed -i` without suffix
+                (fbin / "sed").symlink_to(gsed)
+            elif sys.platform == "darwin":
+                sed_shim = fbin / "sed"
+                sed_shim.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "import os, sys\n"
+                    "args = sys.argv[1:]\n"
+                    "if args and args[0] == '-i':\n"
+                    "    args = ['-i', ''] + args[1:]\n"
+                    "os.execv('/usr/bin/sed', ['/usr/bin/sed'] + args)\n",
+                    encoding="utf-8",
+                )
+                sed_shim.chmod(0o755)
+            body = m_clean.group(1).replace("/etc/nginx/conf.d/default.conf", str(conf)).replace("local nginxConfBak", "nginxConfBak")
+            body = body.replace("mktemp /tmp/de_GWD-nginx-default.XXXXXX", f"mktemp {tmp}/bak.XXXXXX")
+            runner = tmp / "clean.sh"
+            runner.write_text(f"#!/usr/bin/env bash\nf(){{\n{body}\n}}\nf\n", encoding="utf-8")
+            runner.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{fbin}:{env.get('PATH', '')}"
+            res = run_cmd([str(runner)], env=env)
+            remaining = conf.read_text(encoding="utf-8")
+            ok = (
+                res.returncode == 0
+                and "restore" not in remaining
+                and "location /custom/ {" in remaining
+                and "server {" not in remaining
+                and remaining.rstrip().endswith("}")  # custom block kept intact; server brace trimmed
+                and remaining.count("{") == remaining.count("}")
+            )
+    guarded = (
+        "if ! nginx -t >/dev/null 2>&1; then" in fn
+        and 'cp -f "$nginxConfBak" /etc/nginx/conf.d/default.conf' in fn
+        and fn.index("if ! nginx -t") < fn.rindex("systemctl restart nginx")
+    )
+    record(
+        ok and guarded,
+        "nginxSet strips legacy unmarked /restore/ block on upgrade and rolls back default.conf when nginx -t fails",
+    )
+    if not ok:
+        print(f"  remaining default.conf after cleanup:\n{remaining}", file=sys.stderr)
+
+    server_txt = (ROOT / "server").read_text(encoding="utf-8")
+    save_ok = all(
+        'if [[ "${1:-}" == "bootstrap" ]] &&' in txt
+        and '[[ ! -x /usr/local/bin/dex ]] && saveCommand bootstrap' in txt
+        and 'if [[ "$0" == *"/opt/de_GWD/' not in txt
+        for txt in (client_txt, server_txt)
+    )
+    record(save_ok, "saveCommand skips short-circuit on normal update so dex self-updates on upgrade")
+
+
 def test_ui_script_xray_and_split_routing() -> None:
     xray_common = UISCRIPT_DIR / "xray-common"
     conf_common = UISCRIPT_DIR / "ui-confCommon"
@@ -1174,6 +1254,7 @@ def main() -> int:
     test_auth_fail_closed_rate_limit_and_malformed_conf()
     test_review_round2_fixes()
     test_initial_random_password()
+    test_nginxset_upgrade_from_legacy_conf()
     test_ui_script_xray_and_split_routing()
     test_xray_merge_and_reality_preservation()
 
