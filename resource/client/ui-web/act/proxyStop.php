@@ -1,7 +1,11 @@
-<?php require_once('../auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
 <?php
+require_once('../auth.php');
+gwd_require_auth();
 gwd_require_post_csrf();
-exec('sudo /opt/de_GWD/ui-proxyStop');
+header('Content-Type: text/plain; charset=utf-8');
+exec('sudo /opt/de_GWD/ui-proxyStop', $out, $rc);
+if ($rc !== 0) {
+    http_response_code(500);
+    exit('Proxy stop failed');
+}
 ?>
-<?php }?>

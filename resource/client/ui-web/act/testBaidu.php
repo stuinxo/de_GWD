@@ -1,7 +1,8 @@
-<?php require_once('../auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
 <?php
-function onlineStatus(){
+require_once('../auth.php');
+gwd_require_auth();
+header('Content-Type: text/plain; charset=utf-8');
+function onlineStatus() {
     $status = array("OFFLINE", "ONLINE");
     $handle = @fsockopen("www.baidu.com", 443, $errno, $errstr, 2);
     if ($handle) {
@@ -13,4 +14,3 @@ function onlineStatus(){
 
 echo onlineStatus();
 ?>
-<?php }?>

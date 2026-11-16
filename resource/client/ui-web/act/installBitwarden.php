@@ -1,7 +1,10 @@
-<?php require_once('../auth.php'); ?>
-<?php if (isset($auth) && $auth) {?>
 <?php
+require_once('../auth.php');
+gwd_require_auth();
 gwd_require_post_csrf();
-exec('sudo nohup /usr/bin/ttyd -i lo -p 3000 -W -o /opt/de_GWD/ui-installBitwarden >/dev/null 2>&1 &');
+header('Content-Type: text/plain; charset=utf-8');
+if (!gwd_start_ttyd('ui-installBitwarden')) {
+    http_response_code(500);
+    exit('Failed to start terminal');
+}
 ?>
-<?php }?>

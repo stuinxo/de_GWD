@@ -9,8 +9,15 @@
   }
   window.jQuery.ajaxPrefilter(function (options, originalOptions, jqXHR) {
     var url = options.url || '';
-    if (/^https?:\/\//i.test(url) && url.indexOf(window.location.origin) !== 0) {
-      return;
+    try {
+      var parsed = new URL(url, window.location.origin);
+      if (parsed.origin !== window.location.origin) {
+        return;
+      }
+    } catch (e) {
+      if (/^https?:\/\//i.test(url)) {
+        return;
+      }
     }
     jqXHR.setRequestHeader('X-CSRF-Token', token);
   });

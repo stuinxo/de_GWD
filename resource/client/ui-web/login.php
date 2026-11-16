@@ -45,21 +45,35 @@
   </div>
 
 <script>
-function keysubmitpw(e){
-    var code = (e && e.keyCode) ? e.keyCode : (event ? event.keyCode : 0);
-    if(code == 13) {
-        if (e && e.preventDefault) e.preventDefault();
-        gwdpasswdtext=$('#gwdpasswd').val();
-        $.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; });
-    }
+function submitLogin() {
+  var gwdpasswdtext = $('#gwdpasswd').val();
+  $.post('auth.php', {gwdpw: gwdpasswdtext})
+    .done(function () {
+      window.location.href = 'index.php';
+    })
+    .fail(function (xhr) {
+      if (xhr && xhr.status === 429) {
+        alert('Too many login attempts. Please wait a minute and try again.');
+      } else {
+        window.location.href = 'index.php';
+      }
+    });
 }
 
-$(function(){
-$('#buttonSubmitpw').click(function(){
-gwdpasswdtext=$('#gwdpasswd').val()
-$.post('auth.php', {gwdpw:gwdpasswdtext}, function(result){ window.location.href="index.php"; })
-})
-})
+function keysubmitpw(e) {
+  e = e || window.event;
+  var code = e ? (e.keyCode || e.which || 0) : 0;
+  if (code == 13) {
+    if (e && e.preventDefault) e.preventDefault();
+    submitLogin();
+  }
+}
+
+$(function () {
+  $('#buttonSubmitpw').click(function () {
+    submitLogin();
+  });
+});
 </script>
 
 </body>
