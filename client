@@ -247,7 +247,7 @@ downloadVerifiedResource(){
 
 wait_apt_lock(){
   local waited=0
-  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg' >/dev/null 2>&1; do
     if [[ $waited -ge 120 ]]; then
       echo "Timed out waiting for apt/dpkg lock" >&2
       return 1
@@ -2736,7 +2736,7 @@ PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 wait_apt_lock(){
   local waited=0
-  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg' >/dev/null 2>&1; do
     [[ $waited -ge 120 ]] && return 1
     sleep 2
     waited=$((waited + 2))

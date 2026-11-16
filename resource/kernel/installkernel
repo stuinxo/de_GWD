@@ -44,7 +44,7 @@ done
 [[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
 wait_apt_lock() {
   local waited=0
-  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg' >/dev/null 2>&1; do
     if [[ $waited -ge 120 ]]; then
       echo "Timed out waiting for apt/dpkg lock" >&2
       return 1
@@ -80,7 +80,7 @@ sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
 
 wait_apt_lock() {
   local waited=0
-  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg|unattended-upgr' >/dev/null 2>&1; do
+  while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg' >/dev/null 2>&1; do
     [[ $waited -ge 120 ]] && return 1
     sleep 2
     waited=$((waited + 2))
