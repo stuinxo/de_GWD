@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 supportsSystem(){
   local osRelease=$1
   local architecture=$2
@@ -45,7 +46,7 @@ branch="${BRANCH:-v2}"
 
 
 installCMD=`cat << EOF
-bash <(wget -qO- https://ghproxy.net/https://raw.githubusercontent.com/stuinxo/de_GWD/${branch:-v2}/client)
+bash <(wget -qO- https://raw.githubusercontent.com/stuinxo/de_GWD/${branch:-v2}/client)
 EOF
 `
 
@@ -57,7 +58,6 @@ gh_text(){
   fi
   local urls=("$url")
   [[ -n "$jsd_url" ]] && urls+=("$jsd_url")
-  urls+=("https://ghproxy.net/${url}")
 
   for u in "${urls[@]}"; do
     local content
@@ -79,7 +79,6 @@ gh_download(){
     jsd_url="https://fastly.jsdelivr.net/gh/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}@${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
   fi
   local urls=()
-  urls+=("https://ghproxy.net/${url}" "https://mirror.ghproxy.com/${url}")
   if [[ "$target" != *"de_GWD"* && -n "$jsd_url" ]]; then
     urls+=("$jsd_url")
   fi
@@ -107,14 +106,20 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing System Packages...${c
 if command -v debconf-set-selections >/dev/null 2>&1; then
     echo "man-db man-db/auto-update boolean false" | debconf-set-selections 2>/dev/null || true
 fi
+wait_apt_lock
 if [[ $architecture = "arm64" ]];then
 unset Freeze_Package
 Freeze_Package+=($(dpkg -l | grep 'linux-u-boot-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-image-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-headers-' | awk '{print $2}'))
 Freeze_Package+=($(dpkg -l | grep 'linux-dtb-' | awk '{print $2}'))
-echo ${Freeze_Package[@]} | xargs -n1 apt-mark hold
+[[ ${#Freeze_Package[@]} -gt 0 ]] && echo "${Freeze_Package[@]}" | xargs -n1 apt-mark hold
 apt update && apt install -y apparmor apparmor-utils google-perftools
+if apt-cache show libgoogle-perftools4t64 >/dev/null 2>&1; then
+  apt install -y -q libgoogle-perftools4t64
+elif apt-cache show libgoogle-perftools4 >/dev/null 2>&1; then
+  apt install -y -q libgoogle-perftools4
+fi
 fi
 
 pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
@@ -125,7 +130,7 @@ grep -qE '^(ii|rc) +systemd-timesyncd$' <<< "$pkg_status" && apt remove --purge 
 grep -qE '^(ii|rc) +rng-tools(-debian)?$' <<< "$pkg_status" && apt remove --purge -y rng-tools-debian rng-tools 2>/dev/null
 
 unset aptPKG
-for pkg in sudo wget curl git locales netcat-openbsd lsof dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq qrencode bc moreutils chrony cron; do
+for pkg in sudo wget curl git locales netcat-openbsd lsof dnsutils net-tools resolvconf nftables ca-certificates apt-transport-https gnupg2 unzip zstd jq qrencode bc moreutils chrony cron libbrotli1 libcrypt1; do
   grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
 done
 if ! grep -qE '^ii +irqbalance$' <<< "$pkg_status" && [[ $(nproc --all) -gt 1 ]]; then
@@ -137,6 +142,7 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}System Package
 
 pkgDEP2(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Installing Docker & PHP Services (may take 1-2 min)...${cRES}\r\c"
+wait_apt_lock
 mkdir -p /usr/share/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
 [[ ! -s /usr/share/keyrings/docker-archive-keyring.gpg ]] && curl -fsSL https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg | gpg --dearmor --yes -o /usr/share/keyrings/docker-archive-keyring.gpg
@@ -145,7 +151,13 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docke
 
 pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
 unset aptPKG
-for pkg in python3-toml psmisc dns-root-data idn2 ethtool tmux socat zip docker-ce sqlite3 libmimalloc3; do
+local libmimalloc_pkg=""
+if apt-cache show libmimalloc3 >/dev/null 2>&1; then
+  libmimalloc_pkg="libmimalloc3"
+elif apt-cache show libmimalloc2.0 >/dev/null 2>&1; then
+  libmimalloc_pkg="libmimalloc2.0"
+fi
+for pkg in python3-toml psmisc dns-root-data idn2 ethtool tmux socat zip docker-ce sqlite3 $libmimalloc_pkg; do
   grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
 done
 grep -qE '^ii +php(8\.4)?-fpm$' <<< "$pkg_status" || aptPKG+=(php-fpm)
@@ -430,12 +442,19 @@ if [[ $(ttyd -v 2>&1 | grep -o '[0-9]\.[0-9]\.[0-9]') != $TTYD_Ver ]]; then
   if [[ -f "./resource/client/ttyd" ]]; then
     cp -f ./resource/client/ttyd /usr/bin/ttyd && chmod 0755 /usr/bin/ttyd && TTYD_UPDATE="true"
   else
+    local expectedTtydSha=""
+    case "$(uname -m)" in
+      x86_64)  expectedTtydSha="8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55" ;;
+      aarch64) expectedTtydSha="b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165" ;;
+    esac
     tmpTtyd=$(mktemp /tmp/de_GWD-ttyd.XXXXXX)
-    if [[ -n "$tmpTtyd" ]] && gh_download "$tmpTtyd" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)" 1000 && isElfBinary "$tmpTtyd"; then
+    if [[ -n "$expectedTtydSha" && -n "$tmpTtyd" ]] && \
+       gh_download "$tmpTtyd" "https://github.com/tsl0922/ttyd/releases/download/$TTYD_Ver/ttyd.$(uname -m)" 1000 && \
+       [[ $(checkSum "$tmpTtyd" "$expectedTtydSha") == "true" ]] && isElfBinary "$tmpTtyd"; then
       mv -f "$tmpTtyd" /usr/bin/ttyd && chmod 0755 /usr/bin/ttyd && TTYD_UPDATE="true"
     else
       rm -f "$tmpTtyd"
-      echo -e "${WHITE}TTYD${RED} Download Failed${cRES}"
+      echo -e "${WHITE}TTYD${RED} Download or Checksum Failed${cRES}"
     fi
   fi
 fi
@@ -450,14 +469,14 @@ else
   echo -e "${WHITE}Client Zip${RED} Download or Checksum Failed${cRES}" && exit 1
 fi
 
-localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null)
+localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null | tr -d '\r ')
 if [[ -f "./version.php" ]]; then
   cp -f ./version.php /opt/de_GWD/.repo/version.php
 else
-  remoteVer=$(curl -fsSLo- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null | head -n 1)
-  if [[ -n "$remoteVer" ]] && [[ $localVer != $remoteVer || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
+  remoteVer=$(curl -fsSLo- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null | head -n 1 | tr -d '\r ')
+  if [[ "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] && [[ $localVer != $remoteVer || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
     tmpVer=$(mktemp /tmp/de_GWD-ver.XXXXXX)
-    if [[ -n "$tmpVer" ]] && curl -fsSL --connect-timeout 5 -m 15 -o "$tmpVer" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null; then
+    if [[ -n "$tmpVer" ]] && curl -fsSL --connect-timeout 5 -m 15 -o "$tmpVer" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null && [[ -s "$tmpVer" ]]; then
       mv -f "$tmpVer" /opt/de_GWD/.repo/version.php
     else
       rm -f "$tmpVer"
@@ -472,13 +491,16 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Repo Download$
 
 cleanDep(){
 echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Clean-up${cRES}\r\c"
+trap 'service cron start >/dev/null 2>&1 || true' EXIT
 service cron stop
 
 sed -i "/nfsvers/d" /etc/fstab >/dev/null 2>&1
 sed -i '/quic/d' /etc/nginx/conf.d/*.conf >/dev/null 2>&1
 
 if [[ -s /opt/de_GWD/0conf ]]; then
-  jq '
+  local tmpConf
+  tmpConf=$(mktemp /tmp/de_GWD-0conf.XXXXXX)
+  if [[ -n "$tmpConf" ]] && jq '
     (if .v2nodeDIV.nodeSM == [] then .v2nodeDIV.nodeSM = {} else . end)
     | (if .v2nodeDIV.nodeDT == [] then .v2nodeDIV.nodeDT = {} else . end)
     | (if .v2nodeDIV.nodeCU == [] then .v2nodeDIV.nodeCU = {} else . end)
@@ -509,7 +531,11 @@ if [[ -s /opt/de_GWD/0conf ]]; then
     | (if (.dns.regexRule | type) == "array" and (.dns.regexRule | length) > 0 then .dns.adBregex = .dns.regexRule else . end)
     | (if (.dns.adWlistURL | type) == "array" and (.dns.adWlistURL | length) > 0 then .dns.adWlist = .dns.adWlistURL else . end)
     | del(.dns.adlistsURL, .dns.regexRule, .dns.adWlistURL, .dns.adBlistURL)
-  ' /opt/de_GWD/0conf | sponge /opt/de_GWD/0conf
+  ' /opt/de_GWD/0conf >"$tmpConf" && [[ -s "$tmpConf" ]] && jq empty "$tmpConf" >/dev/null 2>&1; then
+    mv -f "$tmpConf" /opt/de_GWD/0conf
+  else
+    rm -f "$tmpConf"
+  fi
   chown root:www-data /opt/de_GWD/0conf 2>/dev/null || true
   chmod 660 /opt/de_GWD/0conf
 fi
@@ -736,14 +762,17 @@ try_connect() {
 }
 
 # Execute connections
-serverConnect1=$(try_connect "google.com") || serverConnect1=
-serverConnect2=$(try_connect "1.1.1.1") || serverConnect2=
+serverConnect1=$(try_connect "https://www.google.com/generate_204") || serverConnect1=
+serverConnect2=$(try_connect "https://1.1.1.1") || serverConnect2=
 
 if [[ $1 = "u" ]]; then
     if [[ $2 = "a" ]]; then
         preDL
-        updateGWD_Green
-        [[ -z $serverConnect1 ]] || [[ -z $serverConnect2 ]] && exit
+        if [[ -n $serverConnect1 ]] && [[ -n $serverConnect2 ]] && [[ $(systemctl is-active 'vtrui') = "active" ]]; then
+            updateGWD_Green
+        else
+            updateGWD_Red
+        fi
     else
         if [[ -n $serverConnect1 ]] && [[ -n $serverConnect2 ]] && [[ $(systemctl is-active 'vtrui') = "active" ]]; then
         echo -e "${WHITE}de_GWD server connect  ${cRES}\c" && echo -e "\t${WHITE}[${GREEN} ✓ ${WHITE}]${cRES}"
@@ -891,10 +920,10 @@ www-data     soft   memlock   unlimited
 *     soft   memlock   unlimited
 EOF
 
-sed -i '/DefaultLimitCORE/d' /etc/systemd/system.conf
-sed -i '/DefaultLimitNOFILE/d' /etc/systemd/system.conf
-sed -i '/DefaultLimitNPROC/d' /etc/systemd/system.conf
-cat << EOF >>/etc/systemd/system.conf
+sed -i '/DefaultLimitCORE/d;/DefaultLimitNOFILE/d;/DefaultLimitNPROC/d' /etc/systemd/system.conf 2>/dev/null || true
+mkdir -p /etc/systemd/system.conf.d
+cat << EOF >/etc/systemd/system.conf.d/99-de_GWD.conf
+[Manager]
 DefaultLimitCORE=1000000
 DefaultLimitNOFILE=1000000
 DefaultLimitNPROC=1000000
@@ -989,21 +1018,23 @@ timedatectl set-ntp true >/dev/null 2>&1 || true
 [[ -f "/etc/ld.so.preload" ]] && sed -i "/libjemalloc/d" /etc/ld.so.preload
 ldconfig
 
-mkdir -p /etc/modules-load.d
-touch /etc/modules-load.d/modules.conf
-sed -i '/nf_conntrack/d' /etc/modules-load.d/modules.conf
-sed -i '/ifb/d' /etc/modules-load.d/modules.conf
-sed -i '/sch_cake/d' /etc/modules-load.d/modules.conf
-cat << EOF >>/etc/modules-load.d/modules.conf
+if [[ $virt_type != "container" ]]; then
+  mkdir -p /etc/modules-load.d
+  touch /etc/modules-load.d/modules.conf
+  sed -i '/nf_conntrack/d' /etc/modules-load.d/modules.conf
+  sed -i '/ifb/d' /etc/modules-load.d/modules.conf
+  sed -i '/sch_cake/d' /etc/modules-load.d/modules.conf
+  cat << EOF >>/etc/modules-load.d/modules.conf
 nf_conntrack
 ifb
 sch_cake
 EOF
-modprobe nf_conntrack
-modprobe ifb
-modprobe sch_cake
+  modprobe nf_conntrack 2>/dev/null || true
+  modprobe ifb 2>/dev/null || true
+  modprobe sch_cake 2>/dev/null || true
 
-cat << EOF >/etc/sysctl.conf
+  mkdir -p /etc/sysctl.d
+  cat << EOF >/etc/sysctl.d/99-de_GWD.conf
 kernel.sysrq = 438
 vm.overcommit_memory = 1
 vm.swappiness = 5
@@ -1100,7 +1131,6 @@ net.ipv4.tcp_ecn = 0
 net.ipv4.tcp_fin_timeout = 10
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_fastopen_blackhole_timeout_sec = 0
-net.ipv4.tcp_fastopen_key = 00000000-00000000-00000000-00000000
 net.ipv4.tcp_keepalive_time = 3600
 net.ipv4.tcp_keepalive_intvl = 60
 net.ipv4.tcp_keepalive_probes = 9
@@ -1124,110 +1154,119 @@ net.ipv6.conf.default.disable_ipv6 = 1
 net.ipv6.conf.lo.disable_ipv6 = 1
 EOF
 
-sync
-sysctl -p >/dev/null 2>&1
+  sync
+  sysctl --system >/dev/null 2>&1
+fi
 
 if dpkg-query -W -f='${db:Status-Abbrev}\n' docker-ce 2>/dev/null | grep -q '^ii' && dpkg-query -W -f='${db:Status-Abbrev}\n' containerd.io 2>/dev/null | grep -q '^ii'; then
 mkdir -p /etc/docker/
 systemctl stop docker docker.socket containerd
-cat << EOF >/etc/docker/daemon.json
+if [[ -s /etc/docker/daemon.json ]] && jq empty /etc/docker/daemon.json >/dev/null 2>&1; then
+  jq '.iptables = false' /etc/docker/daemon.json | sponge /etc/docker/daemon.json
+else
+  cat << EOF >/etc/docker/daemon.json
 {
   "iptables": false
 }
 EOF
+fi
 systemctl restart docker
 fi
 
-cat << EOF >/etc/rc_online.local
+if [[ $virt_type != "container" ]]; then
+cat << 'EOF' >/etc/rc_online.local
 #!/bin/bash
-echo madvise >/sys/kernel/mm/transparent_hugepage/enabled
+PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+echo madvise >/sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
 
-$(which ip) route show table local | grep -v 'linkdown' | grep -v 'broadcast' | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 1500 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic
+ip route show table local | grep -v 'linkdown' | grep -v 'broadcast' | while read -r line; do
+  line=$(echo "$line" | awk -F' mtu ' '{print$1}')
+  ip route change $line mtu 1500 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic 2>/dev/null || true
 done
 
-$(which ip) route show table local | grep ' dev lo ' | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 65520 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic
+ip route show table local | grep ' dev lo ' | while read -r line; do
+  line=$(echo "$line" | awk -F' mtu ' '{print$1}')
+  ip route change $line mtu 65520 initcwnd 1000 initrwnd 1000 fastopen_no_cookie 1 congctl lock cubic 2>/dev/null || true
 done
 
-NIC_local=\$($(which ip) route | grep -v 'linkdown' | grep -v 'broadcast' | grep -v 'scope' | awk -F' dev ' '{print\$2}' | cut -d' ' -f1)
-$(which ip) route | grep " dev \$NIC_local " | while read line; do
-line=\$(echo \$line | awk -F' mtu ' '{print\$1}')
-$(which ip) route change \$line mtu 1500 fastopen_no_cookie 1 congctl lock $(sysctl net.ipv4.tcp_congestion_control | awk -F' = ' '{print$2}')
+NIC_local=$(ip route | grep -v 'linkdown' | grep -v 'broadcast' | grep -v 'scope' | awk -F' dev ' '{print$2}' | cut -d' ' -f1 | sort -u)
+localCc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo bbr)
+for nic in $NIC_local; do
+  ip route | grep " dev $nic " | while read -r line; do
+    line=$(echo "$line" | awk -F' mtu ' '{print$1}')
+    ip route change $line mtu 1500 fastopen_no_cookie 1 congctl lock "$localCc" 2>/dev/null || true
+  done
 done
 
-
-
-NIC_device=\$(find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device')
-for ifb in \$(echo \$NIC_device | xargs -n 1 | grep 'virtual' | awk -F'/' '{print\$NF}' | grep '^ifb'); do
-$(which ip) link set \$ifb down
-$(which ip) link delete \$ifb
+NIC_device=$(find /sys/class/net ! -type d 2>/dev/null | xargs --max-args=1 realpath 2>/dev/null | grep 'device' || true)
+for ifb in $(echo "$NIC_device" | xargs -n 1 | grep 'virtual' | awk -F'/' '{print$NF}' | grep '^ifb'); do
+  ip link set "$ifb" down 2>/dev/null || true
+  ip link delete "$ifb" 2>/dev/null || true
 done
 
-$(which ip) link set lo qlen 10000 mtu 65520
-$(which tc) qdisc del dev lo root >/dev/null 2>&1
-$(which tc) qdisc add dev lo root cake unlimited rtt 50us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter-aggressive raw egress
+ip link set lo qlen 10000 mtu 65520 2>/dev/null || true
+tc qdisc del dev lo root >/dev/null 2>&1 || true
+tc qdisc add dev lo root cake unlimited rtt 50us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter-aggressive raw egress 2>/dev/null || true
 
-$(which ip) link add name ifb4lo type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev lo ingress >/dev/null 2>&1
-$(which tc) qdisc add dev lo handle ffff: ingress
-$(which tc) qdisc del dev ifb4lo root >/dev/null 2>&1
-$(which tc) qdisc add dev ifb4lo root cake unlimited rtt 50us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw ingress
-$(which ip) link set ifb4lo qlen 10000 mtu 65520
-$(which ip) link set ifb4lo up
-$(which tc) filter add dev lo parent ffff: matchall action mirred egress redirect dev ifb4lo
+ip link add name ifb4lo type ifb >/dev/null 2>&1 || true
+tc qdisc del dev lo ingress >/dev/null 2>&1 || true
+tc qdisc add dev lo handle ffff: ingress 2>/dev/null || true
+tc qdisc del dev ifb4lo root >/dev/null 2>&1 || true
+tc qdisc add dev ifb4lo root cake unlimited rtt 50us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw ingress 2>/dev/null || true
+ip link set ifb4lo qlen 10000 mtu 65520 2>/dev/null || true
+ip link set ifb4lo up 2>/dev/null || true
+tc filter add dev lo parent ffff: matchall action mirred egress redirect dev ifb4lo 2>/dev/null || true
 
-echo \$NIC_device | xargs -n 1 | grep 'virtual' | awk -F'/' '{print\$NF}' | grep -v 'docker' | grep -v 'ifb' | grep -v '^lo\$' | while read line; do
-MTU_NUM=\$(< /sys/class/net/\$line/mtu)
-ifb4eth=\$(echo "ifb4\$line" | cut -c 1-15)
-$(which ip) link set \$line qlen 10001 mtu \$MTU_NUM
-$(which tc) qdisc del dev \$line root >/dev/null 2>&1
-$(which tc) qdisc add dev \$line root cake unlimited rtt 200us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter raw overhead 18 mpu 64 egress
+echo "$NIC_device" | xargs -n 1 | grep 'virtual' | awk -F'/' '{print$NF}' | grep -vE '^(docker|br-|veth|ifb|wg|tun|tap|lo$)' | while read -r line; do
+  MTU_NUM=$(< "/sys/class/net/$line/mtu")
+  ifb4eth=$(echo "ifb4$line" | cut -c 1-15)
+  ip link set "$line" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  tc qdisc del dev "$line" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" root cake unlimited rtt 200us diffserv4 dual-srchost nonat nowash no-split-gso ack-filter raw overhead 18 mpu 64 egress 2>/dev/null || true
 
-$(which ip) link add name \$ifb4eth type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev \$line ingress >/dev/null 2>&1
-$(which tc) qdisc add dev \$line handle ffff: ingress
-$(which tc) qdisc del dev \$ifb4eth root >/dev/null 2>&1
-$(which tc) qdisc add dev \$ifb4eth root cake unlimited rtt 200us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw overhead 18 mpu 64 ingress
-$(which ip) link set \$ifb4eth qlen 10001 mtu \$MTU_NUM
-$(which ip) link set \$ifb4eth up
-$(which tc) filter add dev \$line parent ffff: matchall action mirred egress redirect dev \$ifb4eth
+  ip link add name "$ifb4eth" type ifb >/dev/null 2>&1 || true
+  tc qdisc del dev "$line" ingress >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" handle ffff: ingress 2>/dev/null || true
+  tc qdisc del dev "$ifb4eth" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$ifb4eth" root cake unlimited rtt 200us diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter raw overhead 18 mpu 64 ingress 2>/dev/null || true
+  ip link set "$ifb4eth" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  ip link set "$ifb4eth" up 2>/dev/null || true
+  tc filter add dev "$line" parent ffff: matchall action mirred egress redirect dev "$ifb4eth" 2>/dev/null || true
 done
 
-echo \$NIC_device | xargs -n 1 | grep -v 'virtual' | awk -F'/' '{print\$NF}' | while read line; do
-MTU_NUM=\$(< /sys/class/net/\$line/mtu)
-ifb4eth=\$(echo "ifb4\$line" | cut -c 1-15)
-$(which ip) link set \$line qlen 10001 mtu \$MTU_NUM
-$(which tc) qdisc del dev \$line root >/dev/null 2>&1
-$(which tc) qdisc add dev \$line root cake unlimited besteffort dual-srchost nonat nowash no-split-gso ack-filter ethernet egress
+echo "$NIC_device" | xargs -n 1 | grep -v 'virtual' | awk -F'/' '{print$NF}' | grep -vE '^(lo|docker|br-|veth|ifb|wg|tun|tap)' | while read -r line; do
+  MTU_NUM=$(< "/sys/class/net/$line/mtu")
+  ifb4eth=$(echo "ifb4$line" | cut -c 1-15)
+  ip link set "$line" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  tc qdisc del dev "$line" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" root cake unlimited besteffort dual-srchost nonat nowash no-split-gso ack-filter ethernet egress 2>/dev/null || true
 
-$(which ip) link add name \$ifb4eth type ifb >/dev/null 2>&1
-$(which tc) qdisc del dev \$line ingress >/dev/null 2>&1
-$(which tc) qdisc add dev \$line handle ffff: ingress
-$(which tc) qdisc del dev \$ifb4eth root >/dev/null 2>&1
-$(which tc) qdisc add dev \$ifb4eth root cake unlimited diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter ethernet ingress
-$(which ip) link set \$ifb4eth qlen 10001 mtu \$MTU_NUM
-$(which ip) link set \$ifb4eth up
-$(which tc) filter add dev \$line parent ffff: matchall action mirred egress redirect dev \$ifb4eth
+  ip link add name "$ifb4eth" type ifb >/dev/null 2>&1 || true
+  tc qdisc del dev "$line" ingress >/dev/null 2>&1 || true
+  tc qdisc add dev "$line" handle ffff: ingress 2>/dev/null || true
+  tc qdisc del dev "$ifb4eth" root >/dev/null 2>&1 || true
+  tc qdisc add dev "$ifb4eth" root cake unlimited diffserv4 dual-dsthost nonat nowash no-split-gso no-ack-filter ethernet ingress 2>/dev/null || true
+  ip link set "$ifb4eth" qlen 10001 mtu "$MTU_NUM" 2>/dev/null || true
+  ip link set "$ifb4eth" up 2>/dev/null || true
+  tc filter add dev "$line" parent ffff: matchall action mirred egress redirect dev "$ifb4eth" 2>/dev/null || true
 
-$(which ethtool) -s \$line duplex full >/dev/null 2>&1
-$(which ethtool) -K \$line rx on tx on sg off gro off gso off tx-gso-partial off lro off tso off ufo off >/dev/null 2>&1
+  ethtool -s "$line" duplex full >/dev/null 2>&1 || true
+  ethtool -K "$line" rx on tx on sg off gro off gso off tx-gso-partial off lro off tso off ufo off >/dev/null 2>&1 || true
 done
 
-$(which ip) tcp_metrics flush
-$(which ip) route flush cache
+ip tcp_metrics flush 2>/dev/null || true
+ip route flush cache 2>/dev/null || true
 EOF
 chmod +x /etc/rc_online.local
 
 mkdir -p /etc/systemd/system/networking.service.d/
 cat << EOF >/etc/systemd/system/networking.service.d/override.conf
 [Service]
-ExecStartPost=/etc/rc_online.local
+ExecStartPost=-/etc/rc_online.local
 EOF
 systemctl daemon-reload >/dev/null
 /etc/rc_online.local
+fi
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}System Config${cRES}"
 }
@@ -1239,6 +1278,11 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Proxy Components Prepared${cRES}
 docker stop pihole >/dev/null 2>&1
 
 if [[ -n $(unzip -tq /opt/de_GWD/.repo/de_GWD.zip | grep "No errors detected in compressed data") ]]; then
+local realityBak=""
+if [[ -f /opt/de_GWD/vtrui/reality.info ]]; then
+  realityBak=$(mktemp /tmp/de_GWD-reality.XXXXXX)
+  [[ -n "$realityBak" ]] && cp -f /opt/de_GWD/vtrui/reality.info "$realityBak"
+fi
 rm -rf /opt/de_GWD/smartdns
 rm -rf /opt/de_GWD/coredns
 rm -rf /opt/de_GWD/mosdns
@@ -1247,6 +1291,10 @@ mkdir -p /opt/de_GWD/smartdns
 mkdir -p /opt/de_GWD/coredns
 mkdir -p /opt/de_GWD/mosdns
 mkdir -p /opt/de_GWD/vtrui
+if [[ -n "$realityBak" && -f "$realityBak" ]]; then
+  mv -f "$realityBak" /opt/de_GWD/vtrui/reality.info
+  chmod 600 /opt/de_GWD/vtrui/reality.info 2>/dev/null || true
+fi
 
 rm -rf /tmp/de_GWD
 unzip /opt/de_GWD/.repo/de_GWD.zip -d /tmp/de_GWD >/dev/null
@@ -1410,7 +1458,11 @@ fi
 
 if [[ -n $doh1IP ]]; then
 doh1Port=$(echo $doh1 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh1Path=$(echo $doh1 | cut -d/ -f2)
+if [[ "$doh1" == */* ]]; then
+    doh1Path="${doh1#*/}"
+else
+    doh1Path="dq"
+fi
 
 if [[ -z $doh1Port ]]; then
     doh1Str="$doh1IP/$doh1Path"
@@ -1444,7 +1496,11 @@ fi
 
 if [[ -n $doh2IP ]]; then
 doh2Port=$(echo $doh2 | cut -d/ -f1 | cut -d: -f2 | grep '^[[:digit:]]*$')
-doh2Path=$(echo $doh2 | cut -d/ -f2)
+if [[ "$doh2" == */* ]]; then
+    doh2Path="${doh2#*/}"
+else
+    doh2Path="dq"
+fi
 
 if [[ -z $doh2Port ]]; then
     doh2Str="$doh2IP/$doh2Path"
@@ -1556,6 +1612,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
     {
       "tag":"direct",
       "protocol":"freedom",
+      "settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},
       "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}
     }
   ]
@@ -1606,7 +1663,27 @@ OBdefault=$(cat << EOF
 EOF
 )
 
-jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+if [[ -s /opt/de_GWD/extra_inbounds.json ]] && jq -e 'type == "array" and length > 0' /opt/de_GWD/extra_inbounds.json >/dev/null 2>&1; then
+  local extraInboundsJson
+  extraInboundsJson=$(cat /opt/de_GWD/extra_inbounds.json 2>/dev/null)
+  jq --argjson OBdefault "$OBdefault" --argjson extra "${extraInboundsJson:-[]}" '
+    .outbounds[0] = $OBdefault
+    | .inbounds += $extra
+    | if any($extra[]; .tag == "inbound-dokodemo") then
+        .routing = (.routing // {})
+        | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"outbound-dokodemo"}] + (.routing.rules // [])
+        | .outbounds += [{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}]
+      else . end
+  ' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+else
+  jq --argjson OBdefault "$OBdefault" '.outbounds[0]=$OBdefault' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+fi
+chown root:www-data /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+if chgrp www-data /opt/de_GWD/vtrui/config.json 2>/dev/null; then
+  chmod 640 /opt/de_GWD/vtrui/config.json
+else
+  chmod 644 /opt/de_GWD/vtrui/config.json
+fi
 
 rm -rf /lib/systemd/system/vtrui.service
 cat << EOF >/etc/systemd/system/vtrui.service
@@ -1633,7 +1710,10 @@ EOF
 systemctl daemon-reload >/dev/null
 systemctl restart vtrui
 if [[ $? -ne 0 ]]; then
-sed -i '/Nice=/d' /etc/systemd/system/vtrui.service
+sed -i '/^Nice=/d' /etc/systemd/system/vtrui.service
+if [[ $virt_type == "container" ]]; then
+  sed -i '/^AmbientCapabilities=/d;/^CapabilityBoundingSet=/d' /etc/systemd/system/vtrui.service
+fi
 systemctl daemon-reload >/dev/null
 systemctl restart vtrui
 fi
@@ -1775,9 +1855,9 @@ chmod +x /opt/de_GWD/nftables/SET_listWlan.nft
 
 cat << "EOF" >/opt/de_GWD/nftables/flowtable_eth.sh
 #!/bin/bash
-interface_FT=$(find /sys/class/net ! -type d 2>/dev/null | xargs --max-args=1 realpath 2>/dev/null | grep 'device' | awk -F'/' '{print$NF}' | xargs -n1 | grep -vE '^(lo|ifb.*|wg.*|docker.*|veth.*|br-.*)$')
+interface_FT=$(find /sys/class/net ! -type d 2>/dev/null | xargs --max-args=1 realpath 2>/dev/null | grep 'device' | awk -F'/' '{print$NF}' | xargs -n1 | grep -vE '^(lo|ifb.*|wg.*|docker.*|veth.*|br-.*|tun.*|tap.*)$')
 if [[ -z "$interface_FT" ]]; then
-  interface_FT=$(ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')
+  interface_FT=$(ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}' | grep -vE '^(lo|ifb.*|wg.*|docker.*|veth.*|br-.*|tun.*|tap.*)$')
 fi
 
 interface_BF=()
@@ -1785,9 +1865,29 @@ while IFS= read -r line; do
     [[ -n "$line" ]] && interface_BF+=("$line")
 done <<< "$interface_FT"
 
-echo "define flowtable_eth = { $(IFS=, ; echo "${interface_BF[*]}") };" >/opt/de_GWD/nftables/flowtable.eth
+if [[ ${#interface_BF[@]} -gt 0 ]]; then
+  cat << FT_EOF >/opt/de_GWD/nftables/flowtable.nft
+#!/usr/sbin/nft -f
+table inet bypassflow {
+    flowtable Acceleration {
+        hook ingress priority filter; devices = { $(IFS=, ; echo "${interface_BF[*]}") };
+    }
+
+    chain bypasschain {
+        type filter hook forward priority filter; policy accept;
+        ct state established ip daddr 172.16.66.0/24 flow offload @Acceleration
+        ct state established ip saddr 172.16.66.0/24 flow offload @Acceleration
+        ct state established ip daddr 172.17.0.0/16 flow offload @Acceleration
+        ct state established ip saddr 172.17.0.0/16 flow offload @Acceleration
+    }
+}
+FT_EOF
+else
+  >/opt/de_GWD/nftables/flowtable.nft
+fi
 EOF
 chmod +x /opt/de_GWD/nftables/flowtable_eth.sh
+rm -f /opt/de_GWD/nftables/flowtable.eth
 
 cat << EOF >/opt/de_GWD/nftables/default.nft
 #!/usr/sbin/nft -f
@@ -1800,7 +1900,7 @@ table inet filter {
                 iifname "ifb4lo" accept
                 iifname "ifb4wg0" accept
                 ct state established,related accept
-                tcp flags != syn ct state new drop
+                tcp flags & (fin|syn|rst|ack) != syn ct state new drop
                 tcp flags & (fin|syn) == (fin|syn) drop
                 tcp flags & (syn|rst) == (syn|rst) drop
                 tcp flags & (fin|syn|rst|psh|ack|urg) == 0 drop
@@ -1812,7 +1912,7 @@ table inet filter {
                 type filter hook forward priority 0; policy accept;
                 # Reject proxied QUIC (UDP 443) immediately so clients fall back to TCP without blackhole delay
                 meta mark 0x8 meta l4proto udp th dport 443 counter reject
-                tcp flags & (syn|rst) == syn tcp option maxseg size > 1452 counter tcp option maxseg size set 1452
+                tcp flags & (syn|rst) == syn tcp option maxseg size set rt mtu
 
                 # WireGuard traffic
                 iifname "ifb4wg0" accept
@@ -1830,7 +1930,7 @@ table inet filter {
         chain OUTPUT {
                 type filter hook output priority 0; policy accept;
                 meta mark 0x8 meta l4proto udp th dport 443 counter reject
-                oifname != "lo" tcp flags & (syn|rst) == syn tcp option maxseg size > 1452 counter tcp option maxseg size set 1452
+                oifname != "lo" tcp flags & (syn|rst) == syn tcp option maxseg size set rt mtu
         }
         chain DOCKER {
         }
@@ -1860,7 +1960,6 @@ table inet router {
         }
         chain PREROUTING {
                 type nat hook prerouting priority dstnat; policy accept;
-                iifname != "lo" tcp flags & (syn|rst) == syn tcp option maxseg size > 1452 counter tcp option maxseg size set 1452
                 # Docker
                 fib daddr type local counter jump DOCKER
         }
@@ -1876,27 +1975,10 @@ table inet router {
 EOF
 chmod +x /opt/de_GWD/nftables/default.nft
 
-cat << EOF >/opt/de_GWD/nftables/flowtable.nft
-#!/usr/sbin/nft -f
-include "/opt/de_GWD/nftables/flowtable.eth"
-
-table inet bypassflow {
-    flowtable Acceleration {
-        hook ingress priority -300; devices = \$flowtable_eth;
-    }
-
-    chain bypasschain {
-        type filter hook forward priority -300; policy accept;
-        ip daddr 172.16.66.0/24 flow offload @Acceleration
-        ip saddr 172.16.66.0/24 flow offload @Acceleration
-        ip daddr 172.17.0.0/16 flow offload @Acceleration
-        ip saddr 172.17.0.0/16 flow offload @Acceleration
-    }
-}
-EOF
-
 cat << EOF >/opt/de_GWD/nftables/nftables
 #!/usr/sbin/nft -f
+
+flush ruleset
 
 include "/opt/de_GWD/nftables/*.nft"
 
@@ -1958,7 +2040,8 @@ table ip de_GWD {
                 auto-merge
         }
         chain prerouting {
-                type filter hook prerouting priority -280; policy accept;
+                type filter hook prerouting priority mangle; policy accept;
+                fib daddr type local meta l4proto { tcp, udp } th dport != 9896 accept
                 meta l4proto udp th dport { 53, 5331, 5332, 5341, 9896, 67, 68, 1900, 5350, 5351, 5353 } accept
                 meta l4proto tcp th dport { 53, 5331, 5332, 5341, 9896, 2195, 2196, 2197, 3689, 5223, 5297 } accept
                 ip daddr @GlobalDNS accept
@@ -1975,7 +2058,8 @@ table ip de_GWD {
                 ip protocol { tcp, udp } tproxy to 127.0.0.1:9896 meta mark set 0x9
         }
         chain output {
-                type route hook output priority -280; policy accept;
+                type route hook output priority mangle; policy accept;
+                ct direction reply accept
                 meta l4proto udp th dport { 53, 5331, 5332, 5341, 9896, 67, 68, 1900, 5350, 5351, 5353 } accept
                 meta l4proto tcp th dport { 53, 5331, 5332, 5341, 9896, 2195, 2196, 2197, 3689, 5223, 5297 } accept
                 meta mark 0xff accept
@@ -2008,7 +2092,7 @@ RemainAfterExit=yes
 StandardInput=null
 ProtectSystem=full
 ProtectHome=true
-ExecStart=/bin/bash -c '/etc/rc_online.local'
+ExecStart=-/bin/bash -c '/etc/rc_online.local'
 ExecStart=/bin/bash -c '/opt/de_GWD/nftables/flowtable_eth.sh'
 ExecStart=/usr/sbin/nft -f /opt/de_GWD/nftables/nftables
 ExecStart=/usr/sbin/ip route replace local default dev lo scope host table 220
@@ -2041,18 +2125,23 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Debian Updated${cRES}\r\c"
 export DEBIAN_FRONTEND=noninteractive
 rm -rf /etc/apt/sources.list.d/php.list
 
-for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+local debCodename
+debCodename=$(. /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-trixie}")
+[[ "$debCodename" != "bookworm" && "$debCodename" != "trixie" ]] && debCodename="trixie"
+
+for f in /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources; do
   [[ -f "$f" ]] || continue
-  sed -i -E 's/(stretch|buster|bullseye)\/updates/trixie-security/g' "$f" 2>/dev/null
-  sed -i -E 's/\b(stretch|buster|bullseye|bookworm)(-security|-updates|-backports)?\b/trixie\2/g' "$f" 2>/dev/null
+  sed -i -E "s#(stretch|buster|bullseye)/updates#${debCodename}-security#g" "$f" 2>/dev/null
+  sed -i -E "s#\\b(stretch|buster|bullseye)(-security|-updates|-backports)?\\b#${debCodename}\\2#g" "$f" 2>/dev/null
+  sed -i -E 's#http://((deb|security)\.debian\.org)#https://\1#g' "$f" 2>/dev/null
 done
 
-if ! grep -rqw "trixie" /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then
+if ! grep -rqw "$debCodename" /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources 2>/dev/null; then
 cat << EOF >/etc/apt/sources.list
-deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian ${debCodename} main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian-security ${debCodename}-security main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian ${debCodename}-updates main contrib non-free non-free-firmware
+deb https://deb.debian.org/debian ${debCodename}-backports main contrib non-free non-free-firmware
 EOF
 fi
 
@@ -2072,7 +2161,8 @@ grep -qE '^[#@]includedir[[:space:]]+/etc/sudoers\.d' /etc/sudoers || echo '@inc
 mkdir -p /etc/sudoers.d
 sudoersTmp=$(mktemp /tmp/de_GWD.sudoers.XXXXXX) || return 1
 cat << 'EOF' > "$sudoersTmp"
-Cmnd_Alias DEGWD_WEB = /opt/de_GWD/, \
+Cmnd_Alias DEGWD_WEB = /opt/de_GWD/ui-*, /opt/de_GWD/ui_*, \
+    /usr/bin/pkill -f ^/usr/bin/ttyd\ -i\ lo\ -p\ 3000, /bin/pkill -f ^/usr/bin/ttyd\ -i\ lo\ -p\ 3000, \
     /usr/bin/nohup /usr/bin/ttyd -i lo -p 3000 -W -o /opt/de_GWD/ui-*, \
     /bin/nohup /usr/bin/ttyd -i lo -p 3000 -W -o /opt/de_GWD/ui-*, \
     /usr/bin/systemctl start updateGWD, /bin/systemctl start updateGWD, \
@@ -2097,8 +2187,7 @@ pkgDEP2
 DPKGclean=$(dpkg --list | grep "^rc" | cut -d " " -f 3)
 [[ -n $DPKGclean ]] && echo $DPKGclean | xargs sudo dpkg --purge
 
-rm -rf /var/log/journal/*
-systemctl restart systemd-journald >/dev/null 2>&1
+journalctl --vacuum-time=7d --vacuum-size=100M >/dev/null 2>&1 || true
 
 PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null)
 if [[ -z "$PHP_VER" ]]; then
@@ -2136,8 +2225,8 @@ date.timezone           = "Asia/Shanghai"
 
 file_uploads            = On
 upload_tmp_dir          = "/tmp/"
-upload_max_filesize     = 20M
-post_max_size           = 20M
+upload_max_filesize     = 64M
+post_max_size           = 64M
 
 enable_dl               = Off
 disable_functions       = ""
@@ -2166,7 +2255,7 @@ user = www-data
 group = www-data
 listen.owner = www-data
 listen.group = www-data
-listen.mode = 0666
+listen.mode = 0660
 listen = /run/php/php-fpm.sock
 listen.backlog = -1
 listen.allowed_clients = 127.0.0.1
@@ -2307,6 +2396,8 @@ openssl req -x509 -nodes -days 3650 \
   -newkey rsa:2048 \
   -keyout de_GWD.key \
   -out de_GWD.cer
+chown root:www-data /var/www/ssl/de_GWD.key 2>/dev/null || true
+chmod 640 /var/www/ssl/de_GWD.key
 cd ~
 fi
 
@@ -2331,19 +2422,29 @@ fi
 
 touch /etc/nginx/conf.d/default.conf
 sed -i '/SERVER_BASE_START/,/SERVER_BASE_END/d' /etc/nginx/conf.d/default.conf
+sed -i '/RESTORE_START/,/RESTORE_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/PHP_START/,/PHP_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/Pihole_START/,/Pihole_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/TTYD_START/,/TTYD_END/d' /etc/nginx/conf.d/default.conf
 sed -i '/NETDATA_START/,/NETDATA_END/d' /etc/nginx/conf.d/default.conf
-sed -i '$s/}$//' /etc/nginx/conf.d/default.conf
 
-until [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) != "$" ]]; do
+while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(head -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
    sed -i '1d' /etc/nginx/conf.d/default.conf
 done
 
-until [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) != "$" ]]; do
+while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
    sed -i '$d' /etc/nginx/conf.d/default.conf
 done
+
+if [[ -s /etc/nginx/conf.d/default.conf ]]; then
+   sed -i '${/^[[:space:]]*}[[:space:]]*$/d;}' /etc/nginx/conf.d/default.conf
+   while [[ -s /etc/nginx/conf.d/default.conf ]] && [[ $(tail -1 /etc/nginx/conf.d/default.conf | cat -e) == "$" ]]; do
+      sed -i '$d' /etc/nginx/conf.d/default.conf
+   done
+fi
+
+local existingConf
+existingConf=$(cat /etc/nginx/conf.d/default.conf 2>/dev/null)
 
 cat << EOF >/etc/nginx/conf.d/.HSTS
 add_header X-Download-Options                 "noopen"            always;
@@ -2382,6 +2483,7 @@ server {
   server_name $serverName;
   root /var/www/html;
   index index.php index.html index.htm;
+  client_max_body_size 64m;
   error_page 497 https://\$host:$webUIport\$request_uri;
 
   include /etc/nginx/conf.d/.HSTS;
@@ -2416,9 +2518,11 @@ location /api/ {
 # Pihole_END
 
 
+# RESTORE_START
 location ^~ /restore/ {
   deny all;
 }
+# RESTORE_END
 
 # PHP_START
 location ~ [^/]\.php(/|$) {
@@ -2448,7 +2552,7 @@ location ~ ^/ttyd(.*)$ {
 }
 # TTYD_END
 
-$(cat /etc/nginx/conf.d/default.conf 2>/dev/null)
+${existingConf}
 }
 EOF
 sed -i '/ssl_trusted_certificate/d' /etc/nginx/conf.d/.ssl_certs
@@ -2495,10 +2599,35 @@ find /var/www/html -type d -exec chmod 755 {} +
 find /var/www/html -type f -exec chmod 644 {} +
 chmod 0755 /opt/de_GWD/ui-* /opt/de_GWD/ui_* 2>/dev/null || true
 [[ -f /opt/de_GWD/0conf ]] && chown root:www-data /opt/de_GWD/0conf && chmod 660 /opt/de_GWD/0conf
-[[ -f /opt/de_GWD/0conf_bak ]] && chmod 600 /opt/de_GWD/0conf_bak
+[[ -f /opt/de_GWD/0conf_bak ]] && chown root:www-data /opt/de_GWD/0conf_bak 2>/dev/null || true
+[[ -f /opt/de_GWD/0conf_bak ]] && chmod 640 /opt/de_GWD/0conf_bak
 touch /opt/de_GWD/0conf.lock
 chown root:www-data /opt/de_GWD/0conf.lock
 chmod 660 /opt/de_GWD/0conf.lock
+
+rm -f /lib/systemd/system/de_GWD-failover.service
+cat << 'EOF' >/etc/systemd/system/de_GWD-failover.service
+[Unit]
+Description=de_GWD Auto Failover
+After=network-online.target vtrui.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 /opt/de_GWD/ui-failover
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload >/dev/null
+if [[ $(jq -r '.v2nodeDIV.failover.status // empty' /opt/de_GWD/0conf 2>/dev/null) = "on" ]]; then
+  systemctl enable --now de_GWD-failover >/dev/null 2>&1 || true
+else
+  systemctl disable --now de_GWD-failover >/dev/null 2>&1 || true
+fi
 
 local updateToken=""
 if [[ -f /opt/de_GWD/0conf ]]; then
@@ -2593,12 +2722,12 @@ for i in {1..30}; do
   sleep 1
 done
 
-python3 <<EOF
-import toml
+PIHOLE_PW="$piholePW" python3 <<'EOF'
+import os, toml
 with open("/opt/de_GWD/pihole/pihole.toml", "r") as f:
- data = toml.load(f)
+    data = toml.load(f)
 
-data['webserver']['api']['pwhash'] = "$piholePW"
+data['webserver']['api']['pwhash'] = os.environ["PIHOLE_PW"]
 
 with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
@@ -2629,7 +2758,7 @@ data["dns"]["blocking"]["edns"] = "TEXT"
 data["dns"]["domainNeeded"] = True
 data["dns"]["rateLimit"]["count"] = 10000
 data["dns"]["replyWhenBusy"] = "ALLOW"
-data["webserver"]["port"] = "8053"
+data["webserver"]["port"] = "127.0.0.1:8053"
 data["resolver"]["resolveIPv6"] = False
 data["ntp"]["ipv4"]["active"] = False
 data["ntp"]["ipv6"]["active"] = False
@@ -2644,7 +2773,7 @@ with open("/opt/de_GWD/pihole/pihole.toml", "w") as f:
     toml.dump(data, f)
 EOF
 
-chmod -R 777 /opt/de_GWD/pihole
+chmod 755 /opt/de_GWD/pihole
 
 cat << EOF >/etc/dnsmasq.d/00-extra.conf
 dns-forward-max=10000
@@ -2653,7 +2782,7 @@ all-servers
 filter-AAAA
 EOF
 
-find /sys/class/net ! -type d | xargs --max-args=1 realpath | grep 'device' | grep -v 'veth' | awk -F'/' '{print$NF}' | xargs -I {} echo "interface={}" >/etc/dnsmasq.d/00-interface.conf
+rm -f /etc/dnsmasq.d/00-interface.conf
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Pi-hole Config ${cRES}"
 }
@@ -2752,13 +2881,13 @@ fallbackVer=${fallbackPkg#linux-image-}
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 update-grub >/dev/null 2>&1 || true
@@ -2841,12 +2970,26 @@ changeWP(){
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} Web UI Port${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read webUIport
+    read -r webUIport
+    webUIport=$(printf '%s' "$webUIport" | tr -d '[:space:]')
+    if [[ ! "$webUIport" =~ ^[0-9]+$ ]] || (( webUIport < 1 || webUIport > 65535 )) || [[ "$webUIport" == "53" || "$webUIport" == "4711" ]]; then
+      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid Web UI Port: ${webUIport:-empty}${cRES}"
+      return 1
+    fi
 
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} Web update Port${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read updatePort
+    read -r updatePort
+    updatePort=$(printf '%s' "$updatePort" | tr -d '[:space:]')
+    if [[ ! "$updatePort" =~ ^[0-9]+$ ]] || (( updatePort < 1 || updatePort > 65535 )) || [[ "$updatePort" == "53" || "$updatePort" == "4711" ]]; then
+      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Invalid Web update Port: ${updatePort:-empty}${cRES}"
+      return 1
+    fi
+    if [[ "$webUIport" == "$updatePort" ]]; then
+      echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Web UI Port and Web update Port cannot be identical${cRES}"
+      return 1
+    fi
 
 serverName=$(jq -r '.address.serverName' /opt/de_GWD/0conf 2>/dev/null | grep -v '^null$')
 
@@ -2858,8 +3001,11 @@ if [[ ! "$updateToken" =~ ^[0-9a-f]{32}$ ]]; then
   updateToken=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
 fi
 
-sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -b /u_$updateToken -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
-systemctl daemon-reload >/dev/null
+if [[ -f /etc/systemd/system/updateGWD.service ]]; then
+  sed -i "/ExecStart=/c\ExecStart=/usr/bin/tmux new -ds 'updateGWD' /usr/bin/ttyd -p $updatePort -b /u_$updateToken -W -o /opt/de_GWD/update" /etc/systemd/system/updateGWD.service
+  systemctl daemon-reload >/dev/null
+  systemctl is-active --quiet updateGWD && systemctl restart updateGWD >/dev/null 2>&1 || true
+fi
 
 if [[ -f /opt/de_GWD/ui-confCommon ]]; then
   source /opt/de_GWD/ui-confCommon
@@ -2879,11 +3025,31 @@ changePWD(){
     echo -e "${GREEN}=========================== ${cRES}"
     echo -e "${GREEN} New Password${cRES}"
     echo -e "${GREEN}=========================== ${cRES}"
-    read newPW
+    local newPW="" confirmPW=""
+    while :; do
+        read -r -s -p "New password: " newPW; echo
+        if [[ -z "$newPW" ]]; then
+            echo -e "${RED}Password must not be empty${cRES}"
+            continue
+        fi
+        read -r -s -p "Confirm password: " confirmPW; echo
+        if [[ "$newPW" != "$confirmPW" ]]; then
+            echo -e "${RED}Passwords do not match${cRES}"
+            continue
+        fi
+        break
+    done
 
-docker exec pihole pihole setpassword "$newPW"
+if [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
+  docker exec pihole pihole setpassword "$newPW" >/dev/null 2>&1 || true
+fi
 
 piholePW=$(NEW_PW="$newPW" php -r 'echo hash("sha256", hash("sha256", getenv("NEW_PW")));')
+unset newPW confirmPW
+if [[ ! "$piholePW" =~ ^[0-9a-f]{64}$ ]]; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Password hash failed (php missing?)${cRES}"
+  return 1
+fi
 if [[ -f /opt/de_GWD/ui-confCommon ]]; then
   source /opt/de_GWD/ui-confCommon
   conf_jq --arg piholePW "$piholePW" '.address.PWD = $piholePW'
@@ -2893,6 +3059,7 @@ else
   chmod 660 /opt/de_GWD/0conf
 fi
 
+rm -f /opt/de_GWD/.initial_password 2>/dev/null || true
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GREEN}Changed${cRES}"
 }
 
@@ -2900,14 +3067,28 @@ echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Password ${GRE
 
 saveCommand(){
 mkdir -p /opt/de_GWD
-if [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/client" && "$0" != *"/bin/dex" && "$0" != *"/bin/de_GWD" ]]; then
+if [[ "$0" == *"/opt/de_GWD/client" || "$0" == *"/bin/dex" || "$0" == *"/bin/de_GWD" ]] && \
+   [[ -f /opt/de_GWD/client ]] && [[ $(wc -l < /opt/de_GWD/client 2>/dev/null || echo 0) -gt 500 ]] && \
+   grep -q 'installGWD()' /opt/de_GWD/client 2>/dev/null && bash -n /opt/de_GWD/client 2>/dev/null; then
+  :
+elif [[ -f "$0" && "$0" != *"bash"* && "$0" != *"/fd/"* && "$0" != *"/proc/"* && "$0" != *"/tmp/"* && "$0" != *"/opt/de_GWD/client" && "$0" != *"/bin/dex" && "$0" != *"/bin/de_GWD" ]] && \
+     bash -n "$0" 2>/dev/null; then
   cp -f "$0" /opt/de_GWD/client
 else
-  local tmpClientNew
+  local tmpClientNew expectedSha actualSha
   tmpClientNew=$(mktemp /tmp/de_GWD-client-new.XXXXXX) || return 1
   if { gh_download "$tmpClientNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client" 30 || \
        curl -fsSL -o "$tmpClientNew" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client" 2>/dev/null; } && \
      [[ $(wc -l < "$tmpClientNew") -gt 500 ]] && grep -q 'installGWD()' "$tmpClientNew" && bash -n "$tmpClientNew" 2>/dev/null; then
+    expectedSha=$(curl -fsSL --connect-timeout 5 -m 10 "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/client.sha256sum" 2>/dev/null | awk 'NR==1 {print $1}' | tr -d '\r ' | tr 'A-F' 'a-f')
+    if [[ "$expectedSha" =~ ^[0-9a-f]{64}$ ]]; then
+      actualSha=$(sha256sum "$tmpClientNew" 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f')
+      if [[ "$actualSha" != "$expectedSha" ]]; then
+        echo -e "${RED}client checksum verification failed!${cRES}" >&2
+        rm -f "$tmpClientNew"
+        return 1
+      fi
+    fi
     mv -f "$tmpClientNew" /opt/de_GWD/client
   else
     rm -f "$tmpClientNew"
@@ -2922,6 +3103,25 @@ if [[ -f /opt/de_GWD/client ]]; then
   ln -sf /opt/de_GWD/client /usr/local/bin/de_GWD 2>/dev/null
   ln -sf /opt/de_GWD/client /usr/bin/de_GWD 2>/dev/null
 fi
+}
+
+
+
+gen_initial_password(){
+# 16 random alphanumeric characters from /dev/urandom (no external deps; Bash 3.2 safe)
+local pw="" chunk
+while [[ ${#pw} -lt 16 ]]; do
+  chunk=$(head -c 64 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9')
+  pw="${pw}${chunk}"
+done
+printf '%s' "${pw:0:16}"
+}
+
+gwd_pw_hash(){
+# Same scheme as auth.php: sha256(sha256(password)) as lowercase hex
+local inner
+inner=$(printf '%s' "$1" | sha256sum | awk '{print $1}')
+printf '%s' "$inner" | sha256sum | awk '{print $1}'
 }
 
 
@@ -3000,12 +3200,19 @@ installXray
 
 installNftables
 
+initPW=$(gen_initial_password)
+initPWhash=$(gwd_pw_hash "$initPW")
+if [[ ${#initPW} -ne 16 || ! "$initPWhash" =~ ^[0-9a-f]{64}$ ]]; then
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${RED}Failed to generate initial password${cRES}"
+  exit 1
+fi
+
 echo "{}" >/opt/de_GWD/0conf
 jq '.address={}' /opt/de_GWD/0conf |\
 jq '.dns={}' |\
 jq '.v2node=[]' |\
 jq '.update={}' |\
-jq '.address.PWD="f69ad6fd10ecc116889c9985d4b45ffaf51875af3198d4e6b6eceb1080ca1e99"' |\
+jq --arg pwd "$initPWhash" '.address.PWD=$pwd' |\
 jq --arg localIP "$localAddrCIDR" '.address.localIP=$localIP' |\
 jq --arg upstreamIP "$gatewayAddr" '.address.upstreamIP=$upstreamIP' |\
 jq --arg domain "$v2addr" '.v2node[0].domain=$domain' |\
@@ -3047,11 +3254,26 @@ installPihole
 
 piholeSet
 
+# Pi-hole web admin uses the same initial password as the de_GWD web UI
+if [[ $(docker inspect -f '{{.State.Running}}' pihole 2>/dev/null) = "true" ]]; then
+  docker exec pihole pihole setpassword "$initPW" >/dev/null 2>&1 || true
+fi
+
 postInstall
 
 saveCommand
 
+# Keep a root-only copy until the user changes the password (dex -> 9)
+( umask 077; printf '%s\n' "$initPW" >/opt/de_GWD/.initial_password )
+chmod 600 /opt/de_GWD/.initial_password 2>/dev/null || true
+
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}de_GWD ${GREEN}Installed (Run command: ${YELLOW}dex${GREEN})${cRES}"
+echo -e "${GREEN}===================================== ${cRES}"
+echo -e "${GREEN} Web UI / Pi-hole initial password: ${YELLOW}${initPW}${cRES}"
+echo -e "${GREEN} Saved to /opt/de_GWD/.initial_password (root only)${cRES}"
+echo -e "${GREEN} Change it via: ${YELLOW}dex${GREEN} -> 9${cRES}"
+echo -e "${GREEN}===================================== ${cRES}"
+unset initPW initPWhash
 }
 
 
@@ -3254,11 +3476,31 @@ getHaproxyRules(){
     echo "${rules[@]}"
 }
 
+isValidHostOrIp(){
+    local addr="${1:-}"
+    [[ -n "$addr" && "$addr" != *[[:space:]]* ]] || return 1
+    if [[ "$addr" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+        [[ "$addr" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+        local o1 o2 o3 o4
+        IFS='.' read -r o1 o2 o3 o4 <<< "$addr"
+        (( 10#$o1 <= 255 && 10#$o2 <= 255 && 10#$o3 <= 255 && 10#$o4 <= 255 ))
+        return $?
+    elif [[ "$addr" == *:* ]]; then
+        [[ "$addr" =~ ^[0-9A-Fa-f:.]+$ && "$addr" != *:::* ]]
+        return $?
+    else
+        [[ "$addr" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$ ]]
+        return $?
+    fi
+}
+
 initHaproxyBase(){
     if [[ ! -f "/etc/haproxy/haproxy.cfg" ]] || ! grep -q 'resolvers local' /etc/haproxy/haproxy.cfg 2>/dev/null; then
         mkdir -p /etc/haproxy
         cat << "EOF" >/etc/haproxy/haproxy.cfg
 global
+  user                  haproxy
+  group                 haproxy
   ulimit-n              500000
   maxconn               200000
 
@@ -3315,22 +3557,38 @@ changeTCPPF(){
 if [[ "$tcpPFsw" == "1" ]]; then
     echo
     read -p "Enter Target Domain/IP & Port (e.g. 1.2.3.4:443 or hk.example.com:443): " upDomainP
-    upDomainP=$(echo "$upDomainP" | tr -d ' ')
+    upDomainP=$(echo "$upDomainP" | tr -d '[:space:]')
     if [[ -z "$upDomainP" ]]; then
         echo -e "${RED}Target address cannot be empty!${cRES}"
         sleep 2s
         return 1
     fi
-    if [[ "$upDomainP" != *:* ]]; then
+    if [[ "$upDomainP" =~ ^\[([^\]]+)\]:([0-9]+)$ ]]; then
+        upDomain="${BASH_REMATCH[1]}"
+        upPort="${BASH_REMATCH[2]}"
+    elif [[ "$upDomainP" =~ ^\[([^\]]+)\]$ ]]; then
+        upDomain="${BASH_REMATCH[1]}"
         echo -e "${YELLOW}No port specified, defaulting to 443.${cRES}"
-        upDomainP="${upDomainP}:443"
+        upPort="443"
+    else
+        if [[ "$upDomainP" != *:* ]]; then
+            echo -e "${YELLOW}No port specified, defaulting to 443.${cRES}"
+            upDomainP="${upDomainP}:443"
+        fi
+        upDomain="${upDomainP%:*}"
+        upPort="${upDomainP##*:}"
     fi
-    upDomain="${upDomainP%%:*}"
-    upPort="${upDomainP##*:}"
-    if [[ -z "$upDomain" || ! "$upPort" =~ ^[0-9]+$ ]] || [[ "$upPort" -lt 1 || "$upPort" -gt 65535 ]]; then
+    upDomain="${upDomain#[}"
+    upDomain="${upDomain%]}"
+    if ! isValidHostOrIp "$upDomain" || [[ ! "$upPort" =~ ^[0-9]+$ ]] || [[ "$upPort" -lt 1 || "$upPort" -gt 65535 ]]; then
         echo -e "${RED}Invalid Target Address or Port: $upDomainP${cRES}"
         sleep 2s
         return 1
+    fi
+    if [[ "$upDomain" == *:* ]]; then
+        upDomainP="[${upDomain}]:${upPort}"
+    else
+        upDomainP="${upDomain}:${upPort}"
     fi
 
     echo
@@ -3359,7 +3617,7 @@ if [[ "$tcpPFsw" == "1" ]]; then
             return 0
         fi
     else
-        conflict=$(ss -tulpn 2>/dev/null | grep -E ":${localP}\s" | grep -v 'haproxy')
+        conflict=$(ss -tulpn 2>/dev/null | grep -E "(:|\.)${localP}[[:space:]]" | grep -v 'haproxy')
         if [[ -n "$conflict" ]]; then
             echo -e "${RED}Port ${localP} is already in use by another service!${cRES}"
             echo -e "$conflict"
@@ -3370,6 +3628,7 @@ if [[ "$tcpPFsw" == "1" ]]; then
 
     echo -e "${WHITE}[...]\tChecking and installing HAProxy...${cRES}"
     if ! command -v haproxy >/dev/null 2>&1 && [[ ! -x "/usr/sbin/haproxy" ]]; then
+        wait_apt_lock
         apt-get update -qq && apt-get install -y -q haproxy
     fi
 
@@ -3386,7 +3645,7 @@ frontend ft_${localP}
   default_backend       bk_${localP}
 
 backend bk_${localP}
-  server endpoint ${upDomainP} check resolvers local init-addr none
+  server endpoint ${upDomainP} check resolvers local init-addr last,libc,none
 # END_RULE_${localP}
 EOF
 
@@ -3512,6 +3771,10 @@ checkPortAvailable() {
         echo "invalid"
         return 1
     fi
+    if [ "$targetPort" -eq 53 ] || [ "$targetPort" -eq 4711 ]; then
+        echo "in_use"
+        return 1
+    fi
     if [ "$targetPort" -eq 443 ]; then
         if [[ "$allow443" == "true" ]]; then
             echo "ok"
@@ -3525,7 +3788,7 @@ checkPortAvailable() {
         echo "ok"
         return 0
     fi
-    if ss -tulpn 2>/dev/null | grep -qE "[: ]${targetPort}[ \t]"; then
+    if ss -tuln 2>/dev/null | awk '{print $5}' | grep -qE "(^|:)${targetPort}$"; then
         echo "in_use"
         return 1
     fi
@@ -3623,6 +3886,7 @@ ${connHeaders}
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header Early-Data \$ssl_early_data;
         proxy_connect_timeout 600s;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
@@ -3698,7 +3962,7 @@ parseDomainAndPort() {
             echo -e "${CYAN}Tip: You can enter [Domain/IP:Port] (e.g. $use_domain:$rec_port) or just [Port].${cRES}"
             read -r -p "Enter Domain/IP:Port [Default: ${use_domain}:${rec_port}] (443 reserved): " user_input
         fi
-        user_input=$(echo "$user_input" | tr -d ' ')
+        user_input=$(echo "$user_input" | sed -E 's#^https?://##; s#/.*$##' | tr -d '[:space:]')
 
         local parsed_d=""
         local parsed_p=""
@@ -3707,22 +3971,26 @@ parseDomainAndPort() {
             parsed_d="$use_domain"
             parsed_p="$rec_port"
         elif [[ "$user_input" == *":"* ]]; then
-            parsed_d="${user_input%%:*}"
+            parsed_d="${user_input%:*}"
             parsed_p="${user_input##*:}"
         else
             parsed_d="$use_domain"
             parsed_p="$user_input"
         fi
+        parsed_d="${parsed_d#[}"
+        parsed_d="${parsed_d%]}"
 
         local chk=$(checkPortAvailable "$parsed_p" "$cur_port" "$allow_443")
-        if [[ "$chk" == "reserved_443" ]]; then
-            echo -e "${RED}Port 443 is reserved for Web UI! Please choose another port.${cRES}"
+        local webUIPort=$(jq -r '.address.webUIport // "443"' /opt/de_GWD/0conf 2>/dev/null)
+        [[ -z "$webUIPort" || "$webUIPort" == "null" ]] && webUIPort="443"
+        if [[ "$chk" == "reserved_443" ]] || [[ "$allow_443" != "true" && "$parsed_p" == "$webUIPort" ]]; then
+            echo -e "${RED}Port ${parsed_p} is reserved for Web UI! Please choose another port.${cRES}"
         elif [[ "$chk" == "invalid" ]]; then
             echo -e "${RED}Invalid port number: '$parsed_p'. Must be between 1 and 65535.${cRES}"
         elif [[ "$chk" == "in_use" ]]; then
             echo -e "${RED}Port $parsed_p is already in use by another process. Please choose another port.${cRES}"
-        elif [[ -z "$parsed_d" ]]; then
-            echo -e "${RED}Domain/IP cannot be empty.${cRES}"
+        elif ! isValidHostOrIp "$parsed_d"; then
+            echo -e "${RED}Invalid Domain/IP: '$parsed_d'.${cRES}"
         else
             target_domain="$parsed_d"
             target_port="$parsed_p"
@@ -3744,11 +4012,15 @@ syncExtraInboundsStore() {
 
 removeXrayInbound() {
     local tag="$1"
-    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
-    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+    local cfg="/opt/de_GWD/vtrui/config.json"
+    cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
     if [[ "$tag" == "inbound-dokodemo" ]]; then
-        jq 'del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"]))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+        jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag)) | del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | if (.routing.rules | type) == "array" then .routing.rules |= map(select(.inboundTag != ["inbound-dokodemo"])) else . end' "$cfg" | sponge "$cfg"
+    else
+        jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' "$cfg" | sponge "$cfg"
     fi
+    chown root:www-data "$cfg" 2>/dev/null || true
+    if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
     if [[ "$tag" == "inbound-vless-reality" ]]; then
         rm -f /opt/de_GWD/vtrui/reality.info
     fi
@@ -3759,13 +4031,15 @@ removeXrayInbound() {
         jq --arg tag "$tag" 'del(.[$tag])' /opt/de_GWD/extra_ports.json | sponge /opt/de_GWD/extra_ports.json 2>/dev/null || true
     fi
     removeNginxWebProxy "$tag"
-    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+    if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >/dev/null 2>&1; then
         syncExtraInboundsStore
         systemctl restart vtrui
-        rm -f /opt/de_GWD/vtrui/config.json.bak
+        rm -f "${cfg}.bak"
         return 0
     else
-        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+        chown root:www-data "$cfg" 2>/dev/null || true
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         systemctl restart vtrui
         return 1
     fi
@@ -3774,23 +4048,32 @@ removeXrayInbound() {
 applyXrayInbound() {
     local newInboundJson="$1"
     local tag="$2"
-    cp -f /opt/de_GWD/vtrui/config.json /opt/de_GWD/vtrui/config.json.bak 2>/dev/null || true
-    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json |\
-    jq --argjson n "$newInboundJson" '.inbounds += [$n]' | sponge /opt/de_GWD/vtrui/config.json
+    local cfg="/opt/de_GWD/vtrui/config.json"
+    local testLog
+    cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
+    jq --arg tag "$tag" 'del(.inbounds[] | select(.tag == $tag))' "$cfg" |\
+    jq --argjson n "$newInboundJson" '.inbounds += [$n]' | sponge "$cfg"
 
     if [[ "$tag" == "inbound-dokodemo" ]]; then
-        jq 'del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"direct"}] + (.routing.rules // [])' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+        local outboundDokodemo='{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}'
+        jq --argjson od "$outboundDokodemo" 'del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | .outbounds += [$od] | del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing = (.routing // {}) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"outbound-dokodemo"}] + (.routing.rules // [])' "$cfg" | sponge "$cfg"
     fi
+    chown root:www-data "$cfg" 2>/dev/null || true
+    if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
 
-    if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/tmp/vtrui_test.log 2>&1; then
+    testLog=$(mktemp /tmp/de_GWD-vtrui-test.XXXXXX)
+    if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >"${testLog:-/dev/null}" 2>&1; then
+        [[ -n "$testLog" ]] && rm -f "$testLog"
         syncExtraInboundsStore
         systemctl restart vtrui
-        rm -f /opt/de_GWD/vtrui/config.json.bak
+        rm -f "${cfg}.bak"
         return 0
     else
         echo -e "${RED}Xray configuration validation failed!${cRES}"
-        cat /tmp/vtrui_test.log
-        mv -f /opt/de_GWD/vtrui/config.json.bak /opt/de_GWD/vtrui/config.json 2>/dev/null || true
+        [[ -n "$testLog" ]] && { cat "$testLog"; rm -f "$testLog"; }
+        mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+        chown root:www-data "$cfg" 2>/dev/null || true
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         systemctl restart vtrui
         return 1
     fi
@@ -4063,7 +4346,8 @@ setupReality() {
         defSni="www.apple.com"
     fi
     echo
-    read -p "Enter SNI camouflage domain [Default: $defSni]: " inputSni
+    read -r -p "Enter SNI camouflage domain [Default: $defSni]: " inputSni
+    inputSni=$(echo "$inputSni" | tr -d '[:space:]')
     [[ -z "$inputSni" ]] && inputSni="$defSni"
 
     local recDest="127.0.0.1:$nginxPort"
@@ -4071,7 +4355,8 @@ setupReality() {
         recDest="www.apple.com:443"
     fi
     echo
-    read -p "Enter Fallback dest [Default: $recDest]: " inputDest
+    read -r -p "Enter Fallback dest [Default: $recDest]: " inputDest
+    inputDest=$(echo "$inputDest" | tr -d '[:space:]')
     [[ -z "$inputDest" ]] && inputDest="$recDest"
 
     local uuid=$(/opt/de_GWD/vtrui/vtrui uuid 2>/dev/null || cat /proc/sys/kernel/random/uuid)
@@ -4079,47 +4364,45 @@ setupReality() {
     local priKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Private key|PrivateKey):/ {print $2; exit}' | tr -d '\r\n ')
     local pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)): / {print $2; exit}' | tr -d '\r\n ')
     [[ -z "$pubKey" ]] && pubKey=$(printf '%s\n' "$keys" | awk -F': ' '/^(Public key|PublicKey|Password|Password \(PublicKey\)):/ {print $2; exit}' | tr -d '\r\n ')
+    if [[ -z "$priKey" || -z "$pubKey" ]]; then
+        echo -e "${RED}Failed to generate x25519 keys for Reality.${cRES}"
+        return 1
+    fi
     local shortId=$(openssl rand -hex 8)
 
-    local inboundJson=$(cat << EOF
-{
-  "tag": "inbound-vless-reality",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "vless",
-  "settings": {
-    "clients": [
+    local inboundJson=$(jq -nc \
+      --argjson port "$port" \
+      --arg uuid "$uuid" \
+      --arg dest "$inputDest" \
+      --arg sni "$inputSni" \
+      --arg pri "$priKey" \
+      --arg pub "$pubKey" \
+      --arg sid "$shortId" '
       {
-        "id": "$uuid",
-        "flow": "xtls-rprx-vision"
-      }
-    ],
-    "decryption": "none"
-  },
-  "streamSettings": {
-    "network": "tcp",
-    "security": "reality",
-    "realitySettings": {
-      "show": false,
-      "dest": "$inputDest",
-      "xver": 0,
-      "serverNames": ["$inputSni"],
-      "privateKey": "$priKey",
-      "shortIds": ["$shortId"],
-      "publicKey": "$pubKey"
-    },
-    "sockopt": {
-      "tcpFastOpen": true,
-      "tcpNoDelay": true
-    }
-  },
-  "sniffing": {
-    "enabled": true,
-    "destOverride": ["http", "tls", "quic"]
-  }
-}
-EOF
-)
+        tag: "inbound-vless-reality",
+        listen: "0.0.0.0",
+        port: $port,
+        protocol: "vless",
+        settings: {
+          clients: [{id: $uuid, flow: "xtls-rprx-vision"}],
+          decryption: "none"
+        },
+        streamSettings: {
+          network: "tcp",
+          security: "reality",
+          realitySettings: {
+            show: false,
+            dest: $dest,
+            xver: 0,
+            serverNames: [$sni],
+            privateKey: $pri,
+            shortIds: [$sid],
+            publicKey: $pub
+          },
+          sockopt: {tcpFastOpen: true, tcpNoDelay: true}
+        },
+        sniffing: {enabled: true, destOverride: ["http", "tls", "quic"]}
+      }')
 
     if applyXrayInbound "$inboundJson" "inbound-vless-reality"; then
         cat << EOF > /opt/de_GWD/vtrui/reality.info
@@ -4131,6 +4414,7 @@ PUBKEY=$pubKey
 PRIKEY=$priKey
 SHORTID=$shortId
 EOF
+        chmod 600 /opt/de_GWD/vtrui/reality.info
         echo -e "${GREEN}VLESS + TCP + Reality + Vision successfully configured!${cRES}"
         echo
         showRealityNode "wait"
@@ -4216,8 +4500,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-xhttp"; then
+        if ! setupNginxWebProxy "inbound-vless-xhttp" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vless-xhttp"
+            echo -e "${RED}Nginx configuration failed for VLESS + XHTTP + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vless-xhttp" "$port"
-        setupNginxWebProxy "inbound-vless-xhttp" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + XHTTP + TLS successfully configured!${cRES}"
         echo
         showXHTTPNode "wait"
@@ -4305,8 +4594,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vless-ws"; then
+        if ! setupNginxWebProxy "inbound-vless-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vless-ws"
+            echo -e "${RED}Nginx configuration failed for VLESS + WS + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vless-ws" "$port"
-        setupNginxWebProxy "inbound-vless-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VLESS + WS + TLS successfully configured!${cRES}"
         echo
         showVlessWSNode "wait"
@@ -4394,8 +4688,13 @@ EOF
 )
 
     if applyXrayInbound "$inboundJson" "inbound-vmess-ws"; then
+        if ! setupNginxWebProxy "inbound-vmess-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"; then
+            removeXrayInbound "inbound-vmess-ws"
+            echo -e "${RED}Nginx configuration failed for VMess + WS + TLS! Rolled back.${cRES}"
+            sleep 2s
+            return 1
+        fi
         setInboundPort "inbound-vmess-ws" "$port"
-        setupNginxWebProxy "inbound-vmess-ws" "$port" "$vpsdomain" "$internalPort" "$inputPath"
         echo -e "${GREEN}VMess + WS + TLS successfully configured!${cRES}"
         echo
         showVMessWSNode "wait"
@@ -4432,47 +4731,49 @@ setupSocks5() {
     local port="$target_port"
     local vpsdomain="$target_domain"
 
+    local nicIp=$(ip -4 -o addr show dev "$(detect_primary_nic)" scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n 1)
     echo
-    read -p "Enable Username & Password Authentication? [y/N]: " needAuth
+    read -r -p "Enable Username & Password Authentication? [y/N]: " needAuth
     local inboundJson=""
     if [[ "$needAuth" =~ ^[yY] ]]; then
-        read -p "Enter Username: " sUser
+        read -r -p "Enter Username: " sUser
         [[ -z "$sUser" ]] && sUser="user$(openssl rand -hex 2)"
-        read -p "Enter Password: " sPass
+        read -r -p "Enter Password: " sPass
         [[ -z "$sPass" ]] && sPass="$(openssl rand -hex 6)"
-        inboundJson=$(cat << EOF
-{
-  "tag": "inbound-socks5",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "socks",
-  "settings": {
-    "auth": "password",
-    "accounts": [
-      {
-        "user": "$sUser",
-        "pass": "$sPass"
-      }
-    ],
-    "udp": true
-  }
-}
-EOF
-)
+        inboundJson=$(jq -nc \
+          --argjson port "$port" \
+          --arg user "$sUser" \
+          --arg pass "$sPass" \
+          --arg ip "$nicIp" '
+          {
+            tag: "inbound-socks5",
+            listen: "0.0.0.0",
+            port: $port,
+            protocol: "socks",
+            settings: (
+              {
+                auth: "password",
+                accounts: [{user: $user, pass: $pass}],
+                udp: true
+              } + (if ($ip | length) > 0 then {ip: $ip} else {} end)
+            )
+          }')
     else
-        inboundJson=$(cat << EOF
-{
-  "tag": "inbound-socks5",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "socks",
-  "settings": {
-    "auth": "noauth",
-    "udp": true
-  }
-}
-EOF
-)
+        inboundJson=$(jq -nc \
+          --argjson port "$port" \
+          --arg ip "$nicIp" '
+          {
+            tag: "inbound-socks5",
+            listen: "0.0.0.0",
+            port: $port,
+            protocol: "socks",
+            settings: (
+              {
+                auth: "noauth",
+                udp: true
+              } + (if ($ip | length) > 0 then {ip: $ip} else {} end)
+            )
+          }')
     fi
 
     if applyXrayInbound "$inboundJson" "inbound-socks5"; then
@@ -4530,37 +4831,40 @@ setupDokodemo() {
     local tgtAddr=""
     echo
     while true; do
-        read -p "Enter Target IP/Domain: " tgtAddr
-        tgtAddr=$(echo "$tgtAddr" | tr -d ' ')
-        [[ -n "$tgtAddr" ]] && break
-        echo -e "${RED}Target IP/Domain cannot be empty.${cRES}"
+        read -r -p "Enter Target IP/Domain: " tgtAddr
+        tgtAddr=$(echo "$tgtAddr" | tr -d '[:space:]')
+        tgtAddr="${tgtAddr#[}"
+        tgtAddr="${tgtAddr%]}"
+        isValidHostOrIp "$tgtAddr" && break
+        echo -e "${RED}Invalid Target IP/Domain: ${tgtAddr:-empty}.${cRES}"
     done
 
     local tgtPort=""
     echo
     while true; do
-        read -p "Enter Target Port: " tgtPort
-        tgtPort=$(echo "$tgtPort" | tr -d ' ')
+        read -r -p "Enter Target Port: " tgtPort
+        tgtPort=$(echo "$tgtPort" | tr -d '[:space:]')
         if [[ "$tgtPort" =~ ^[0-9]+$ ]] && [ "$tgtPort" -ge 1 ] && [ "$tgtPort" -le 65535 ]; then
             break
         fi
         echo -e "${RED}Invalid port number.${cRES}"
     done
 
-    local inboundJson=$(cat << EOF
-{
-  "tag": "inbound-dokodemo",
-  "listen": "0.0.0.0",
-  "port": $port,
-  "protocol": "dokodemo-door",
-  "settings": {
-    "address": "$tgtAddr",
-    "port": $tgtPort,
-    "network": "tcp,udp"
-  }
-}
-EOF
-)
+    local inboundJson=$(jq -nc \
+      --argjson port "$port" \
+      --arg addr "$tgtAddr" \
+      --argjson tport "$tgtPort" '
+      {
+        tag: "inbound-dokodemo",
+        listen: "0.0.0.0",
+        port: $port,
+        protocol: "dokodemo-door",
+        settings: {
+          address: $addr,
+          port: $tport,
+          network: "tcp,udp"
+        }
+      }')
 
     if applyXrayInbound "$inboundJson" "inbound-dokodemo"; then
         echo -e "${GREEN}Dokodemo-door successfully configured!${cRES}"
@@ -4573,19 +4877,30 @@ disableAllExtraProtocols() {
     clear 2>/dev/null || true
     read -p "Are you sure you want to disable ALL extra protocols? [y/N]: " confirm
     if [[ "$confirm" =~ ^[yY] ]]; then
+        local cfg="/opt/de_GWD/vtrui/config.json"
+        cp -f "$cfg" "${cfg}.bak" 2>/dev/null || true
         local tags=("inbound-vless-reality" "inbound-vless-xhttp" "inbound-vless-ws" "inbound-vmess-ws" "inbound-socks5" "inbound-dokodemo")
         for t in "${tags[@]}"; do
             if hasXrayInbound "$t"; then
-                jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+                jq --arg tag "$t" 'del(.inbounds[] | select(.tag == $tag))' "$cfg" | sponge "$cfg"
             fi
             removeNginxWebProxy "$t"
         done
-        jq 'del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"]))' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
+        jq 'del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"]))' "$cfg" | sponge "$cfg"
+        chown root:www-data "$cfg" 2>/dev/null || true
+        if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
         rm -f /opt/de_GWD/vtrui/reality.info
         rm -f /opt/de_GWD/extra_domains.json /opt/de_GWD/extra_ports.json /opt/de_GWD/extra_inbounds.json
-        if /opt/de_GWD/vtrui/vtrui run -test -c /opt/de_GWD/vtrui/config.json >/dev/null 2>&1; then
+        if /opt/de_GWD/vtrui/vtrui run -test -c "$cfg" >/dev/null 2>&1; then
+            rm -f "${cfg}.bak"
             systemctl restart vtrui
             echo -e "${GREEN}All extra protocols disabled successfully.${cRES}"
+        else
+            mv -f "${cfg}.bak" "$cfg" 2>/dev/null || true
+            chown root:www-data "$cfg" 2>/dev/null || true
+            if chgrp www-data "$cfg" 2>/dev/null; then chmod 640 "$cfg"; else chmod 644 "$cfg"; fi
+            systemctl restart vtrui
+            echo -e "${RED}Failed to disable extra protocols cleanly; restored previous config.${cRES}"
         fi
         sleep 2s
     fi
