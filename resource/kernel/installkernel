@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 RED='\E[1;31m'
 GREEN='\E[1;32m'
 YELLOW='\E[1;33m'
@@ -9,39 +10,16 @@ WHITE='\E[1;37m'
 cRES='\E[0m'
 architecture=$(dpkg --print-architecture)
 export DEBIAN_FRONTEND=noninteractive
-cat << EOF >/etc/apt/apt.conf.d/01InstallLess
-APT::Get::Assume-Yes "true";
-APT::Install-Recommends "false";
-APT::Install-Suggests "false";
-EOF
-cat << EOF >/etc/apt/apt.conf.d/71debconf
-Dpkg::Options {
-   "--force-confdef";
-   "--force-confold";
-};
-EOF
 
+if systemd-detect-virt --container >/dev/null 2>&1; then
+  echo -e "${RED}Containers cannot install custom kernels.${cRES}"
+  exit 1
+fi
+if [[ $architecture != "amd64" ]]; then
+  echo -e "${RED}Custom kernel installation only works on amd64.${cRES}"
+  exit 1
+fi
 
-
-apt-key del 2FB2CD80 >/dev/null 2>&1
-apt-key del 33F8024D >/dev/null 2>&1
-apt-key del E734E623 >/dev/null 2>&1
-rm -rf /etc/apt/trusted.gpg.d/liquorix-keyring.gpg
-rm -rf /usr/share/keyrings/xanmod-kernel-archive-keyring.gpg
-rm -rf /etc/apt/sources.list.d/liquorix.list
-rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
-
-
-
-pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
-grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
-
-unset aptPKG
-for pkg in ca-certificates gnupg2 curl python3; do
-  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
-done
-[[ -z $(which 'update-grub') ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
-[[ -z $(which 'update-grub') ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
 wait_apt_lock() {
   local waited=0
   while (command -v fuser >/dev/null 2>&1 && fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock >/dev/null 2>&1) || pgrep -x 'apt|apt-get|dpkg' >/dev/null 2>&1; do
@@ -55,28 +33,52 @@ wait_apt_lock() {
   dpkg --configure -a
 }
 
+prepareKernelEnv() {
+cat << EOF >/etc/apt/apt.conf.d/01InstallLess
+APT::Get::Assume-Yes "true";
+APT::Install-Recommends "false";
+APT::Install-Suggests "false";
+EOF
+cat << EOF >/etc/apt/apt.conf.d/71debconf
+Dpkg::Options {
+   "--force-confdef";
+   "--force-confold";
+};
+EOF
+
+apt-key del 2FB2CD80 >/dev/null 2>&1 || true
+apt-key del 33F8024D >/dev/null 2>&1 || true
+apt-key del E734E623 >/dev/null 2>&1 || true
+rm -rf /etc/apt/trusted.gpg.d/liquorix-keyring.gpg
+rm -rf /usr/share/keyrings/xanmod-kernel-archive-keyring.gpg
+rm -rf /etc/apt/sources.list.d/liquorix.list
+rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
+
+pkg_status=$(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null)
+grep -qE '^(ii|rc) +os-prober$' <<< "$pkg_status" && apt remove --purge -y os-prober
+
+unset aptPKG
+for pkg in ca-certificates gnupg2 curl python3; do
+  grep -qE "^ii +${pkg}$" <<< "$pkg_status" || aptPKG+=("$pkg")
+done
+[[ -z $(which 'update-grub' 2>/dev/null) ]] && [[ -d "/sys/firmware/efi" ]] && aptPKG+=(grub-efi)
+[[ -z $(which 'update-grub' 2>/dev/null) ]] && [[ ! -d "/sys/firmware/efi" ]] && aptPKG+=(grub2-common)
+
 [[ ${#aptPKG[@]} -gt 0 ]] && wait_apt_lock && apt update && apt install -y "${aptPKG[@]}"
 mkdir -p /boot/grub
 wait_apt_lock
-
-
 
 mkdir -p /opt/de_GWD
 cat << "EOF" >/etc/rc_kernel.local
 #!/bin/bash
 PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
-touch /etc/sysctl.conf
-sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
-sed -i "/net.core.default_qdisc/d" /etc/sysctl.conf
-echo "net.ipv4.tcp_congestion_control = bbr" >>/etc/sysctl.conf
-echo "net.core.default_qdisc = cake" >>/etc/sysctl.conf
 mkdir -p /etc/sysctl.d
 cat << "SYSCTL_EOF" >/etc/sysctl.d/99-kernel-bbr.conf
 net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = cake
 SYSCTL_EOF
-sysctl --system >/dev/null 2>&1 || sysctl -p >/dev/null 2>&1
+sysctl --system >/dev/null 2>&1 || true
 
 wait_apt_lock() {
   local waited=0
@@ -96,13 +98,13 @@ fallbackVer=${fallbackPkg#linux-image-}
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | while read -r line; do
   [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
   [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-  apt autoremove --purge -y "$line"
+  apt autoremove --purge -y "$line" </dev/null
 done
 
 update-grub >/dev/null 2>&1 || true
@@ -124,6 +126,7 @@ sed -i '/\/etc\/rc_kernel.local/d' "$tmpCron"
 echo '@reboot sleep 15 && /etc/rc_kernel.local' >>"$tmpCron"
 crontab "$tmpCron"
 rm -f "$tmpCron"
+}
 
 
 
@@ -156,13 +159,13 @@ fi
   dpkg --list | awk '/^ii/ && $2 ~ /^linux-image-[0-9]/ {print $2}' | grep -Fv "$kernel_type" | while read -r line; do
     [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
     [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-    apt autoremove --purge -y "$line"
+    apt autoremove --purge -y "$line" </dev/null
   done
 
   dpkg --list | awk '/^ii/ && $2 ~ /^linux-headers-[0-9]/ {print $2}' | grep -Fv "$kernel_type" | while read -r line; do
     [[ -n "$curVer" && "$line" == *"$curVer"* ]] && continue
     [[ -n "$fallbackVer" && "$line" == *"$fallbackVer"* ]] && continue
-    apt autoremove --purge -y "$line"
+    apt autoremove --purge -y "$line" </dev/null
   done
   
   apt autoremove --purge -y && apt clean -y && apt autoclean -y
@@ -178,6 +181,7 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
+prepareKernelEnv
 mkdir -p /etc/apt/keyrings
 cat << EOF >/etc/apt/keyrings/zabbly.asc
 -----BEGIN PGP PUBLIC KEY BLOCK-----
@@ -224,9 +228,7 @@ ZBqN6R8SuRc5NWWPDcSdr1myXY2YpB0AVEV8zGtF
 EOF
 echo "deb [signed-by=/etc/apt/keyrings/zabbly.asc] https://pkgs.zabbly.com/kernel/stable $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/zabbly-kernel.list
 
-wait_apt_lock && apt update && apt install linux-zabbly
-
-if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
+if wait_apt_lock && apt update && apt install -y linux-zabbly && [[ -n $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-*' 2>/dev/null | awk '/^ii / && /zabbly/') ]]; then
   cleanOldKernels "zabbly"
 
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel${cRES}"
@@ -235,14 +237,14 @@ if [[ -n $(dpkg --list | grep linux-image | grep zabbly) ]]; then
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Zabbly kernel ${RED}Install Failed${cRES}"
 
-  dpkg --list | awk '{print $2}' | grep zabbly | while read line; do
-  apt autoremove --purge $line
+  dpkg --list | awk '{print $2}' | grep zabbly | while read -r line; do
+    apt autoremove --purge -y "$line" </dev/null
   done
 
   rm -rf /etc/apt/sources.list.d/zabbly-kernel.list
   rm -rf /etc/apt/keyrings/zabbly.asc
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
@@ -250,24 +252,21 @@ fi
 
 
 get_cpu_arch_level() {
-    local flags_line
+    local flags_line r
     flags_line=$(awk -F: '/^flags/{print $2; exit}' /proc/cpuinfo)
 
-    local has_all
-    has_all() {
-        local -n req=$1
-        local r
-        for r in "${req[@]}"; do
+    has_all_flags() {
+        for r in "$@"; do
             [[ " $flags_line " == *" $r "* ]] || return 1
         done
     }
 
-    local -a v3=(avx avx2 bmi1 bmi2 f16c fma abm movbe xsave)
-
-    CPU_LEVEL="v2"
-
-    if has_all v3; then
-        CPU_LEVEL="v3"
+    CPU_LEVEL="v1"
+    if has_all_flags cx16 lahf_lm popcnt sse4_1 sse4_2 ssse3; then
+        CPU_LEVEL="v2"
+        if has_all_flags avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; then
+            CPU_LEVEL="v3"
+        fi
     fi
 }
 
@@ -278,6 +277,7 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}XanMod kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
+prepareKernelEnv
 get_cpu_arch_level
 xanmodKeyTmp=$(mktemp /tmp/xanmod.gpg.key.XXXXXX) || return 1
 cat << EOF >"$xanmodKeyTmp"
@@ -315,11 +315,9 @@ EOF
 mkdir -p /etc/apt/keyrings
 gpg --dearmor --yes -o /etc/apt/keyrings/xanmod.gpg "$xanmodKeyTmp"
 rm -f "$xanmodKeyTmp"
-echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] http://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/xanmod.gpg] https://deb.xanmod.org releases main" >/etc/apt/sources.list.d/xanmod-kernel.list
 
-wait_apt_lock && apt update && apt install "linux-xanmod-x64$CPU_LEVEL"
-
-if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
+if wait_apt_lock && apt update && apt install -y "linux-xanmod-x64$CPU_LEVEL" && [[ -n $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-*' 2>/dev/null | awk '/^ii / && /xanmod/') ]]; then
   # 清理旧内核
   cleanOldKernels "xanmod"
 
@@ -329,14 +327,14 @@ if [[ -n $(dpkg --list | grep linux-image | grep xanmod) ]]; then
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}XanMod kernel ${RED}Install Failed${cRES}"
 
-  dpkg --list | awk '{print $2}' | grep xanmod | while read line; do
-  apt autoremove --purge $line
+  dpkg --list | awk '{print $2}' | grep xanmod | while read -r line; do
+    apt autoremove --purge -y "$line" </dev/null
   done
 
   rm -rf /etc/apt/sources.list.d/xanmod-kernel.list
   rm -rf /etc/apt/keyrings/xanmod.gpg
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
@@ -348,16 +346,19 @@ echo -e "${WHITE}[...]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}\r\c"
 if [[ $architecture != "amd64" ]]; then
   echo -e "${RED}only work on x86_64${cRES}"
 elif [[ $architecture == "amd64" ]]; then
+prepareKernelEnv
 mkdir -p /etc/apt/keyrings
 liquorixKeyTmp=$(mktemp /tmp/liquorix.gpg.key.XXXXXX) || return 1
-curl -fsSLo "$liquorixKeyTmp" https://liquorix.net/liquorix-keyring.gpg
+if ! curl -fsSLo "$liquorixKeyTmp" https://liquorix.net/liquorix-keyring.gpg || [[ ! -s "$liquorixKeyTmp" ]]; then
+  rm -f "$liquorixKeyTmp"
+  echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix keyring download failed${cRES}"
+  exit 1
+fi
 gpg --dearmor --yes -o /etc/apt/keyrings/liquorix.gpg "$liquorixKeyTmp"
 rm -f "$liquorixKeyTmp"
-echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] http://liquorix.net/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/liquorix-kernel.list
+echo "deb [signed-by=/etc/apt/keyrings/liquorix.gpg] https://liquorix.net/debian $(. /etc/os-release && echo "${VERSION_CODENAME:-trixie}") main" >/etc/apt/sources.list.d/liquorix-kernel.list
 
-wait_apt_lock && apt update && apt install linux-image-liquorix-amd64 linux-headers-liquorix-amd64
-
-if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
+if wait_apt_lock && apt update && apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 && [[ -n $(dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 'linux-image-*' 2>/dev/null | awk '/^ii / && /liquorix/') ]]; then
   cleanOldKernels "liquorix"
 
   echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel${cRES}"
@@ -366,14 +367,14 @@ if [[ -n $(dpkg --list | grep linux-image | grep liquorix) ]]; then
 else
   echo -e "${WHITE}[ ${RED}✕ ${WHITE}]\c" && echo -e "\t${WHITE}Liquorix kernel ${RED}Install Failed${cRES}"
 
-  dpkg --list | awk '{print $2}' | grep liquorix | while read line; do
-  apt autoremove --purge $line
+  dpkg --list | awk '{print $2}' | grep liquorix | while read -r line; do
+    apt autoremove --purge -y "$line" </dev/null
   done
 
   rm -rf /etc/apt/sources.list.d/liquorix-kernel.list
   rm -rf /etc/apt/keyrings/liquorix.gpg
   echo -e "${WHITE}[ ${YELLOW}! ${WHITE}]\c" && echo -e "\t${YELLOW}Clear up & Exit${cRES}"
-  exit
+  exit 1
 fi
 fi
 }
