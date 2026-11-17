@@ -473,10 +473,13 @@ localVer=$(awk 'NR==1' /opt/de_GWD/.repo/version.php 2>/dev/null | tr -d '\r ')
 if [[ -f "./version.php" ]]; then
   cp -f ./version.php /opt/de_GWD/.repo/version.php
 else
-  remoteVer=$(curl -fsSLo- "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null | head -n 1 | tr -d '\r ')
-  if [[ "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] && [[ $localVer != $remoteVer || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
-    tmpVer=$(mktemp /tmp/de_GWD-ver.XXXXXX)
-    if [[ -n "$tmpVer" ]] && curl -fsSL --connect-timeout 5 -m 15 -o "$tmpVer" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php" 2>/dev/null && [[ -s "$tmpVer" ]]; then
+  tmpVer=$(mktemp /tmp/de_GWD-ver.XXXXXX)
+  if [[ -n "$tmpVer" ]]; then
+    if ! curl -4 -fsSL --retry 2 --connect-timeout 5 -m 15 -o "$tmpVer" "https://raw.githubusercontent.com/stuinxo/de_GWD/$branch/version.php?cb=$(date +%s)" 2>/dev/null; then
+      curl -4 -fsSL --connect-timeout 5 -m 15 -o "$tmpVer" "https://fastly.jsdelivr.net/gh/stuinxo/de_GWD@$branch/version.php" 2>/dev/null || true
+    fi
+    remoteVer=$(awk 'NR==1' "$tmpVer" 2>/dev/null | tr -d '\r ')
+    if [[ "$remoteVer" =~ ^v?[0-9]+\.[0-9]+ ]] && [[ "$localVer" != "$remoteVer" || ! -f '/opt/de_GWD/.repo/version.php' ]]; then
       mv -f "$tmpVer" /opt/de_GWD/.repo/version.php
     else
       rm -f "$tmpVer"
@@ -1156,6 +1159,13 @@ EOF
 
   sync
   sysctl --system >/dev/null 2>&1
+  if [[ -f /etc/exim4/update-exim4.conf.conf ]] && grep -q '::1' /etc/exim4/update-exim4.conf.conf 2>/dev/null; then
+    sed -i 's/[[:space:]]*;[[:space:]]*::1//g' /etc/exim4/update-exim4.conf.conf
+    update-exim4.conf >/dev/null 2>&1 || true
+    rm -f /var/log/exim4/paniclog
+    systemctl reset-failed exim4 >/dev/null 2>&1 || true
+    systemctl is-enabled --quiet exim4 2>/dev/null && systemctl restart exim4 >/dev/null 2>&1 || true
+  fi
 fi
 
 if dpkg-query -W -f='${db:Status-Abbrev}\n' docker-ce 2>/dev/null | grep -q '^ii' && dpkg-query -W -f='${db:Status-Abbrev}\n' containerd.io 2>/dev/null | grep -q '^ii'; then
@@ -1612,7 +1622,7 @@ cat << EOF >/opt/de_GWD/vtrui/config.json
     {
       "tag":"direct",
       "protocol":"freedom",
-      "settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},
+      "settings":{"finalRules":[{"action":"allow","ip":["0.0.0.0/0","::/0"]}]},
       "streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}
     }
   ]
@@ -1672,7 +1682,7 @@ if [[ -s /opt/de_GWD/extra_inbounds.json ]] && jq -e 'type == "array" and length
     | if any($extra[]; .tag == "inbound-dokodemo") then
         .routing = (.routing // {})
         | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"outbound-dokodemo"}] + (.routing.rules // [])
-        | .outbounds += [{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}]
+        | .outbounds += [{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}]
       else . end
   ' /opt/de_GWD/vtrui/config.json | sponge /opt/de_GWD/vtrui/config.json
 else
@@ -4075,7 +4085,7 @@ applyXrayInbound() {
     jq --argjson n "$newInboundJson" '.inbounds += [$n]' | sponge "$cfg"
 
     if [[ "$tag" == "inbound-dokodemo" ]]; then
-        local outboundDokodemo='{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["geoip:private","0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}'
+        local outboundDokodemo='{"tag":"outbound-dokodemo","protocol":"freedom","settings":{"finalRules":[{"action":"allow","ip":["0.0.0.0/0","::/0"]}]},"streamSettings":{"sockopt":{"mark":255,"tcpFastOpen":true,"tcpNoDelay":true}}}'
         jq --argjson od "$outboundDokodemo" 'del(.outbounds[]? | select(.tag == "outbound-dokodemo")) | .outbounds += [$od] | del(.routing.rules[]? | select(.inboundTag == ["inbound-dokodemo"])) | .routing = (.routing // {}) | .routing.rules = [{"type":"field","inboundTag":["inbound-dokodemo"],"outboundTag":"outbound-dokodemo"}] + (.routing.rules // [])' "$cfg" | sponge "$cfg"
     fi
     chown root:www-data "$cfg" 2>/dev/null || true

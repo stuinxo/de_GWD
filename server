@@ -5104,7 +5104,7 @@ setupDokodemo() {
         tag: "outbound-dokodemo",
         protocol: "freedom",
         settings: {
-          finalRules: [{"action": "allow", "ip": ["geoip:private", "0.0.0.0/0", "::/0"]}]
+          finalRules: [{"action": "allow", "ip": ["0.0.0.0/0", "::/0"]}]
         }
       }')
 

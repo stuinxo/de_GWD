@@ -14,6 +14,8 @@ rm -rf /opt/de_GWD/vtrui1
 mkdir -p /opt/de_GWD/vtrui1
 cp -f /opt/de_GWD/vtrui/vtrui /opt/de_GWD/vtrui1/vtrui1
 chmod +x /opt/de_GWD/vtrui1/vtrui1
+[[ -f /opt/de_GWD/.repo/geoip.dat ]] && (ln -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui1/geoip.dat 2>/dev/null || cp -f /opt/de_GWD/.repo/geoip.dat /opt/de_GWD/vtrui1/geoip.dat)
+[[ -f /opt/de_GWD/.repo/geosite.dat ]] && (ln -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui1/geosite.dat 2>/dev/null || cp -f /opt/de_GWD/.repo/geosite.dat /opt/de_GWD/vtrui1/geosite.dat)
 
 # If FWD1path is not set, initialize it from the first UUID's prefix and persist
 if [[ -z "$FWD1path" ]]; then

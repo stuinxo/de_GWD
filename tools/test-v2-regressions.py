@@ -1030,6 +1030,7 @@ jq -nc --argjson v "$vless" --argjson f "$free" '{{vless: $v, freedom: $f}}'
                 and f.get("protocol") == "freedom"
                 and isinstance(f.get("settings", {}).get("finalRules"), list)
                 and len(f.get("settings", {}).get("finalRules", [])) > 0
+                and "geoip:private" not in json.dumps(f)
             )
         record(
             ok_xray,
