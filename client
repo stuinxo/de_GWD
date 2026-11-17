@@ -1334,6 +1334,7 @@ cat << EOF >/etc/systemd/system/coredns.service
 [Unit]
 Description=CoreDNS DNS server
 After=network.target
+ConditionFileNotEmpty=/opt/de_GWD/coredns/corefile
 
 [Service]
 User=root

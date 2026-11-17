@@ -1,8 +1,9 @@
 #!/bin/bash
-sed -i '/DoGs_START/,/DoGs_END/d' /opt/de_GWD/coredns/corefile
-if [[ $(cat /opt/de_GWD/coredns/corefile | wc -c) -lt 11 ]]; then
-systemctl disable coredns >/dev/null 2>&1
-systemctl stop coredns
+[[ -f /opt/de_GWD/coredns/corefile ]] && sed -i '/DoGs_START/,/DoGs_END/d' /opt/de_GWD/coredns/corefile
+if ! grep -q '[^[:space:]]' /opt/de_GWD/coredns/corefile 2>/dev/null; then
+  : >/opt/de_GWD/coredns/corefile
+  systemctl disable coredns >/dev/null 2>&1
+  systemctl stop coredns
 else
-systemctl restart coredns
+  systemctl restart coredns
 fi

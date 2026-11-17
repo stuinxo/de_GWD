@@ -52,8 +52,9 @@ EOF
 systemctl enable coredns >/dev/null 2>&1
 systemctl restart coredns
 else
-sed -i '/DoGc_START/,/DoGc_END/d' /opt/de_GWD/coredns/corefile
-  if [[ $(cat /opt/de_GWD/coredns/corefile | wc -l) -le 5 ]]; then
+[[ -f /opt/de_GWD/coredns/corefile ]] && sed -i '/DoGc_START/,/DoGc_END/d' /opt/de_GWD/coredns/corefile
+  if ! grep -q '[^[:space:]]' /opt/de_GWD/coredns/corefile 2>/dev/null; then
+  : >/opt/de_GWD/coredns/corefile
   systemctl disable coredns >/dev/null 2>&1
   systemctl stop coredns
   else

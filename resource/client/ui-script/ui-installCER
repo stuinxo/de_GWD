@@ -95,10 +95,12 @@ if [[ "$sslOk" -ne 1 ]]; then
 fi
 rm -rf "$sslStage"
 
-[[ -d "/opt/de_GWD/vtrui" ]] && systemctl restart vtrui
-[[ -d "/opt/de_GWD/vtrui1" ]] && systemctl restart vtrui1
-[[ -d "/opt/de_GWD/coredns" ]] && systemctl restart coredns
-[[ -d "/opt/de_GWD/RproxyS" ]] && systemctl restart RproxyS
+[[ -d "/opt/de_GWD/vtrui" ]] && systemctl is-active --quiet vtrui && systemctl restart vtrui
+[[ -d "/opt/de_GWD/vtrui1" ]] && systemctl is-active --quiet vtrui1 && systemctl restart vtrui1
+if systemctl is-active --quiet coredns && grep -q '[^[:space:]]' /opt/de_GWD/coredns/corefile 2>/dev/null; then
+  systemctl restart coredns
+fi
+[[ -d "/opt/de_GWD/RproxyS" ]] && systemctl is-active --quiet RproxyS && systemctl restart RproxyS
 
 echo -e "${WHITE}[ ${GREEN}✓ ${WHITE}]\c" && echo -e "\t${WHITE}Generate & Deploy TLS Certificate${cRES}"
 }

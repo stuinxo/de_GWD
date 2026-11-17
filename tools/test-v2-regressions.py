@@ -995,6 +995,13 @@ def test_nginxset_upgrade_from_legacy_conf() -> None:
     )
     record(save_ok, "saveCommand skips short-circuit on normal update so dex self-updates on upgrade")
 
+    cer_txt = (UISCRIPT_DIR / "ui-installCER").read_text(encoding="utf-8")
+    coredns_ok = (
+        "ConditionFileNotEmpty=/opt/de_GWD/coredns/corefile" in client_txt
+        and "systemctl is-active --quiet coredns && grep -q" in cer_txt
+    )
+    record(coredns_ok, "coredns.service requires non-empty corefile and ui-installCER only restarts active coredns")
+
 
 def test_ui_script_xray_and_split_routing() -> None:
     xray_common = UISCRIPT_DIR / "xray-common"
